@@ -1,184 +1,103 @@
 import { 
   type User, 
   type InsertUser, 
-  type Workflow, 
-  type InsertWorkflow,
-  type Template,
-  type InsertTemplate,
-  type Integration,
-  type InsertIntegration,
-  type WorkflowRun,
-  type InsertWorkflowRun,
-  type WorkflowNode,
-  type WorkflowConnection
+  type TimeSlot,
+  type InsertTimeSlot,
+  type Booking, 
+  type InsertBooking,
+  type Notification,
+  type InsertNotification,
+  type TimeSlotWithBookings,
+  type BookingWithDetails,
+  type DaySchedule
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByPhone(phone: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  updateUserBrandSettings(userId: string, brandSettings: any): Promise<User>;
-
-  // Workflows
-  getWorkflows(userId: string): Promise<Workflow[]>;
-  getWorkflow(id: string): Promise<Workflow | undefined>;
-  createWorkflow(workflow: InsertWorkflow): Promise<Workflow>;
-  updateWorkflow(id: string, updates: Partial<Workflow>): Promise<Workflow>;
-  deleteWorkflow(id: string): Promise<void>;
-
-  // Templates
-  getTemplates(): Promise<Template[]>;
-  getTemplate(id: string): Promise<Template | undefined>;
-  createTemplate(template: InsertTemplate): Promise<Template>;
-
-  // Integrations
-  getIntegrations(userId: string): Promise<Integration[]>;
-  getIntegration(id: string): Promise<Integration | undefined>;
-  createIntegration(integration: InsertIntegration): Promise<Integration>;
-  updateIntegration(id: string, updates: Partial<Integration>): Promise<Integration>;
-
-  // Workflow Runs
-  getWorkflowRuns(workflowId: string): Promise<WorkflowRun[]>;
-  createWorkflowRun(run: InsertWorkflowRun): Promise<WorkflowRun>;
-  updateWorkflowRun(id: string, updates: Partial<WorkflowRun>): Promise<WorkflowRun>;
-
+  updateUser(id: string, updates: Partial<User>): Promise<User>;
+  verifyUser(id: string): Promise<User>;
+  
+  // Time Slots
+  getTimeSlotsByDate(date: string): Promise<TimeSlotWithBookings[]>;
+  getTimeSlotsByDateRange(startDate: string, endDate: string): Promise<TimeSlotWithBookings[]>;
+  createTimeSlot(timeSlot: InsertTimeSlot): Promise<TimeSlot>;
+  updateTimeSlot(id: string, updates: Partial<TimeSlot>): Promise<TimeSlot>;
+  generateTimeSlots(date: string): Promise<TimeSlot[]>;
+  
+  // Bookings
+  getBooking(id: string): Promise<BookingWithDetails | undefined>;
+  getBookingsByStudent(studentId: string): Promise<BookingWithDetails[]>;
+  getBookingsByTimeSlot(timeSlotId: string): Promise<BookingWithDetails[]>;
+  createBooking(booking: InsertBooking): Promise<Booking>;
+  updateBooking(id: string, updates: Partial<Booking>): Promise<Booking>;
+  confirmBooking(id: string): Promise<Booking>;
+  cancelBooking(id: string): Promise<Booking>;
+  
+  // Notifications
+  getNotificationsByUser(userId: string): Promise<Notification[]>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationAsRead(id: string): Promise<Notification>;
+  
   // Analytics
-  getWorkflowStats(userId: string): Promise<{
-    activeWorkflows: number;
-    tasksExecuted: number;
-    connectedApps: number;
-    timeSaved: number;
-  }>;
+  getStudentsList(): Promise<User[]>;
+  getScheduleForDate(date: string): Promise<DaySchedule>;
+  getScheduleForWeek(startDate: string): Promise<DaySchedule[]>;
+  getScheduleForMonth(year: number, month: number): Promise<DaySchedule[]>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, User> = new Map();
-  private workflows: Map<string, Workflow> = new Map();
-  private templates: Map<string, Template> = new Map();
-  private integrations: Map<string, Integration> = new Map();
-  private workflowRuns: Map<string, WorkflowRun> = new Map();
+  private timeSlots: Map<string, TimeSlot> = new Map();
+  private bookings: Map<string, Booking> = new Map();
+  private notifications: Map<string, Notification> = new Map();
 
   constructor() {
     this.seedData();
   }
 
   private seedData() {
-    // Seed popular templates
-    const sampleTemplates: Template[] = [
-      {
-        id: "template-1",
-        name: "Lead Capture to CRM",
-        description: "Automatically add new form submissions to your CRM and send welcome emails",
-        category: "Lead Management",
-        nodes: [
-          {
-            id: "trigger-1",
-            type: "trigger",
-            appName: "Google Forms",
-            appType: "forms",
-            action: "new_form_submission",
-            position: { x: 100, y: 100 },
-            config: {}
-          },
-          {
-            id: "action-1",
-            type: "action",
-            appName: "HubSpot",
-            appType: "crm",
-            action: "create_contact",
-            position: { x: 400, y: 100 },
-            config: {}
-          }
-        ],
-        connections: [
-          {
-            id: "conn-1",
-            sourceId: "trigger-1",
-            targetId: "action-1"
-          }
-        ],
-        isPublic: true,
-        usageCount: 247,
-        createdAt: new Date()
-      },
-      {
-        id: "template-2",
-        name: "Content Publishing",
-        description: "Schedule and publish content across multiple social media platforms",
-        category: "Social Media",
-        nodes: [
-          {
-            id: "trigger-2",
-            type: "trigger",
-            appName: "Scheduler",
-            appType: "scheduler",
-            action: "scheduled_time",
-            position: { x: 100, y: 100 },
-            config: {}
-          },
-          {
-            id: "action-2",
-            type: "action",
-            appName: "Twitter",
-            appType: "social",
-            action: "post_tweet",
-            position: { x: 400, y: 100 },
-            config: {}
-          }
-        ],
-        connections: [
-          {
-            id: "conn-2",
-            sourceId: "trigger-2",
-            targetId: "action-2"
-          }
-        ],
-        isPublic: true,
-        usageCount: 189,
-        createdAt: new Date()
-      },
-      {
-        id: "template-3",
-        name: "Team Notifications",
-        description: "Send Slack notifications when important events happen in your tools",
-        category: "Team Communication",
-        nodes: [
-          {
-            id: "trigger-3",
-            type: "trigger",
-            appName: "Webhook",
-            appType: "webhook",
-            action: "webhook_received",
-            position: { x: 100, y: 100 },
-            config: {}
-          },
-          {
-            id: "action-3",
-            type: "action",
-            appName: "Slack",
-            appType: "communication",
-            action: "send_message",
-            position: { x: 400, y: 100 },
-            config: {}
-          }
-        ],
-        connections: [
-          {
-            id: "conn-3",
-            sourceId: "trigger-3",
-            targetId: "action-3"
-          }
-        ],
-        isPublic: true,
-        usageCount: 156,
-        createdAt: new Date()
-      }
-    ];
+    // Create trainer user
+    const trainerId = randomUUID();
+    const trainer: User = {
+      id: trainerId,
+      phone: "+79991234567",
+      firstName: "Константин",
+      lastName: "Владимирович",
+      role: "trainer",
+      isVerified: true,
+      verificationCode: null,
+      lastLogin: null,
+      createdAt: new Date()
+    };
+    this.users.set(trainerId, trainer);
 
-    sampleTemplates.forEach(template => {
-      this.templates.set(template.id, template);
+    // Generate time slots for the next 30 days
+    const today = new Date();
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+      this.generateTimeSlotsForDate(date.toISOString().split('T')[0]);
+    }
+  }
+
+  private generateTimeSlotsForDate(date: string) {
+    const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]; // 8:00 - 19:00
+    
+    hours.forEach(hour => {
+      const timeSlotId = randomUUID();
+      const timeSlot: TimeSlot = {
+        id: timeSlotId,
+        date: date,
+        time: `${hour.toString().padStart(2, '0')}:00`,
+        maxCapacity: 2,
+        isBlocked: false,
+        createdAt: new Date()
+      };
+      this.timeSlots.set(timeSlotId, timeSlot);
     });
   }
 
@@ -186,172 +105,289 @@ export class MemStorage implements IStorage {
     return this.users.get(id);
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.username === username);
+  async getUserByPhone(phone: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => user.phone === phone);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    const user: User = { 
-      ...insertUser, 
-      company: insertUser.company || null,
-      id, 
-      createdAt: new Date(),
-      brandSettings: null
+    const user: User = {
+      ...insertUser,
+      id,
+      role: insertUser.role || "student",
+      isVerified: false,
+      verificationCode: null,
+      lastLogin: null,
+      createdAt: new Date()
     };
     this.users.set(id, user);
     return user;
   }
 
-  async updateUserBrandSettings(userId: string, brandSettings: any): Promise<User> {
-    const user = this.users.get(userId);
+  async updateUser(id: string, updates: Partial<User>): Promise<User> {
+    const user = this.users.get(id);
     if (!user) throw new Error("User not found");
     
-    const updatedUser = { ...user, brandSettings };
-    this.users.set(userId, updatedUser);
+    const updatedUser = { ...user, ...updates };
+    this.users.set(id, updatedUser);
     return updatedUser;
   }
 
-  async getWorkflows(userId: string): Promise<Workflow[]> {
-    return Array.from(this.workflows.values()).filter(w => w.userId === userId);
-  }
-
-  async getWorkflow(id: string): Promise<Workflow | undefined> {
-    return this.workflows.get(id);
-  }
-
-  async createWorkflow(insertWorkflow: InsertWorkflow): Promise<Workflow> {
-    const id = randomUUID();
-    const workflow: Workflow = {
-      ...insertWorkflow,
-      id,
-      status: insertWorkflow.status || "draft",
-      description: insertWorkflow.description || null,
-      nodes: (insertWorkflow.nodes || []) as WorkflowNode[],
-      connections: (insertWorkflow.connections || []) as WorkflowConnection[],
-      lastRun: null,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    this.workflows.set(id, workflow);
-    return workflow;
-  }
-
-  async updateWorkflow(id: string, updates: Partial<Workflow>): Promise<Workflow> {
-    const workflow = this.workflows.get(id);
-    if (!workflow) throw new Error("Workflow not found");
+  async verifyUser(id: string): Promise<User> {
+    const user = this.users.get(id);
+    if (!user) throw new Error("User not found");
     
-    const updatedWorkflow = { ...workflow, ...updates, updatedAt: new Date() };
-    this.workflows.set(id, updatedWorkflow);
-    return updatedWorkflow;
+    const verifiedUser = { ...user, isVerified: true, verificationCode: null };
+    this.users.set(id, verifiedUser);
+    return verifiedUser;
   }
 
-  async deleteWorkflow(id: string): Promise<void> {
-    this.workflows.delete(id);
+  async getTimeSlotsByDate(date: string): Promise<TimeSlotWithBookings[]> {
+    const slots = Array.from(this.timeSlots.values()).filter(slot => slot.date === date);
+    
+    return Promise.all(slots.map(async slot => {
+      const bookings = await this.getBookingsByTimeSlot(slot.id);
+      const confirmedBookings = bookings.filter(b => b.status === "confirmed");
+      
+      return {
+        ...slot,
+        bookings: confirmedBookings,
+        availableSpots: slot.maxCapacity - confirmedBookings.length
+      };
+    }));
   }
 
-  async getTemplates(): Promise<Template[]> {
-    return Array.from(this.templates.values()).filter(t => t.isPublic);
+  async getTimeSlotsByDateRange(startDate: string, endDate: string): Promise<TimeSlotWithBookings[]> {
+    const slots = Array.from(this.timeSlots.values()).filter(slot => 
+      slot.date >= startDate && slot.date <= endDate
+    );
+    
+    return Promise.all(slots.map(async slot => {
+      const bookings = await this.getBookingsByTimeSlot(slot.id);
+      const confirmedBookings = bookings.filter(b => b.status === "confirmed");
+      
+      return {
+        ...slot,
+        bookings: confirmedBookings,
+        availableSpots: slot.maxCapacity - confirmedBookings.length
+      };
+    }));
   }
 
-  async getTemplate(id: string): Promise<Template | undefined> {
-    return this.templates.get(id);
-  }
-
-  async createTemplate(insertTemplate: InsertTemplate): Promise<Template> {
+  async createTimeSlot(insertTimeSlot: InsertTimeSlot): Promise<TimeSlot> {
     const id = randomUUID();
-    const template: Template = {
-      ...insertTemplate,
+    const timeSlot: TimeSlot = {
+      ...insertTimeSlot,
       id,
-      nodes: (insertTemplate.nodes || []) as WorkflowNode[],
-      connections: (insertTemplate.connections || []) as WorkflowConnection[],
-      isPublic: insertTemplate.isPublic !== undefined ? insertTemplate.isPublic : true,
-      usageCount: insertTemplate.usageCount || 0,
+      maxCapacity: insertTimeSlot.maxCapacity || 2,
+      isBlocked: insertTimeSlot.isBlocked || false,
       createdAt: new Date()
     };
-    this.templates.set(id, template);
-    return template;
+    this.timeSlots.set(id, timeSlot);
+    return timeSlot;
   }
 
-  async getIntegrations(userId: string): Promise<Integration[]> {
-    return Array.from(this.integrations.values()).filter(i => i.userId === userId);
-  }
-
-  async getIntegration(id: string): Promise<Integration | undefined> {
-    return this.integrations.get(id);
-  }
-
-  async createIntegration(insertIntegration: InsertIntegration): Promise<Integration> {
-    const id = randomUUID();
-    const integration: Integration = {
-      ...insertIntegration,
-      id,
-      isConnected: insertIntegration.isConnected !== undefined ? insertIntegration.isConnected : false,
-      credentials: insertIntegration.credentials || null,
-      lastSync: null,
-      createdAt: new Date()
-    };
-    this.integrations.set(id, integration);
-    return integration;
-  }
-
-  async updateIntegration(id: string, updates: Partial<Integration>): Promise<Integration> {
-    const integration = this.integrations.get(id);
-    if (!integration) throw new Error("Integration not found");
+  async updateTimeSlot(id: string, updates: Partial<TimeSlot>): Promise<TimeSlot> {
+    const timeSlot = this.timeSlots.get(id);
+    if (!timeSlot) throw new Error("Time slot not found");
     
-    const updatedIntegration = { ...integration, ...updates };
-    this.integrations.set(id, updatedIntegration);
-    return updatedIntegration;
+    const updatedTimeSlot = { ...timeSlot, ...updates };
+    this.timeSlots.set(id, updatedTimeSlot);
+    return updatedTimeSlot;
   }
 
-  async getWorkflowRuns(workflowId: string): Promise<WorkflowRun[]> {
-    return Array.from(this.workflowRuns.values()).filter(r => r.workflowId === workflowId);
+  async generateTimeSlots(date: string): Promise<TimeSlot[]> {
+    this.generateTimeSlotsForDate(date);
+    return Array.from(this.timeSlots.values()).filter(slot => slot.date === date);
   }
 
-  async createWorkflowRun(insertRun: InsertWorkflowRun): Promise<WorkflowRun> {
-    const id = randomUUID();
-    const run: WorkflowRun = {
-      ...insertRun,
-      id,
-      logs: (insertRun.logs || []) as string[],
-      startedAt: new Date(),
-      completedAt: null
-    };
-    this.workflowRuns.set(id, run);
-    return run;
-  }
+  async getBooking(id: string): Promise<BookingWithDetails | undefined> {
+    const booking = this.bookings.get(id);
+    if (!booking) return undefined;
 
-  async updateWorkflowRun(id: string, updates: Partial<WorkflowRun>): Promise<WorkflowRun> {
-    const run = this.workflowRuns.get(id);
-    if (!run) throw new Error("Workflow run not found");
+    const student = await this.getUser(booking.studentId);
+    const timeSlot = this.timeSlots.get(booking.timeSlotId);
     
-    const updatedRun = { ...run, ...updates };
-    this.workflowRuns.set(id, updatedRun);
-    return updatedRun;
-  }
-
-  async getWorkflowStats(userId: string): Promise<{
-    activeWorkflows: number;
-    tasksExecuted: number;
-    connectedApps: number;
-    timeSaved: number;
-  }> {
-    const userWorkflows = await this.getWorkflows(userId);
-    const userIntegrations = await this.getIntegrations(userId);
-    
-    const activeWorkflows = userWorkflows.filter(w => w.status === "active").length;
-    const connectedApps = userIntegrations.filter(i => i.isConnected).length;
-    
-    // Mock calculations for demo
-    const tasksExecuted = activeWorkflows * 52; // Assume ~52 tasks per active workflow
-    const timeSaved = activeWorkflows * 1.77; // Assume ~1.77 hours saved per workflow
+    if (!student || !timeSlot) return undefined;
 
     return {
-      activeWorkflows,
-      tasksExecuted,
-      connectedApps,
-      timeSaved
+      ...booking,
+      student: {
+        firstName: student.firstName,
+        lastName: student.lastName || "",
+        phone: student.phone
+      },
+      timeSlot
     };
+  }
+
+  async getBookingsByStudent(studentId: string): Promise<BookingWithDetails[]> {
+    const bookings = Array.from(this.bookings.values()).filter(b => b.studentId === studentId);
+    
+    const bookingsWithDetails = await Promise.all(
+      bookings.map(async booking => {
+        const student = await this.getUser(booking.studentId);
+        const timeSlot = this.timeSlots.get(booking.timeSlotId);
+        
+        if (!student || !timeSlot) return null;
+
+        return {
+          ...booking,
+          student: {
+            firstName: student.firstName,
+            lastName: student.lastName || "",
+            phone: student.phone
+          },
+          timeSlot
+        };
+      })
+    );
+
+    return bookingsWithDetails.filter(Boolean) as BookingWithDetails[];
+  }
+
+  async getBookingsByTimeSlot(timeSlotId: string): Promise<BookingWithDetails[]> {
+    const bookings = Array.from(this.bookings.values()).filter(b => b.timeSlotId === timeSlotId);
+    
+    const bookingsWithDetails = await Promise.all(
+      bookings.map(async booking => {
+        const student = await this.getUser(booking.studentId);
+        const timeSlot = this.timeSlots.get(booking.timeSlotId);
+        
+        if (!student || !timeSlot) return null;
+
+        return {
+          ...booking,
+          student: {
+            firstName: student.firstName,
+            lastName: student.lastName || "",
+            phone: student.phone
+          },
+          timeSlot
+        };
+      })
+    );
+
+    return bookingsWithDetails.filter(Boolean) as BookingWithDetails[];
+  }
+
+  async createBooking(insertBooking: InsertBooking): Promise<Booking> {
+    const id = randomUUID();
+    const booking: Booking = {
+      ...insertBooking,
+      id,
+      status: insertBooking.status || "pending",
+      notes: insertBooking.notes || null,
+      createdAt: new Date(),
+      confirmedAt: null,
+      cancelledAt: null
+    };
+    this.bookings.set(id, booking);
+    return booking;
+  }
+
+  async updateBooking(id: string, updates: Partial<Booking>): Promise<Booking> {
+    const booking = this.bookings.get(id);
+    if (!booking) throw new Error("Booking not found");
+    
+    const updatedBooking = { ...booking, ...updates };
+    this.bookings.set(id, updatedBooking);
+    return updatedBooking;
+  }
+
+  async confirmBooking(id: string): Promise<Booking> {
+    const booking = this.bookings.get(id);
+    if (!booking) throw new Error("Booking not found");
+    
+    const confirmedBooking = { 
+      ...booking, 
+      status: "confirmed" as const, 
+      confirmedAt: new Date() 
+    };
+    this.bookings.set(id, confirmedBooking);
+    return confirmedBooking;
+  }
+
+  async cancelBooking(id: string): Promise<Booking> {
+    const booking = this.bookings.get(id);
+    if (!booking) throw new Error("Booking not found");
+    
+    const cancelledBooking = { 
+      ...booking, 
+      status: "cancelled" as const, 
+      cancelledAt: new Date() 
+    };
+    this.bookings.set(id, cancelledBooking);
+    return cancelledBooking;
+  }
+
+  async getNotificationsByUser(userId: string): Promise<Notification[]> {
+    return Array.from(this.notifications.values()).filter(n => n.userId === userId);
+  }
+
+  async createNotification(insertNotification: InsertNotification): Promise<Notification> {
+    const id = randomUUID();
+    const notification: Notification = {
+      ...insertNotification,
+      id,
+      isRead: false,
+      relatedBookingId: insertNotification.relatedBookingId || null,
+      createdAt: new Date()
+    };
+    this.notifications.set(id, notification);
+    return notification;
+  }
+
+  async markNotificationAsRead(id: string): Promise<Notification> {
+    const notification = this.notifications.get(id);
+    if (!notification) throw new Error("Notification not found");
+    
+    const readNotification = { ...notification, isRead: true };
+    this.notifications.set(id, readNotification);
+    return readNotification;
+  }
+
+  async getStudentsList(): Promise<User[]> {
+    return Array.from(this.users.values()).filter(user => user.role === "student");
+  }
+
+  async getScheduleForDate(date: string): Promise<DaySchedule> {
+    const timeSlots = await this.getTimeSlotsByDate(date);
+    return {
+      date,
+      timeSlots: timeSlots.sort((a, b) => a.time.localeCompare(b.time))
+    };
+  }
+
+  async getScheduleForWeek(startDate: string): Promise<DaySchedule[]> {
+    const schedules: DaySchedule[] = [];
+    const start = new Date(startDate);
+    
+    for (let i = 0; i < 7; i++) {
+      const currentDate = new Date(start);
+      currentDate.setDate(start.getDate() + i);
+      const dateStr = currentDate.toISOString().split('T')[0];
+      
+      const schedule = await this.getScheduleForDate(dateStr);
+      schedules.push(schedule);
+    }
+    
+    return schedules;
+  }
+
+  async getScheduleForMonth(year: number, month: number): Promise<DaySchedule[]> {
+    const schedules: DaySchedule[] = [];
+    const daysInMonth = new Date(year, month, 0).getDate();
+    
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month - 1, day);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const schedule = await this.getScheduleForDate(dateStr);
+      schedules.push(schedule);
+    }
+    
+    return schedules;
   }
 }
 

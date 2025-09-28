@@ -1,118 +1,130 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, integer, json } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, time, date, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Users table (students and trainer)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  company: text("company"),
-  brandSettings: json("brand_settings").$type<{
-    primaryColor?: string;
-    accentColor?: string;
-    logoUrl?: string;
-  }>(),
+  phone: text("phone").notNull().unique(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name"),
+  role: text("role").notNull().default("student"), // "student" or "trainer"
+  isVerified: boolean("is_verified").notNull().default(false),
+  verificationCode: text("verification_code"),
+  lastLogin: timestamp("last_login"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const workflows = pgTable("workflows", {
+// Time slots for the schedule (8:00-20:00)
+export const timeSlots = pgTable("time_slots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: date("date").notNull(), // YYYY-MM-DD
+  time: time("time").notNull(), // HH:MM format (08:00, 09:00, etc.)
+  maxCapacity: integer("max_capacity").notNull().default(2), // max 2 students per hour
+  isBlocked: boolean("is_blocked").notNull().default(false), // trainer can block slots
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Bookings table
+export const bookings = pgTable("bookings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  studentId: varchar("student_id").notNull().references(() => users.id),
+  timeSlotId: varchar("time_slot_id").notNull().references(() => timeSlots.id),
+  status: text("status").notNull().default("pending"), // "pending", "confirmed", "cancelled"
+  bookedBy: varchar("booked_by").notNull().references(() => users.id), // who made the booking (student or trainer)
+  notes: text("notes"), // trainer notes
+  createdAt: timestamp("created_at").defaultNow(),
+  confirmedAt: timestamp("confirmed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+});
+
+// Notification system for trainer confirmations
+export const notifications = pgTable("notifications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
-  name: text("name").notNull(),
-  description: text("description"),
-  status: text("status").notNull().default("draft"), // draft, active, paused
-  nodes: json("nodes").$type<WorkflowNode[]>().notNull().default([]),
-  connections: json("connections").$type<WorkflowConnection[]>().notNull().default([]),
-  lastRun: timestamp("last_run"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export const templates = pgTable("templates", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  description: text("description").notNull(),
-  category: text("category").notNull(),
-  nodes: json("nodes").$type<WorkflowNode[]>().notNull().default([]),
-  connections: json("connections").$type<WorkflowConnection[]>().notNull().default([]),
-  isPublic: boolean("is_public").notNull().default(true),
-  usageCount: integer("usage_count").notNull().default(0),
+  type: text("type").notNull(), // "booking_request", "booking_confirmed", "booking_cancelled"
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  isRead: boolean("is_read").notNull().default(false),
+  relatedBookingId: varchar("related_booking_id").references(() => bookings.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
-
-export const integrations = pgTable("integrations", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  appName: text("app_name").notNull(),
-  appType: text("app_type").notNull(),
-  isConnected: boolean("is_connected").notNull().default(false),
-  credentials: json("credentials").$type<Record<string, any>>(),
-  lastSync: timestamp("last_sync"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const workflowRuns = pgTable("workflow_runs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workflowId: varchar("workflow_id").notNull().references(() => workflows.id),
-  status: text("status").notNull(), // running, completed, failed
-  startedAt: timestamp("started_at").defaultNow(),
-  completedAt: timestamp("completed_at"),
-  logs: json("logs").$type<string[]>().notNull().default([]),
-});
-
-// Types for workflow builder
-export type WorkflowNode = {
-  id: string;
-  type: 'trigger' | 'action' | 'condition';
-  appName: string;
-  appType: string;
-  action: string;
-  position: { x: number; y: number };
-  config: Record<string, any>;
-};
-
-export type WorkflowConnection = {
-  id: string;
-  sourceId: string;
-  targetId: string;
-};
 
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
+  lastLogin: true,
 });
 
-export const insertWorkflowSchema = createInsertSchema(workflows).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertTemplateSchema = createInsertSchema(templates).omit({
+export const insertTimeSlotSchema = createInsertSchema(timeSlots).omit({
   id: true,
   createdAt: true,
 });
 
-export const insertIntegrationSchema = createInsertSchema(integrations).omit({
+export const insertBookingSchema = createInsertSchema(bookings).omit({
+  id: true,
+  createdAt: true,
+  confirmedAt: true,
+  cancelledAt: true,
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
   id: true,
   createdAt: true,
 });
 
-export const insertWorkflowRunSchema = createInsertSchema(workflowRuns).omit({
-  id: true,
-  startedAt: true,
+// Validation schemas
+export const phoneVerificationSchema = z.object({
+  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format"),
+  code: z.string().length(6, "Verification code must be 6 digits"),
+});
+
+export const studentRegistrationSchema = z.object({
+  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format"),
+  firstName: z.string().min(2, "First name must be at least 2 characters"),
+  lastName: z.string().min(2, "Last name must be at least 2 characters"),
+});
+
+export const trainerLoginSchema = z.object({
+  phone: z.string(),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+export const bookingRequestSchema = z.object({
+  timeSlotId: z.string(),
+  notes: z.string().optional(),
 });
 
 // Inferred types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
-export type InsertWorkflow = z.infer<typeof insertWorkflowSchema>;
-export type Workflow = typeof workflows.$inferSelect;
-export type InsertTemplate = z.infer<typeof insertTemplateSchema>;
-export type Template = typeof templates.$inferSelect;
-export type InsertIntegration = z.infer<typeof insertIntegrationSchema>;
-export type Integration = typeof integrations.$inferSelect;
-export type InsertWorkflowRun = z.infer<typeof insertWorkflowRunSchema>;
-export type WorkflowRun = typeof workflowRuns.$inferSelect;
+export type InsertTimeSlot = z.infer<typeof insertTimeSlotSchema>;
+export type TimeSlot = typeof timeSlots.$inferSelect;
+export type InsertBooking = z.infer<typeof insertBookingSchema>;
+export type Booking = typeof bookings.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;
+
+// Extended types for API responses
+export type TimeSlotWithBookings = TimeSlot & {
+  bookings: (Booking & { student: Pick<User, 'firstName' | 'lastName' | 'phone'> })[];
+  availableSpots: number;
+};
+
+export type BookingWithDetails = Booking & {
+  student: Pick<User, 'firstName' | 'lastName' | 'phone'>;
+  timeSlot: TimeSlot;
+};
+
+export type DaySchedule = {
+  date: string;
+  timeSlots: TimeSlotWithBookings[];
+};
+
+// Phone verification types
+export type PhoneVerification = z.infer<typeof phoneVerificationSchema>;
+export type StudentRegistration = z.infer<typeof studentRegistrationSchema>;
+export type TrainerLogin = z.infer<typeof trainerLoginSchema>;
+export type BookingRequest = z.infer<typeof bookingRequestSchema>;

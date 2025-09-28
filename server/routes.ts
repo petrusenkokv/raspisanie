@@ -1,187 +1,319 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertWorkflowSchema, insertTemplateSchema, insertIntegrationSchema } from "@shared/schema";
+import { 
+  insertUserSchema, 
+  insertBookingSchema, 
+  phoneVerificationSchema,
+  studentRegistrationSchema,
+  trainerLoginSchema,
+  bookingRequestSchema
+} from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
-  // Workflows
-  app.get("/api/workflows", async (req, res) => {
+  // Auth routes
+  app.post("/api/auth/send-verification", async (req, res) => {
     try {
-      const userId = req.query.userId as string;
-      if (!userId) {
-        return res.status(400).json({ message: "User ID is required" });
+      const { phone } = req.body;
+      
+      // Generate 6-digit verification code
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      
+      // In a real app, send SMS here
+      console.log(`SMS to ${phone}: Your verification code is ${verificationCode}`);
+      
+      // For demo, we'll store the code (in real app, use temporary storage)
+      res.json({ success: true, message: "Verification code sent", code: verificationCode });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to send verification code" });
+    }
+  });
+
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const userData = studentRegistrationSchema.parse(req.body);
+      
+      // Check if user already exists
+      const existingUser = await storage.getUserByPhone(userData.phone);
+      if (existingUser) {
+        return res.status(400).json({ message: "User already exists" });
       }
       
-      const workflows = await storage.getWorkflows(userId);
-      res.json(workflows);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch workflows" });
-    }
-  });
-
-  app.get("/api/workflows/:id", async (req, res) => {
-    try {
-      const workflow = await storage.getWorkflow(req.params.id);
-      if (!workflow) {
-        return res.status(404).json({ message: "Workflow not found" });
-      }
-      res.json(workflow);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch workflow" });
-    }
-  });
-
-  app.post("/api/workflows", async (req, res) => {
-    try {
-      const workflowData = insertWorkflowSchema.parse(req.body);
-      const workflow = await storage.createWorkflow(workflowData);
-      res.status(201).json(workflow);
+      const user = await storage.createUser(userData);
+      const verifiedUser = await storage.verifyUser(user.id);
+      
+      res.status(201).json({ 
+        user: { 
+          id: verifiedUser.id, 
+          phone: verifiedUser.phone, 
+          firstName: verifiedUser.firstName,
+          lastName: verifiedUser.lastName,
+          role: verifiedUser.role 
+        } 
+      });
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid workflow data", errors: error.errors });
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
-      res.status(500).json({ message: "Failed to create workflow" });
+      res.status(500).json({ message: "Failed to register user" });
     }
   });
 
-  app.put("/api/workflows/:id", async (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     try {
-      const updates = req.body;
-      const workflow = await storage.updateWorkflow(req.params.id, updates);
-      res.json(workflow);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update workflow" });
-    }
-  });
-
-  app.delete("/api/workflows/:id", async (req, res) => {
-    try {
-      await storage.deleteWorkflow(req.params.id);
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete workflow" });
-    }
-  });
-
-  // Templates
-  app.get("/api/templates", async (req, res) => {
-    try {
-      const templates = await storage.getTemplates();
-      res.json(templates);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch templates" });
-    }
-  });
-
-  app.get("/api/templates/:id", async (req, res) => {
-    try {
-      const template = await storage.getTemplate(req.params.id);
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
-      }
-      res.json(template);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch template" });
-    }
-  });
-
-  app.post("/api/templates", async (req, res) => {
-    try {
-      const templateData = insertTemplateSchema.parse(req.body);
-      const template = await storage.createTemplate(templateData);
-      res.status(201).json(template);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid template data", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to create template" });
-    }
-  });
-
-  // Integrations
-  app.get("/api/integrations", async (req, res) => {
-    try {
-      const userId = req.query.userId as string;
-      if (!userId) {
-        return res.status(400).json({ message: "User ID is required" });
+      const { phone } = req.body;
+      
+      const user = await storage.getUserByPhone(phone);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
       }
       
-      const integrations = await storage.getIntegrations(userId);
-      res.json(integrations);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch integrations" });
-    }
-  });
-
-  app.post("/api/integrations", async (req, res) => {
-    try {
-      const integrationData = insertIntegrationSchema.parse(req.body);
-      const integration = await storage.createIntegration(integrationData);
-      res.status(201).json(integration);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid integration data", errors: error.errors });
-      }
-      res.status(500).json({ message: "Failed to create integration" });
-    }
-  });
-
-  app.put("/api/integrations/:id", async (req, res) => {
-    try {
-      const updates = req.body;
-      const integration = await storage.updateIntegration(req.params.id, updates);
-      res.json(integration);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update integration" });
-    }
-  });
-
-  // Analytics
-  app.get("/api/analytics/stats", async (req, res) => {
-    try {
-      const userId = req.query.userId as string;
-      if (!userId) {
-        return res.status(400).json({ message: "User ID is required" });
+      if (!user.isVerified) {
+        return res.status(400).json({ message: "User not verified" });
       }
       
-      const stats = await storage.getWorkflowStats(userId);
-      res.json(stats);
+      // Update last login
+      await storage.updateUser(user.id, { lastLogin: new Date() });
+      
+      res.json({ 
+        user: { 
+          id: user.id, 
+          phone: user.phone, 
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role 
+        } 
+      });
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch analytics" });
+      res.status(500).json({ message: "Login failed" });
     }
   });
 
-  // User brand settings
-  app.put("/api/users/:id/brand-settings", async (req, res) => {
+  app.post("/api/auth/trainer-login", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      
+      const user = await storage.getUserByPhone(phone);
+      if (!user || user.role !== "trainer") {
+        return res.status(401).json({ message: "Invalid trainer credentials" });
+      }
+      
+      await storage.updateUser(user.id, { lastLogin: new Date() });
+      
+      res.json({ 
+        user: { 
+          id: user.id, 
+          phone: user.phone, 
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role 
+        } 
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Trainer login failed" });
+    }
+  });
+
+  // Schedule routes
+  app.get("/api/schedule/day/:date", async (req, res) => {
+    try {
+      const { date } = req.params;
+      const schedule = await storage.getScheduleForDate(date);
+      res.json(schedule);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch daily schedule" });
+    }
+  });
+
+  app.get("/api/schedule/week/:startDate", async (req, res) => {
+    try {
+      const { startDate } = req.params;
+      const schedule = await storage.getScheduleForWeek(startDate);
+      res.json(schedule);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch weekly schedule" });
+    }
+  });
+
+  app.get("/api/schedule/month/:year/:month", async (req, res) => {
+    try {
+      const { year, month } = req.params;
+      const schedule = await storage.getScheduleForMonth(parseInt(year), parseInt(month));
+      res.json(schedule);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch monthly schedule" });
+    }
+  });
+
+  // Booking routes
+  app.post("/api/bookings", async (req, res) => {
+    try {
+      const { timeSlotId, studentId, notes } = req.body;
+      
+      // Check if time slot is available
+      const existingBookings = await storage.getBookingsByTimeSlot(timeSlotId);
+      const confirmedBookings = existingBookings.filter(b => b.status === "confirmed");
+      
+      if (confirmedBookings.length >= 2) {
+        return res.status(400).json({ message: "Time slot is fully booked" });
+      }
+      
+      const booking = await storage.createBooking({
+        studentId,
+        timeSlotId,
+        bookedBy: studentId,
+        status: "pending",
+        notes: notes || null
+      });
+      
+      // Create notification for trainer
+      const trainers = Array.from(await storage.getStudentsList()).filter(u => u.role === "trainer");
+      if (trainers.length > 0) {
+        await storage.createNotification({
+          userId: trainers[0].id,
+          type: "booking_request",
+          title: "Новая заявка на запись",
+          message: `Ученик хочет записаться на занятие`,
+          relatedBookingId: booking.id
+        });
+      }
+      
+      const bookingWithDetails = await storage.getBooking(booking.id);
+      res.status(201).json(bookingWithDetails);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create booking" });
+    }
+  });
+
+  app.put("/api/bookings/:id/confirm", async (req, res) => {
     try {
       const { id } = req.params;
-      const { brandSettings } = req.body;
+      const booking = await storage.confirmBooking(id);
       
-      const user = await storage.updateUserBrandSettings(id, brandSettings);
-      res.json(user);
+      // Create notification for student
+      await storage.createNotification({
+        userId: booking.studentId,
+        type: "booking_confirmed",
+        title: "Запись подтверждена",
+        message: "Ваша запись на тренировку подтверждена тренером",
+        relatedBookingId: booking.id
+      });
+      
+      const bookingWithDetails = await storage.getBooking(booking.id);
+      res.json(bookingWithDetails);
     } catch (error) {
-      res.status(500).json({ message: "Failed to update brand settings" });
+      res.status(500).json({ message: "Failed to confirm booking" });
     }
   });
 
-  // Mock app integrations data
-  app.get("/api/available-apps", async (req, res) => {
-    const availableApps = [
-      { id: "gmail", name: "Gmail", type: "email", icon: "fas fa-envelope", color: "red-500", connected: false },
-      { id: "slack", name: "Slack", type: "communication", icon: "fab fa-slack", color: "purple-600", connected: false },
-      { id: "trello", name: "Trello", type: "productivity", icon: "fas fa-tasks", color: "orange-500", connected: false },
-      { id: "sheets", name: "Google Sheets", type: "spreadsheet", icon: "fab fa-google", color: "green-500", connected: false },
-      { id: "hubspot", name: "HubSpot", type: "crm", icon: "fas fa-users", color: "orange-600", connected: false },
-      { id: "twitter", name: "Twitter", type: "social", icon: "fab fa-twitter", color: "blue-400", connected: false },
-      { id: "zapier", name: "Zapier", type: "automation", icon: "fas fa-bolt", color: "orange-500", connected: false },
-      { id: "github", name: "GitHub", type: "development", icon: "fab fa-github", color: "gray-900", connected: false },
-      { id: "salesforce", name: "Salesforce", type: "crm", icon: "fab fa-salesforce", color: "blue-600", connected: false },
-      { id: "mailchimp", name: "MailChimp", type: "email-marketing", icon: "fab fa-mailchimp", color: "yellow-500", connected: false }
-    ];
-    
-    res.json(availableApps);
+  app.put("/api/bookings/:id/cancel", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const booking = await storage.cancelBooking(id);
+      
+      // Create notification for student
+      await storage.createNotification({
+        userId: booking.studentId,
+        type: "booking_cancelled",
+        title: "Запись отменена",
+        message: "Ваша запись на тренировку была отменена",
+        relatedBookingId: booking.id
+      });
+      
+      const bookingWithDetails = await storage.getBooking(booking.id);
+      res.json(bookingWithDetails);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to cancel booking" });
+    }
+  });
+
+  app.get("/api/bookings/student/:studentId", async (req, res) => {
+    try {
+      const { studentId } = req.params;
+      const bookings = await storage.getBookingsByStudent(studentId);
+      res.json(bookings);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch student bookings" });
+    }
+  });
+
+  // Trainer routes
+  app.get("/api/trainer/students", async (req, res) => {
+    try {
+      const students = await storage.getStudentsList();
+      res.json(students.map(student => ({
+        id: student.id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        phone: student.phone,
+        createdAt: student.createdAt,
+        lastLogin: student.lastLogin
+      })));
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch students list" });
+    }
+  });
+
+  app.post("/api/trainer/book-student", async (req, res) => {
+    try {
+      const { timeSlotId, studentId, notes, trainerId } = req.body;
+      
+      const booking = await storage.createBooking({
+        studentId,
+        timeSlotId,
+        bookedBy: trainerId,
+        status: "confirmed", // Trainer bookings are automatically confirmed
+        notes: notes || null
+      });
+      
+      // Create notification for student
+      await storage.createNotification({
+        userId: studentId,
+        type: "booking_confirmed",
+        title: "Вас записал тренер",
+        message: "Тренер записал вас на тренировку",
+        relatedBookingId: booking.id
+      });
+      
+      const bookingWithDetails = await storage.getBooking(booking.id);
+      res.status(201).json(bookingWithDetails);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to book student" });
+    }
+  });
+
+  app.put("/api/trainer/time-slots/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const timeSlot = await storage.updateTimeSlot(id, updates);
+      res.json(timeSlot);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update time slot" });
+    }
+  });
+
+  // Notifications
+  app.get("/api/notifications/:userId", async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const notifications = await storage.getNotificationsByUser(userId);
+      res.json(notifications.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.put("/api/notifications/:id/read", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const notification = await storage.markNotificationAsRead(id);
+      res.json(notification);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
   });
 
   const httpServer = createServer(app);
