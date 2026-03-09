@@ -64,7 +64,7 @@ export class MemStorage implements IStorage {
     const trainerId = randomUUID();
     const trainer: User = {
       id: trainerId,
-      phone: "+79991234567",
+      phone: "79991234567",
       firstName: "Константин",
       lastName: "Владимирович",
       role: "trainer",
