@@ -52,15 +52,13 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     setLoading(true);
     try {
       // Try to login existing user
-      const response = await apiRequest("/api/auth/login", {
-        method: "POST",
-        body: { phone: studentPhone }
-      });
+      const response = await apiRequest("POST", "/api/auth/login", { phone: studentPhone });
+      const data = await response.json();
 
-      setUser(response.user);
+      setUser(data.user);
       toast({
         title: "Добро пожаловать!",
-        description: `Вы вошли как ${response.user.firstName}`
+        description: `Вы вошли как ${data.user.firstName}`
       });
       onOpenChange(false);
       resetStudentForm();
@@ -84,19 +82,17 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
 
     setLoading(true);
     try {
-      const response = await apiRequest("/api/auth/register", {
-        method: "POST",
-        body: {
-          phone: studentPhone,
-          firstName: studentFirstName,
-          lastName: studentLastName
-        }
+      const response = await apiRequest("POST", "/api/auth/register", {
+        phone: studentPhone,
+        firstName: studentFirstName,
+        lastName: studentLastName
       });
 
-      setUser(response.user);
+      const data = await response.json();
+      setUser(data.user);
       toast({
         title: "Регистрация успешна!",
-        description: `Добро пожаловать, ${response.user.firstName}!`
+        description: `Добро пожаловать, ${data.user.firstName}!`
       });
       onOpenChange(false);
       resetStudentForm();
@@ -123,15 +119,13 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
 
     setLoading(true);
     try {
-      const response = await apiRequest("/api/auth/trainer-login", {
-        method: "POST",
-        body: { phone: trainerPhone }
-      });
+      const response = await apiRequest("POST", "/api/auth/trainer-login", { phone: trainerPhone });
+      const data = await response.json();
 
-      setUser(response.user);
+      setUser(data.user);
       toast({
         title: "Добро пожаловать, тренер!",
-        description: `Вы вошли как ${response.user.firstName} ${response.user.lastName}`
+        description: `Вы вошли как ${data.user.firstName} ${data.user.lastName}`
       });
       onOpenChange(false);
       resetTrainerForm();
