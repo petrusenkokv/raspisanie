@@ -4,10 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { studentRegistrationSchema, type StudentRegistration } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useGymStore } from "@/store/gym-store";
@@ -19,24 +15,32 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ open, onOpenChange }: AuthModalProps) {
-  const [step, setStep] = useState<"phone" | "register" | "login">("phone");
-  const [phone, setPhone] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const { setUser } = useGymStore();
 
-  const form = useForm<StudentRegistration>({
-    resolver: zodResolver(studentRegistrationSchema),
-    defaultValues: {
-      phone: "",
-      firstName: "",
-      lastName: ""
-    }
-  });
+  // Student registration state
+  const [studentPhone, setStudentPhone] = useState("");
+  const [studentFirstName, setStudentFirstName] = useState("");
+  const [studentLastName, setStudentLastName] = useState("");
+  const [studentStep, setStudentStep] = useState("phone");
 
-  const sendVerificationCode = async () => {
-    if (!phone.trim()) {
+  // Trainer login state
+  const [trainerPhone, setTrainerPhone] = useState("");
+
+  const resetStudentForm = () => {
+    setStudentPhone("");
+    setStudentFirstName("");
+    setStudentLastName("");
+    setStudentStep("phone");
+  };
+
+  const resetTrainerForm = () => {
+    setTrainerPhone("");
+  };
+
+  const handleCheckPhone = async () => {
+    if (!studentPhone.trim()) {
       toast({
         variant: "destructive",
         title: "Ошибка",
@@ -45,64 +49,57 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
     try {
-      const response = await apiRequest("POST", "/api/auth/send-verification", { phone });
-      const data = await response.json();
+      // Try to login existing user
+      const response = await apiRequest("/api/auth/login", {
+        method: "POST",
+        body: { phone: studentPhone }
+      });
 
-      if (data.success) {
-        // For demo purposes, show the code
-        toast({
-          title: "Код отправлен",
-          description: `Код подтверждения: ${data.code}`
-        });
-        setStep("register");
-      }
+      setUser(response.user);
+      toast({
+        title: "Добро пожаловать!",
+        description: `Вы вошли как ${response.user.firstName}`
+      });
+      onOpenChange(false);
+      resetStudentForm();
     } catch (error) {
+      // User doesn't exist, go to registration
+      setStudentStep("register");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    if (!studentPhone.trim() || !studentFirstName.trim() || !studentLastName.trim()) {
       toast({
         variant: "destructive",
         title: "Ошибка",
-        description: "Не удалось отправить код"
+        description: "Заполните все поля"
       });
-    } finally {
-      setIsLoading(false);
+      return;
     }
-  };
 
-  const checkExistingUser = async () => {
-    setIsLoading(true);
+    setLoading(true);
     try {
-      const response = await apiRequest("POST", "/api/auth/login", { phone });
-      const data = await response.json();
-
-      setUser(data.user);
-      toast({
-        title: "Добро пожаловать!",
-        description: `Вы вошли как ${data.user.firstName}`
+      const response = await apiRequest("/api/auth/register", {
+        method: "POST",
+        body: {
+          phone: studentPhone,
+          firstName: studentFirstName,
+          lastName: studentLastName
+        }
       });
-      onOpenChange(false);
-      resetForm();
-    } catch (error) {
-      // User doesn't exist, proceed to registration
-      setStep("register");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  const registerUser = async (data: StudentRegistration) => {
-    setIsLoading(true);
-    try {
-      const response = await apiRequest("POST", "/api/auth/register", data);
-      const result = await response.json();
-
-      setUser(result.user);
+      setUser(response.user);
       toast({
         title: "Регистрация успешна!",
-        description: `Добро пожаловать, ${result.user.firstName}!`
+        description: `Добро пожаловать, ${response.user.firstName}!`
       });
       onOpenChange(false);
-      resetForm();
+      resetStudentForm();
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -110,39 +107,43 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
         description: error.message || "Не удалось зарегистрироваться"
       });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const trainerLogin = async () => {
-    setIsLoading(true);
-    try {
-      const response = await apiRequest("POST", "/api/auth/trainer-login", { phone });
-      const data = await response.json();
+  const handleTrainerLogin = async () => {
+    if (!trainerPhone.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Введите номер телефона"
+      });
+      return;
+    }
 
-      setUser(data.user);
+    setLoading(true);
+    try {
+      const response = await apiRequest("/api/auth/trainer-login", {
+        method: "POST",
+        body: { phone: trainerPhone }
+      });
+
+      setUser(response.user);
       toast({
         title: "Добро пожаловать, тренер!",
-        description: `Вы вошли как ${data.user.firstName} ${data.user.lastName}`
+        description: `Вы вошли как ${response.user.firstName} ${response.user.lastName}`
       });
       onOpenChange(false);
-      resetForm();
+      resetTrainerForm();
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Ошибка входа",
-        description: "Неверные данные тренера"
+        description: "Неверный номер телефона"
       });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
-
-  const resetForm = () => {
-    setStep("phone");
-    setPhone("");
-    setVerificationCode("");
-    form.reset();
   };
 
   return (
@@ -166,136 +167,122 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="student" className="space-y-4">
-            {step === "phone" && (
-              <div className="space-y-4">
+          {/* Student Tab */}
+          <TabsContent value="student" className="space-y-4 mt-4">
+            {studentStep === "phone" ? (
+              <>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Номер телефона</Label>
+                  <Label htmlFor="student-phone">Номер телефона</Label>
                   <Input
-                    id="phone"
+                    id="student-phone"
                     type="tel"
-                    placeholder="+7 (999) 123-45-67"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="9991234567"
+                    value={studentPhone}
+                    onChange={(e) => setStudentPhone(e.target.value)}
+                    disabled={loading}
+                    autoFocus
                     data-testid="input-phone"
                   />
                 </div>
                 <Button 
-                  onClick={checkExistingUser}
-                  disabled={isLoading}
+                  onClick={handleCheckPhone}
+                  disabled={loading}
                   className="w-full"
                   data-testid="button-check-phone"
                 >
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   <Phone className="mr-2 h-4 w-4" />
                   Продолжить
                 </Button>
-              </div>
-            )}
-
-            {step === "register" && (
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(registerUser)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Номер телефона</FormLabel>
-                        <FormControl>
-                          <Input {...field} value={phone} readOnly />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Номер телефона</Label>
+                  <Input
+                    value={studentPhone}
+                    disabled
+                    className="opacity-70"
                   />
-                  
-                  <FormField
-                    control={form.control}
-                    name="firstName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Имя</FormLabel>
-                        <FormControl>
-                          <Input 
-                            {...field} 
-                            placeholder="Введите ваше имя"
-                            data-testid="input-firstName"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                </div>
 
-                  <FormField
-                    control={form.control}
-                    name="lastName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Фамилия</FormLabel>
-                        <FormControl>
-                          <Input 
-                            {...field} 
-                            placeholder="Введите вашу фамилию"
-                            data-testid="input-lastName"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                <div className="space-y-2">
+                  <Label htmlFor="student-firstname">Имя</Label>
+                  <Input
+                    id="student-firstname"
+                    placeholder="Введите ваше имя"
+                    value={studentFirstName}
+                    onChange={(e) => setStudentFirstName(e.target.value)}
+                    disabled={loading}
+                    data-testid="input-firstName"
                   />
+                </div>
 
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setStep("phone")}
-                      className="flex-1"
-                      data-testid="button-back"
-                    >
-                      Назад
-                    </Button>
-                    <Button 
-                      type="submit"
-                      disabled={isLoading}
-                      className="flex-1"
-                      data-testid="button-register"
-                    >
-                      {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Зарегистрироваться
-                    </Button>
-                  </div>
-                </form>
-              </Form>
+                <div className="space-y-2">
+                  <Label htmlFor="student-lastname">Фамилия</Label>
+                  <Input
+                    id="student-lastname"
+                    placeholder="Введите вашу фамилию"
+                    value={studentLastName}
+                    onChange={(e) => setStudentLastName(e.target.value)}
+                    disabled={loading}
+                    data-testid="input-lastName"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setStudentStep("phone")}
+                    disabled={loading}
+                    className="flex-1"
+                    data-testid="button-back"
+                  >
+                    Назад
+                  </Button>
+                  <Button 
+                    onClick={handleRegister}
+                    disabled={loading}
+                    className="flex-1"
+                    data-testid="button-register"
+                  >
+                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Зарегистрироваться
+                  </Button>
+                </div>
+              </>
             )}
           </TabsContent>
 
-          <TabsContent value="trainer" className="space-y-4">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="trainer-phone">Номер телефона тренера</Label>
-                <Input
-                  id="trainer-phone"
-                  type="tel"
-                  placeholder="+7 (999) 123-45-67"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  data-testid="input-trainer-phone"
-                />
-              </div>
-              
-              <Button 
-                onClick={trainerLogin}
-                disabled={isLoading}
-                className="w-full"
-                data-testid="button-trainer-login"
-              >
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <LogIn className="mr-2 h-4 w-4" />
-                Войти как тренер
-              </Button>
+          {/* Trainer Tab */}
+          <TabsContent value="trainer" className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="trainer-phone">Номер телефона тренера</Label>
+              <Input
+                id="trainer-phone"
+                type="tel"
+                placeholder="79991234567"
+                value={trainerPhone}
+                onChange={(e) => setTrainerPhone(e.target.value)}
+                disabled={loading}
+                autoFocus
+                data-testid="input-trainer-phone"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Номер тренера: 79991234567
+              </p>
             </div>
+            
+            <Button 
+              onClick={handleTrainerLogin}
+              disabled={loading}
+              className="w-full"
+              data-testid="button-trainer-login"
+            >
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <LogIn className="mr-2 h-4 w-4" />
+              Войти как тренер
+            </Button>
           </TabsContent>
         </Tabs>
       </DialogContent>
