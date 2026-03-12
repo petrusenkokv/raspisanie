@@ -10,9 +10,10 @@ interface CalendarViewProps {
   onBook: (timeSlotId: string) => void;
   onCancel: (bookingId: string) => void;
   onLoginRequest: () => void;
+  onTrainerBook?: (timeSlotId: string) => void;
 }
 
-export function CalendarView({ onBook, onCancel, onLoginRequest }: CalendarViewProps) {
+export function CalendarView({ onBook, onCancel, onLoginRequest, onTrainerBook }: CalendarViewProps) {
   const { currentView, selectedDate, schedule, getWeekDates, getMonthDates } = useGymStore();
 
   const viewData = useMemo(() => {
@@ -65,6 +66,7 @@ export function CalendarView({ onBook, onCancel, onLoginRequest }: CalendarViewP
               onBook={onBook}
               onCancel={onCancel}
               onLoginRequest={onLoginRequest}
+              onTrainerBook={onTrainerBook}
             />
           ))
         ) : (

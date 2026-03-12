@@ -3,6 +3,7 @@ import { CalendarHeader } from "@/components/gym/calendar-header";
 import { CalendarView } from "@/components/gym/calendar-view";
 import { AuthModal } from "@/components/gym/auth-modal";
 import { StudentsPanel } from "@/components/gym/students-panel";
+import { BookStudentDialog } from "@/components/gym/book-student-dialog";
 import { Button } from "@/components/ui/button";
 import { useGymStore } from "@/store/gym-store";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +14,8 @@ import { Loader2, LogOut, UserPlus } from "lucide-react";
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [studentsPanelOpen, setStudentsPanelOpen] = useState(false);
+  const [trainerBookDialogOpen, setTrainerBookDialogOpen] = useState(false);
+  const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<string | null>(null);
   const { 
     currentUser, 
     isAuthenticated, 
@@ -189,7 +192,15 @@ export function GymSchedulePage() {
             </span>
           </div>
         ) : (
-          <CalendarView onBook={handleBook} onCancel={handleCancel} onLoginRequest={() => setAuthModalOpen(true)} />
+          <CalendarView
+            onBook={handleBook}
+            onCancel={handleCancel}
+            onLoginRequest={() => setAuthModalOpen(true)}
+            onTrainerBook={(timeSlotId) => {
+              setSelectedTimeSlotId(timeSlotId);
+              setTrainerBookDialogOpen(true);
+            }}
+          />
         )}
       </div>
 
@@ -201,6 +212,15 @@ export function GymSchedulePage() {
       <StudentsPanel
         open={studentsPanelOpen}
         onOpenChange={setStudentsPanelOpen}
+      />
+
+      <BookStudentDialog
+        open={trainerBookDialogOpen}
+        onOpenChange={(open) => {
+          setTrainerBookDialogOpen(open);
+          if (!open) setSelectedTimeSlotId(null);
+        }}
+        preselectedTimeSlotId={selectedTimeSlotId}
       />
     </div>
   );

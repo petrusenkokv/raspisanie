@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Clock, Users, UserCheck, LogIn } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, UserPlus, X } from "lucide-react";
 import { type TimeSlotWithBookings } from "@shared/schema";
 import { useGymStore } from "@/store/gym-store";
 import { cn } from "@/lib/utils";
@@ -13,9 +13,10 @@ interface TimeSlotProps {
   onBook: (timeSlotId: string) => void;
   onCancel: (bookingId: string) => void;
   onLoginRequest: () => void;
+  onTrainerBook?: (timeSlotId: string) => void;
 }
 
-export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest }: TimeSlotProps) {
+export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest, onTrainerBook }: TimeSlotProps) {
   const { currentUser, isTrainer } = useGymStore();
   const [popoverOpen, setPopoverOpen] = useState(false);
 
@@ -28,6 +29,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest }: TimeSlo
 
   const confirmedBookings = timeSlot.bookings.filter(b => b.status === "confirmed");
   const pendingBookings = timeSlot.bookings.filter(b => b.status === "pending");
+  const allActiveBookings = [...confirmedBookings, ...pendingBookings];
 
   const getSlotStatus = () => {
     if (isBlocked) return "blocked";
@@ -65,7 +67,6 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest }: TimeSlo
         userBooking && "ring-2 ring-blue-500"
       )}
       onClick={handleCardClick}
-      data-testid={`slot-card-${timeSlot.id}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
@@ -99,27 +100,44 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest }: TimeSlo
       {!isBlocked && (
         <div className="space-y-2 mb-3">
           {isTrainer() ? (
-            <div className="space-y-1">
-              {confirmedBookings.map((booking) => (
-                <div key={booking.id} className="flex items-center gap-2 text-sm">
-                  <UserCheck className="h-3 w-3 text-green-600" />
-                  <span className="text-gray-900 dark:text-white">
-                    {booking.student.firstName} {booking.student.lastName}
-                  </span>
-                  <Badge variant="outline" className="text-xs">Подтверждено</Badge>
-                </div>
-              ))}
-              {pendingBookings.map((booking) => (
-                <div key={booking.id} className="flex items-center gap-2 text-sm">
-                  <Clock className="h-3 w-3 text-yellow-600" />
-                  <span className="text-gray-900 dark:text-white">
-                    {booking.student.firstName} {booking.student.lastName}
-                  </span>
-                  <Badge variant="secondary" className="text-xs">Ожидает</Badge>
+            // Trainer view — show each student with cancel button
+            <div className="space-y-2">
+              {allActiveBookings.length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400">Нет записей</p>
+              )}
+              {allActiveBookings.map((booking) => (
+                <div
+                  key={booking.id}
+                  className="flex items-center justify-between gap-2 bg-white dark:bg-gray-900 rounded px-2 py-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-2 text-sm min-w-0">
+                    {booking.status === "confirmed"
+                      ? <UserCheck className="h-3 w-3 text-green-600 shrink-0" />
+                      : <Clock className="h-3 w-3 text-yellow-600 shrink-0" />
+                    }
+                    <span className="text-gray-900 dark:text-white truncate">
+                      {booking.student.firstName} {booking.student.lastName}
+                    </span>
+                    <Badge variant={booking.status === "confirmed" ? "outline" : "secondary"} className="text-xs shrink-0">
+                      {booking.status === "confirmed" ? "Записан" : "Ожидает"}
+                    </Badge>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onCancel(booking.id)}
+                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0"
+                    title="Удалить запись"
+                    data-testid={`button-trainer-cancel-${booking.id}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
                 </div>
               ))}
             </div>
           ) : (
+            // Student view
             <div className="text-sm text-gray-600 dark:text-gray-400">
               {timeSlot.availableSpots > 0 ? (
                 <span>Свободных мест: {timeSlot.availableSpots}</span>
@@ -131,8 +149,24 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest }: TimeSlo
         </div>
       )}
 
-      {/* Action Buttons for logged-in users */}
-      {!isBlocked && currentUser && (
+      {/* Trainer: Add student button */}
+      {isTrainer() && !isBlocked && !isFull && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full border-dashed text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            onClick={() => onTrainerBook?.(timeSlot.id)}
+            data-testid={`button-trainer-add-${timeSlot.id}`}
+          >
+            <UserPlus className="h-3 w-3 mr-1" />
+            Записать ученика
+          </Button>
+        </div>
+      )}
+
+      {/* Student: own booking actions */}
+      {!isBlocked && currentUser && !isTrainer() && (
         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
           {userBooking ? (
             <div className="flex gap-2 w-full">
@@ -172,12 +206,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest }: TimeSlo
       )}
 
       {isBlocked && isTrainer() && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full"
-          data-testid={`button-unblock-${timeSlot.id}`}
-        >
+        <Button variant="outline" size="sm" className="w-full" data-testid={`button-unblock-${timeSlot.id}`}>
           Разблокировать
         </Button>
       )}
@@ -200,14 +229,9 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest }: TimeSlo
               </p>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Чтобы записаться на <strong>{timeSlot.time}</strong>, войдите в систему или зарегистрируйтесь.
+              Чтобы записаться на <strong>{timeSlot.time}</strong>, войдите или зарегистрируйтесь.
             </p>
-            <Button
-              onClick={handleLoginClick}
-              className="w-full"
-              size="sm"
-              data-testid="popover-login-button"
-            >
+            <Button onClick={handleLoginClick} className="w-full" size="sm">
               <LogIn className="mr-2 h-4 w-4" />
               Войти / Зарегистрироваться
             </Button>
