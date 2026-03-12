@@ -45,22 +45,40 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
     return date.toLocaleDateString("ru-RU", options);
   };
 
+  // Returns the Monday of the week containing `date`
+  const getMondayOf = (date: Date) => {
+    const d = new Date(date);
+    const day = d.getDay(); // 0=Sun,1=Mon,...,6=Sat
+    const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
   const navigateDate = (direction: 1 | -1) => {
-    const newDate = new Date(selectedDate);
-    
     if (currentView === "day") {
+      const newDate = new Date(selectedDate);
       newDate.setDate(selectedDate.getDate() + direction);
+      setSelectedDate(newDate);
     } else if (currentView === "week") {
-      newDate.setDate(selectedDate.getDate() + (direction * 7));
+      const monday = getMondayOf(selectedDate);
+      monday.setDate(monday.getDate() + direction * 7);
+      setSelectedDate(monday);
     } else if (currentView === "month") {
+      const newDate = new Date(selectedDate);
       newDate.setMonth(selectedDate.getMonth() + direction);
+      setSelectedDate(newDate);
     }
-    
-    setSelectedDate(newDate);
   };
 
   const goToToday = () => {
-    setSelectedDate(new Date());
+    const today = new Date();
+    // In week view snap to Monday of current week
+    if (currentView === "week") {
+      setSelectedDate(getMondayOf(today));
+    } else {
+      setSelectedDate(today);
+    }
   };
 
   return (
@@ -121,7 +139,10 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
               key={view}
               variant={currentView === view ? "default" : "ghost"}
               size="sm"
-              onClick={() => setCurrentView(view)}
+              onClick={() => {
+                setCurrentView(view);
+                if (view === "week") setSelectedDate(getMondayOf(selectedDate));
+              }}
               className="text-xs px-3"
               data-testid={`button-view-${view}`}
             >
