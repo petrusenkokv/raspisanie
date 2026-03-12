@@ -37,7 +37,9 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       const response = await apiRequest("GET", "/api/trainer/students");
       return response.json();
     },
-    enabled: open
+    enabled: open,
+    staleTime: 0,
+    refetchOnMount: true
   });
 
   const bookStudentMutation = useMutation({
