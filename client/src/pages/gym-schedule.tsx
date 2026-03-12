@@ -31,6 +31,8 @@ export function GymSchedulePage() {
   // Fetch schedule based on current view and selected date
   const { data: scheduleData, isLoading } = useQuery({
     queryKey: ["schedule", currentView, selectedDate.toISOString()],
+    staleTime: 0,
+    refetchInterval: 15000,
     queryFn: async () => {
       let url = "";
       if (currentView === "day") {
@@ -86,7 +88,7 @@ export function GymSchedulePage() {
     onSuccess: () => {
       toast({
         title: "Бронирование отменено",
-        description: "Ваше бронирование успешно отменено"
+        description: "Запись успешно отменена"
       });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
@@ -95,6 +97,27 @@ export function GymSchedulePage() {
         variant: "destructive",
         title: "Ошибка отмены",
         description: error.message || "Не удалось отменить бронирование"
+      });
+    }
+  });
+
+  const confirmMutation = useMutation({
+    mutationFn: async (bookingId: string) => {
+      const response = await apiRequest("PUT", `/api/bookings/${bookingId}/confirm`);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Запись подтверждена",
+        description: "Ученик уведомлён о подтверждении"
+      });
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось подтвердить запись"
       });
     }
   });
@@ -195,6 +218,7 @@ export function GymSchedulePage() {
           <CalendarView
             onBook={handleBook}
             onCancel={handleCancel}
+            onConfirm={(bookingId) => confirmMutation.mutate(bookingId)}
             onLoginRequest={() => setAuthModalOpen(true)}
             onTrainerBook={(timeSlotId) => {
               setSelectedTimeSlotId(timeSlotId);

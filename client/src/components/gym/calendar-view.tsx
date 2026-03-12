@@ -9,11 +9,12 @@ import { ru } from "date-fns/locale";
 interface CalendarViewProps {
   onBook: (timeSlotId: string) => void;
   onCancel: (bookingId: string) => void;
+  onConfirm: (bookingId: string) => void;
   onLoginRequest: () => void;
   onTrainerBook?: (timeSlotId: string) => void;
 }
 
-export function CalendarView({ onBook, onCancel, onLoginRequest, onTrainerBook }: CalendarViewProps) {
+export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: CalendarViewProps) {
   const { currentView, selectedDate, schedule, getWeekDates, getMonthDates } = useGymStore();
 
   const viewData = useMemo(() => {
@@ -65,6 +66,7 @@ export function CalendarView({ onBook, onCancel, onLoginRequest, onTrainerBook }
               timeSlot={timeSlot}
               onBook={onBook}
               onCancel={onCancel}
+              onConfirm={onConfirm}
               onLoginRequest={onLoginRequest}
               onTrainerBook={onTrainerBook}
             />

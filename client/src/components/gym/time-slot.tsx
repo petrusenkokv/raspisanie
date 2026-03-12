@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Clock, Users, UserCheck, LogIn, UserPlus, X } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check } from "lucide-react";
 import { type TimeSlotWithBookings } from "@shared/schema";
 import { useGymStore } from "@/store/gym-store";
 import { cn } from "@/lib/utils";
@@ -12,11 +12,12 @@ interface TimeSlotProps {
   timeSlot: TimeSlotWithBookings;
   onBook: (timeSlotId: string) => void;
   onCancel: (bookingId: string) => void;
+  onConfirm: (bookingId: string) => void;
   onLoginRequest: () => void;
   onTrainerBook?: (timeSlotId: string) => void;
 }
 
-export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest, onTrainerBook }: TimeSlotProps) {
+export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: TimeSlotProps) {
   const { currentUser, isTrainer } = useGymStore();
   const [popoverOpen, setPopoverOpen] = useState(false);
 
@@ -108,7 +109,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest, onTrainer
               {allActiveBookings.map((booking) => (
                 <div
                   key={booking.id}
-                  className="flex items-center justify-between gap-2 bg-white dark:bg-gray-900 rounded px-2 py-1"
+                  className={`flex items-center justify-between gap-2 rounded px-2 py-1 ${
+                    booking.status === "pending"
+                      ? "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800"
+                      : "bg-white dark:bg-gray-900"
+                  }`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center gap-2 text-sm min-w-0">
@@ -119,30 +124,67 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest, onTrainer
                     <span className="text-gray-900 dark:text-white truncate">
                       {booking.student.firstName} {booking.student.lastName}
                     </span>
-                    <Badge variant={booking.status === "confirmed" ? "outline" : "secondary"} className="text-xs shrink-0">
-                      {booking.status === "confirmed" ? "Записан" : "Ожидает"}
+                    <Badge
+                      variant={booking.status === "confirmed" ? "default" : "secondary"}
+                      className="text-xs shrink-0"
+                    >
+                      {booking.status === "confirmed" ? "Записан" : "Заявка"}
                     </Badge>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onCancel(booking.id)}
-                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0"
-                    title="Удалить запись"
-                    data-testid={`button-trainer-cancel-${booking.id}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {booking.status === "pending" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onConfirm(booking.id)}
+                        className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                        title="Подтвердить запись"
+                        data-testid={`button-trainer-confirm-${booking.id}`}
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onCancel(booking.id)}
+                      className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      title="Удалить запись"
+                      data-testid={`button-trainer-cancel-${booking.id}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
             // Student view
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              {timeSlot.availableSpots > 0 ? (
-                <span>Свободных мест: {timeSlot.availableSpots}</span>
+            <div className="space-y-2">
+              {userBooking ? (
+                userBooking.status === "pending" ? (
+                  <div className="flex items-center gap-2 px-2 py-1.5 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-md">
+                    <Clock className="h-4 w-4 text-yellow-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Заявка подана тренеру</p>
+                      <p className="text-xs text-yellow-600 dark:text-yellow-400">Ожидайте подтверждения</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-2 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-md">
+                    <UserCheck className="h-4 w-4 text-green-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-green-800 dark:text-green-300">Вы записаны!</p>
+                      <p className="text-xs text-green-600 dark:text-green-400">Тренер подтвердил запись</p>
+                    </div>
+                  </div>
+                )
               ) : (
-                <span>Мест не осталось</span>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {timeSlot.availableSpots > 0
+                    ? `Свободных мест: ${timeSlot.availableSpots}`
+                    : "Мест не осталось"}
+                </p>
               )}
             </div>
           )}
