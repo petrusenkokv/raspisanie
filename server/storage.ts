@@ -147,11 +147,12 @@ export class MemStorage implements IStorage {
     
     return Promise.all(slots.map(async slot => {
       const bookings = await this.getBookingsByTimeSlot(slot.id);
+      const activeBookings = bookings.filter(b => b.status !== "cancelled");
       const confirmedBookings = bookings.filter(b => b.status === "confirmed");
       
       return {
         ...slot,
-        bookings: confirmedBookings,
+        bookings: activeBookings,
         availableSpots: slot.maxCapacity - confirmedBookings.length
       };
     }));
@@ -164,11 +165,12 @@ export class MemStorage implements IStorage {
     
     return Promise.all(slots.map(async slot => {
       const bookings = await this.getBookingsByTimeSlot(slot.id);
+      const activeBookings = bookings.filter(b => b.status !== "cancelled");
       const confirmedBookings = bookings.filter(b => b.status === "confirmed");
       
       return {
         ...slot,
-        bookings: confirmedBookings,
+        bookings: activeBookings,
         availableSpots: slot.maxCapacity - confirmedBookings.length
       };
     }));
