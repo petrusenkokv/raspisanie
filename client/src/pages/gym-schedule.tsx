@@ -188,7 +188,7 @@ export function GymSchedulePage() {
             </span>
           </div>
         ) : (
-          <CalendarView onBook={handleBook} onCancel={handleCancel} />
+          <CalendarView onBook={handleBook} onCancel={handleCancel} onLoginRequest={() => setAuthModalOpen(true)} />
         )}
       </div>
 

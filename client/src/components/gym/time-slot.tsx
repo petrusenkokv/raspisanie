@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Clock, Users, UserCheck } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Clock, Users, UserCheck, LogIn } from "lucide-react";
 import { type TimeSlotWithBookings } from "@shared/schema";
 import { useGymStore } from "@/store/gym-store";
 import { cn } from "@/lib/utils";
@@ -10,45 +12,62 @@ interface TimeSlotProps {
   timeSlot: TimeSlotWithBookings;
   onBook: (timeSlotId: string) => void;
   onCancel: (bookingId: string) => void;
+  onLoginRequest: () => void;
 }
 
-export function TimeSlot({ timeSlot, onBook, onCancel }: TimeSlotProps) {
+export function TimeSlot({ timeSlot, onBook, onCancel, onLoginRequest }: TimeSlotProps) {
   const { currentUser, isTrainer } = useGymStore();
-  
+  const [popoverOpen, setPopoverOpen] = useState(false);
+
   const isFull = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
-  const canBook = !isFull && !isBlocked && currentUser;
-  
-  // Check if current user has a booking for this slot
+
   const userBooking = timeSlot.bookings.find(
     booking => booking.studentId === currentUser?.id && booking.status !== "cancelled"
   );
-  
+
   const confirmedBookings = timeSlot.bookings.filter(b => b.status === "confirmed");
   const pendingBookings = timeSlot.bookings.filter(b => b.status === "pending");
-  
+
   const getSlotStatus = () => {
     if (isBlocked) return "blocked";
     if (isFull) return "full";
     if (timeSlot.availableSpots === 1) return "almost-full";
     return "available";
   };
-  
+
   const statusStyles = {
     blocked: "bg-gray-200 dark:bg-gray-700 border-gray-300",
     full: "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800",
-    "almost-full": "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800", 
+    "almost-full": "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800",
     available: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
   };
-  
+
   const status = getSlotStatus();
 
-  return (
-    <Card className={cn(
-      "p-4 transition-all duration-200 hover:shadow-md",
-      statusStyles[status],
-      userBooking && "ring-2 ring-blue-500"
-    )}>
+  const handleCardClick = () => {
+    if (!currentUser && !isBlocked && !isFull) {
+      setPopoverOpen(true);
+    }
+  };
+
+  const handleLoginClick = () => {
+    setPopoverOpen(false);
+    onLoginRequest();
+  };
+
+  const cardContent = (
+    <Card
+      className={cn(
+        "p-4 transition-all duration-200 hover:shadow-md",
+        !currentUser && !isBlocked && !isFull && "cursor-pointer",
+        statusStyles[status],
+        userBooking && "ring-2 ring-blue-500"
+      )}
+      onClick={handleCardClick}
+      data-testid={`slot-card-${timeSlot.id}`}
+    >
+      {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Clock className="h-4 w-4 text-gray-600 dark:text-gray-400" />
@@ -56,7 +75,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel }: TimeSlotProps) {
             {timeSlot.time}
           </span>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <Badge
             variant={status === "available" ? "default" : "secondary"}
@@ -66,7 +85,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel }: TimeSlotProps) {
              status === "full" ? "Занято" :
              status === "almost-full" ? "Почти полно" : "Свободно"}
           </Badge>
-          
+
           {!isBlocked && (
             <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
               <Users className="h-3 w-3" />
@@ -80,7 +99,6 @@ export function TimeSlot({ timeSlot, onBook, onCancel }: TimeSlotProps) {
       {!isBlocked && (
         <div className="space-y-2 mb-3">
           {isTrainer() ? (
-            // Trainer view - show student names
             <div className="space-y-1">
               {confirmedBookings.map((booking) => (
                 <div key={booking.id} className="flex items-center gap-2 text-sm">
@@ -88,9 +106,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel }: TimeSlotProps) {
                   <span className="text-gray-900 dark:text-white">
                     {booking.student.firstName} {booking.student.lastName}
                   </span>
-                  <Badge variant="outline" className="text-xs">
-                    Подтверждено
-                  </Badge>
+                  <Badge variant="outline" className="text-xs">Подтверждено</Badge>
                 </div>
               ))}
               {pendingBookings.map((booking) => (
@@ -99,14 +115,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel }: TimeSlotProps) {
                   <span className="text-gray-900 dark:text-white">
                     {booking.student.firstName} {booking.student.lastName}
                   </span>
-                  <Badge variant="secondary" className="text-xs">
-                    Ожидает
-                  </Badge>
+                  <Badge variant="secondary" className="text-xs">Ожидает</Badge>
                 </div>
               ))}
             </div>
           ) : (
-            // Student view - show available spots only
             <div className="text-sm text-gray-600 dark:text-gray-400">
               {timeSlot.availableSpots > 0 ? (
                 <span>Свободных мест: {timeSlot.availableSpots}</span>
@@ -118,9 +131,9 @@ export function TimeSlot({ timeSlot, onBook, onCancel }: TimeSlotProps) {
         </div>
       )}
 
-      {/* Action Buttons */}
+      {/* Action Buttons for logged-in users */}
       {!isBlocked && currentUser && (
-        <div className="flex gap-2">
+        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
           {userBooking ? (
             <div className="flex gap-2 w-full">
               {userBooking.status === "pending" && (
@@ -144,10 +157,9 @@ export function TimeSlot({ timeSlot, onBook, onCancel }: TimeSlotProps) {
               </Button>
             </div>
           ) : (
-            canBook && (
+            !isFull && (
               <Button
                 onClick={() => onBook(timeSlot.id)}
-                disabled={!canBook}
                 className="flex-1"
                 size="sm"
                 data-testid={`button-book-${timeSlot.id}`}
@@ -171,4 +183,39 @@ export function TimeSlot({ timeSlot, onBook, onCancel }: TimeSlotProps) {
       )}
     </Card>
   );
+
+  // Wrap with Popover only for guest users on available slots
+  if (!currentUser && !isBlocked && !isFull) {
+    return (
+      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+        <PopoverTrigger asChild>
+          {cardContent}
+        </PopoverTrigger>
+        <PopoverContent className="w-72 p-4" side="top">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <LogIn className="h-5 w-5 text-blue-600" />
+              <p className="font-semibold text-gray-900 dark:text-white">
+                Нужен вход в систему
+              </p>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Чтобы записаться на <strong>{timeSlot.time}</strong>, войдите в систему или зарегистрируйтесь.
+            </p>
+            <Button
+              onClick={handleLoginClick}
+              className="w-full"
+              size="sm"
+              data-testid="popover-login-button"
+            >
+              <LogIn className="mr-2 h-4 w-4" />
+              Войти / Зарегистрироваться
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
+  return cardContent;
 }
