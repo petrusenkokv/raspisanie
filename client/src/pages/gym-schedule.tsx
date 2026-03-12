@@ -2,16 +2,17 @@ import { useEffect, useState } from "react";
 import { CalendarHeader } from "@/components/gym/calendar-header";
 import { CalendarView } from "@/components/gym/calendar-view";
 import { AuthModal } from "@/components/gym/auth-modal";
+import { StudentsPanel } from "@/components/gym/students-panel";
 import { Button } from "@/components/ui/button";
 import { useGymStore } from "@/store/gym-store";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, LogOut, UserPlus } from "lucide-react";
-import { format } from "date-fns";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [studentsPanelOpen, setStudentsPanelOpen] = useState(false);
   const { 
     currentUser, 
     isAuthenticated, 
@@ -129,7 +130,7 @@ export function GymSchedulePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <CalendarHeader />
+      <CalendarHeader onStudentsOpen={() => setStudentsPanelOpen(true)} />
       
       {/* User info and actions */}
       <div className="p-4 border-b bg-white dark:bg-gray-900">
@@ -195,6 +196,11 @@ export function GymSchedulePage() {
       <AuthModal 
         open={authModalOpen} 
         onOpenChange={setAuthModalOpen} 
+      />
+
+      <StudentsPanel
+        open={studentsPanelOpen}
+        onOpenChange={setStudentsPanelOpen}
       />
     </div>
   );

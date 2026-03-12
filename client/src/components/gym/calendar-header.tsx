@@ -9,7 +9,11 @@ const VIEW_LABELS: Record<ViewType, string> = {
   month: "Месяц"
 };
 
-export function CalendarHeader() {
+interface CalendarHeaderProps {
+  onStudentsOpen: () => void;
+}
+
+export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
   const { 
     currentView, 
     selectedDate, 
@@ -151,6 +155,7 @@ export function CalendarHeader() {
           <Button
             variant="outline"
             size="sm"
+            onClick={onStudentsOpen}
             data-testid="button-students"
           >
             <Users className="h-4 w-4 mr-2" />
