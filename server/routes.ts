@@ -151,7 +151,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/bookings", async (req, res) => {
     try {
       const { timeSlotId, studentId, notes } = req.body;
-      
+
+      // Get the target time slot to know its date
+      const targetSlot = await storage.getTimeSlotById(timeSlotId);
+      if (!targetSlot) {
+        return res.status(404).json({ message: "Time slot not found" });
+      }
+
+      // Check if student already has an active booking on this date
+      const studentBookings = await storage.getBookingsByStudent(studentId);
+      const alreadyBooked = studentBookings.find(b => {
+        if (b.status === "cancelled") return false;
+        return b.timeSlot.date === targetSlot.date;
+      });
+      if (alreadyBooked) {
+        return res.status(400).json({
+          message: `Вы уже записаны на ${alreadyBooked.timeSlot.time}. На один день можно записаться только один раз.`
+        });
+      }
+
       // Check if time slot is available
       const existingBookings = await storage.getBookingsByTimeSlot(timeSlotId);
       const confirmedBookings = existingBookings.filter(b => b.status === "confirmed");
