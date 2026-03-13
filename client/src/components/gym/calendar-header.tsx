@@ -72,13 +72,7 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
   };
 
   const goToToday = () => {
-    const today = new Date();
-    // In week view snap to Monday of current week
-    if (currentView === "week") {
-      setSelectedDate(getMondayOf(today));
-    } else {
-      setSelectedDate(today);
-    }
+    setSelectedDate(new Date());
   };
 
   return (

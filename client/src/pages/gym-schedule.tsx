@@ -42,12 +42,20 @@ export function GymSchedulePage() {
         return `${y}-${m}-${day}`;
       };
 
+      // Returns Monday of the week containing `d`, formatted as local date string
+      const mondayOf = (d: Date) => {
+        const copy = new Date(d);
+        const day = copy.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        copy.setDate(copy.getDate() + diff);
+        return localDate(copy);
+      };
+
       let url = "";
       if (currentView === "day") {
         url = `/api/schedule/day/${localDate(selectedDate)}`;
       } else if (currentView === "week") {
-        // selectedDate is already set to Monday by the header navigation
-        url = `/api/schedule/week/${localDate(selectedDate)}`;
+        url = `/api/schedule/week/${mondayOf(selectedDate)}`;
       } else {
         const year = selectedDate.getFullYear();
         const month = selectedDate.getMonth() + 1;
