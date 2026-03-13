@@ -87,7 +87,10 @@ export const useGymStore = create<GymStore>((set, get) => ({
   getWeekDates: (date) => {
     const week = [];
     const startOfWeek = new Date(date);
-    startOfWeek.setDate(date.getDate() - date.getDay() + 1); // Monday
+    const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // always go to Monday
+    startOfWeek.setDate(date.getDate() + diff);
+    startOfWeek.setHours(0, 0, 0, 0);
     
     for (let i = 0; i < 7; i++) {
       const day = new Date(startOfWeek);

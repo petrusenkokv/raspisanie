@@ -21,9 +21,16 @@ interface CalendarViewProps {
 export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: CalendarViewProps) {
   const { currentView, selectedDate, schedule, getWeekDates, getMonthDates } = useGymStore();
 
+  // Format date using LOCAL timezone (toISOString gives UTC which can shift the date)
+  const localDateStr = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
   const getScheduleForDate = (date: Date) => {
-    const dateStr = date.toISOString().split("T")[0];
-    return schedule.find((s) => s.date === dateStr)?.timeSlots || [];
+    return schedule.find((s) => s.date === localDateStr(date))?.timeSlots || [];
   };
 
   // ─── Day view ───────────────────────────────────────────────────────────────

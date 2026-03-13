@@ -34,15 +34,20 @@ export function GymSchedulePage() {
     staleTime: 0,
     refetchInterval: 15000,
     queryFn: async () => {
+      // Format date in local timezone (avoids UTC offset shifting the date)
+      const localDate = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      };
+
       let url = "";
       if (currentView === "day") {
-        const dateStr = selectedDate.toISOString().split('T')[0];
-        url = `/api/schedule/day/${dateStr}`;
+        url = `/api/schedule/day/${localDate(selectedDate)}`;
       } else if (currentView === "week") {
-        const startOfWeek = new Date(selectedDate);
-        startOfWeek.setDate(selectedDate.getDate() - selectedDate.getDay() + 1);
-        const dateStr = startOfWeek.toISOString().split('T')[0];
-        url = `/api/schedule/week/${dateStr}`;
+        // selectedDate is already set to Monday by the header navigation
+        url = `/api/schedule/week/${localDate(selectedDate)}`;
       } else {
         const year = selectedDate.getFullYear();
         const month = selectedDate.getMonth() + 1;
