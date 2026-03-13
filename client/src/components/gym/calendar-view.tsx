@@ -62,8 +62,22 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
   // ─── Month view ─────────────────────────────────────────────────────────────
   if (currentView === "month") {
     const dates = getMonthDates(selectedDate);
-    const weeks: Date[][] = [];
-    for (let i = 0; i < dates.length; i += 7) weeks.push(dates.slice(i, i + 7));
+
+    // Align first day to Monday-based grid (Mon=0 … Sun=6)
+    const firstDay = dates[0].getDay(); // 0=Sun,1=Mon,...,6=Sat
+    const leadingEmpties = firstDay === 0 ? 6 : firstDay - 1;
+
+    // Build padded array: null = empty cell, Date = actual day
+    const padded: (Date | null)[] = [
+      ...Array(leadingEmpties).fill(null),
+      ...dates,
+    ];
+
+    // Split into rows of 7
+    const weeks: (Date | null)[][] = [];
+    for (let i = 0; i < padded.length; i += 7) {
+      weeks.push(padded.slice(i, i + 7));
+    }
 
     return (
       <div className="space-y-2">
@@ -74,14 +88,17 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
         </div>
         {weeks.map((week, wi) => (
           <div key={wi} className="grid grid-cols-7 gap-1">
-            {week.map((date) => {
+            {week.map((date, di) => {
+              if (!date) {
+                return <div key={`empty-${wi}-${di}`} className="h-20" />;
+              }
               const slots = getScheduleForDate(date);
               const available = slots.filter((ts) => ts.availableSpots > 0).length;
               const isToday = isSameDay(date, new Date());
               const isSelected = isSameDay(date, selectedDate);
               return (
                 <Card
-                  key={date.toISOString()}
+                  key={localDateStr(date)}
                   className={`p-2 h-20 cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${
                     isToday ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200" : ""
                   } ${isSelected ? "ring-2 ring-blue-500" : ""}`}
