@@ -102,7 +102,11 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                   className={`p-2 h-20 cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${
                     isToday ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200" : ""
                   } ${isSelected ? "ring-2 ring-blue-500" : ""}`}
-                  onClick={() => useGymStore.getState().setSelectedDate(date)}
+                  onClick={() => {
+                    const store = useGymStore.getState();
+                    store.setSelectedDate(date);
+                    store.setCurrentView("day");
+                  }}
                 >
                   <div className="flex flex-col h-full">
                     <span className={`text-sm font-medium ${isToday ? "text-blue-600" : "text-gray-900 dark:text-white"}`}>
