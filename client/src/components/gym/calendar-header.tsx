@@ -4,7 +4,7 @@ import { useGymStore, type ViewType } from "@/store/gym-store";
 import { Badge } from "@/components/ui/badge";
 
 const VIEW_LABELS: Record<ViewType, string> = {
-  day: "День",
+  day: "Сегодня",
   week: "Неделя", 
   month: "Месяц"
 };
@@ -24,32 +24,22 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
   } = useGymStore();
 
   const formatDate = (date: Date) => {
-    const options: Intl.DateTimeFormatOptions = {
-      weekday: "long",
-      year: "numeric",
-      month: "long", 
-      day: "numeric"
-    };
-    
     if (currentView === "week") {
       const weekDates = useGymStore.getState().getWeekDates(date);
       const start = weekDates[0];
       const end = weekDates[6];
-      return `${start.getDate()}-${end.getDate()} ${start.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}`;
+      return `${start.getDate()}–${end.getDate()} ${start.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}`;
     }
-    
     if (currentView === "month") {
       return date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
     }
-    
-    return date.toLocaleDateString("ru-RU", options);
+    return date.toLocaleDateString("ru-RU", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   };
 
-  // Returns the Monday of the week containing `date`
   const getMondayOf = (date: Date) => {
     const d = new Date(date);
-    const day = d.getDay(); // 0=Sun,1=Mon,...,6=Sat
-    const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
     d.setDate(d.getDate() + diff);
     d.setHours(0, 0, 0, 0);
     return d;
@@ -71,8 +61,14 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
     }
   };
 
-  const goToToday = () => {
-    setSelectedDate(new Date());
+  const handleViewChange = (view: ViewType) => {
+    if (view === "day") {
+      // "Сегодня" always jumps to today
+      setSelectedDate(new Date());
+    } else if (view === "week") {
+      setSelectedDate(getMondayOf(selectedDate));
+    }
+    setCurrentView(view);
   };
 
   return (
@@ -90,40 +86,35 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
       </div>
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
-        {/* Date Navigation */}
+        {/* Date Navigation — hidden in day view since "Сегодня" always resets to today */}
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigateDate(-1)}
-            data-testid="button-prev-date"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          
+          {currentView !== "day" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigateDate(-1)}
+              data-testid="button-prev-date"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          )}
+
           <div className="text-center min-w-[200px]">
             <h2 className="font-semibold text-gray-900 dark:text-white">
               {formatDate(selectedDate)}
             </h2>
           </div>
-          
-          <Button
-            variant="outline" 
-            size="sm"
-            onClick={() => navigateDate(1)}
-            data-testid="button-next-date"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={goToToday}
-            data-testid="button-today"
-          >
-            Сегодня
-          </Button>
+
+          {currentView !== "day" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigateDate(1)}
+              data-testid="button-next-date"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
         {/* View Toggle */}
@@ -133,10 +124,7 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
               key={view}
               variant={currentView === view ? "default" : "ghost"}
               size="sm"
-              onClick={() => {
-                setCurrentView(view);
-                if (view === "week") setSelectedDate(getMondayOf(selectedDate));
-              }}
+              onClick={() => handleViewChange(view)}
               className="text-xs px-3"
               data-testid={`button-view-${view}`}
             >
