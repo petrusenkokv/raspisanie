@@ -4,7 +4,7 @@ import { useGymStore, type ViewType } from "@/store/gym-store";
 import { Badge } from "@/components/ui/badge";
 
 const VIEW_LABELS: Record<ViewType, string> = {
-  day: "Сегодня",
+  day: "День",
   week: "Неделя", 
   month: "Месяц"
 };
@@ -62,10 +62,7 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
   };
 
   const handleViewChange = (view: ViewType) => {
-    if (view === "day") {
-      // "Сегодня" always jumps to today
-      setSelectedDate(new Date());
-    } else if (view === "week") {
+    if (view === "week") {
       setSelectedDate(getMondayOf(selectedDate));
     }
     setCurrentView(view);
@@ -86,18 +83,16 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
       </div>
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
-        {/* Date Navigation — hidden in day view since "Сегодня" always resets to today */}
+        {/* Date Navigation */}
         <div className="flex items-center gap-2">
-          {currentView !== "day" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigateDate(-1)}
-              data-testid="button-prev-date"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateDate(-1)}
+            data-testid="button-prev-date"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
 
           <div className="text-center min-w-[200px]">
             <h2 className="font-semibold text-gray-900 dark:text-white">
@@ -105,16 +100,14 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
             </h2>
           </div>
 
-          {currentView !== "day" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigateDate(1)}
-              data-testid="button-next-date"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateDate(1)}
+            data-testid="button-next-date"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* View Toggle */}
