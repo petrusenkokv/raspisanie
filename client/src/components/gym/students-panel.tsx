@@ -96,11 +96,14 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   });
 
   const filteredStudents = students.filter(student => {
-    const query = searchQuery.toLowerCase();
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return true;
+    const digitsQuery = query.replace(/\D/g, "");
+    const phoneDigits = student.phone.replace(/\D/g, "");
     return (
       student.firstName.toLowerCase().includes(query) ||
       (student.lastName || "").toLowerCase().includes(query) ||
-      student.phone.includes(query)
+      (digitsQuery.length > 0 && phoneDigits.includes(digitsQuery))
     );
   });
 
