@@ -117,7 +117,7 @@ export class MemStorage implements IStorage {
       ...insertUser,
       id,
       role: insertUser.role || "student",
-      isVerified: false,
+      isVerified: insertUser.isVerified ?? false,
       verificationCode: null,
       lastLogin: null,
       createdAt: new Date()
