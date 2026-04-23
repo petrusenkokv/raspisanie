@@ -280,10 +280,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!phone || !firstName) {
         return res.status(400).json({ message: "Имя и телефон обязательны" });
       }
-      const normalizedPhone = String(phone).replace(/\D/g, "");
-      if (normalizedPhone.length < 10) {
+      let digits = String(phone).replace(/\D/g, "");
+      if (digits.length === 10) {
+        digits = "7" + digits;
+      } else if (digits.length === 11 && digits.startsWith("8")) {
+        digits = "7" + digits.slice(1);
+      }
+      if (digits.length !== 11 || !digits.startsWith("7")) {
         return res.status(400).json({ message: "Некорректный номер телефона" });
       }
+      const normalizedPhone = digits;
       const existing = await storage.getUserByPhone(normalizedPhone);
       if (existing) {
         return res.status(400).json({ message: "Ученик с таким телефоном уже существует" });
