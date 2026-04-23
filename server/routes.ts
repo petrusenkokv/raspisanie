@@ -11,6 +11,14 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 
+function normalizePhone(input: string): string | null {
+  let digits = String(input || "").replace(/\D/g, "");
+  if (digits.length === 10) digits = "7" + digits;
+  else if (digits.length === 11 && digits.startsWith("8")) digits = "7" + digits.slice(1);
+  if (digits.length !== 11 || !digits.startsWith("7")) return null;
+  return digits;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // Auth routes
@@ -64,8 +72,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { phone } = req.body;
-      
-      const user = await storage.getUserByPhone(phone);
+      const normalized = normalizePhone(phone) || phone;
+      const user = await storage.getUserByPhone(normalized);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -94,8 +102,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/trainer-login", async (req, res) => {
     try {
       const { phone } = req.body;
-      
-      const user = await storage.getUserByPhone(phone);
+      const normalized = normalizePhone(phone) || phone;
+      const user = await storage.getUserByPhone(normalized);
       if (!user || user.role !== "trainer") {
         return res.status(401).json({ message: "Invalid trainer credentials" });
       }
