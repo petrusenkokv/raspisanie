@@ -274,6 +274,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/trainer/students", async (req, res) => {
+    try {
+      const { phone, firstName, lastName } = req.body;
+      if (!phone || !firstName) {
+        return res.status(400).json({ message: "Имя и телефон обязательны" });
+      }
+      const normalizedPhone = String(phone).replace(/\D/g, "");
+      if (normalizedPhone.length < 10) {
+        return res.status(400).json({ message: "Некорректный номер телефона" });
+      }
+      const existing = await storage.getUserByPhone(normalizedPhone);
+      if (existing) {
+        return res.status(400).json({ message: "Ученик с таким телефоном уже существует" });
+      }
+      const user = await storage.createUser({
+        phone: normalizedPhone,
+        firstName: String(firstName).trim(),
+        lastName: lastName ? String(lastName).trim() : null,
+        role: "student",
+        isVerified: true,
+      } as any);
+      res.status(201).json(user);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось добавить ученика" });
+    }
+  });
+
+  app.delete("/api/trainer/students/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ message: "Ученик не найден" });
+      }
+      if (user.role === "trainer") {
+        return res.status(400).json({ message: "Нельзя удалить тренера" });
+      }
+      await storage.deleteUser(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось удалить ученика" });
+    }
+  });
+
   app.post("/api/trainer/book-student", async (req, res) => {
     try {
       const { timeSlotId, studentId, notes, trainerId } = req.body;

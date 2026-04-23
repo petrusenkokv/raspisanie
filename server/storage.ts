@@ -20,6 +20,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User>;
   verifyUser(id: string): Promise<User>;
+  deleteUser(id: string): Promise<void>;
   
   // Time Slots
   getTimeSlotById(id: string): Promise<TimeSlot | undefined>;
@@ -141,6 +142,26 @@ export class MemStorage implements IStorage {
     const verifiedUser = { ...user, isVerified: true, verificationCode: null };
     this.users.set(id, verifiedUser);
     return verifiedUser;
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    const user = this.users.get(id);
+    if (!user) throw new Error("User not found");
+    if (user.role === "trainer") throw new Error("Cannot delete trainer");
+
+    // Remove all bookings made by this student
+    for (const [bookingId, booking] of Array.from(this.bookings.entries())) {
+      if (booking.studentId === id) {
+        this.bookings.delete(bookingId);
+      }
+    }
+    // Remove all notifications for this user
+    for (const [notifId, notif] of Array.from(this.notifications.entries())) {
+      if (notif.userId === id) {
+        this.notifications.delete(notifId);
+      }
+    }
+    this.users.delete(id);
   }
 
   async getTimeSlotById(id: string): Promise<TimeSlot | undefined> {
