@@ -22,6 +22,7 @@ export interface IStorage {
   verifyUser(id: string): Promise<User>;
   
   // Time Slots
+  getTimeSlotById(id: string): Promise<TimeSlot | undefined>;
   getTimeSlotsByDate(date: string): Promise<TimeSlotWithBookings[]>;
   getTimeSlotsByDateRange(startDate: string, endDate: string): Promise<TimeSlotWithBookings[]>;
   createTimeSlot(timeSlot: InsertTimeSlot): Promise<TimeSlot>;
@@ -140,6 +141,10 @@ export class MemStorage implements IStorage {
     const verifiedUser = { ...user, isVerified: true, verificationCode: null };
     this.users.set(id, verifiedUser);
     return verifiedUser;
+  }
+
+  async getTimeSlotById(id: string): Promise<TimeSlot | undefined> {
+    return this.timeSlots.get(id);
   }
 
   async getTimeSlotsByDate(date: string): Promise<TimeSlotWithBookings[]> {
