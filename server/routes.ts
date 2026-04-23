@@ -41,58 +41,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const userData = studentRegistrationSchema.parse(req.body);
-      
-      // Check if user already exists
-      const existingUser = await storage.getUserByPhone(userData.phone);
-      if (existingUser) {
-        return res.status(400).json({ message: "User already exists" });
+      const { phone, firstName, lastName, password } = req.body;
+      if (!firstName || !lastName) {
+        return res.status(400).json({ message: "Заполните имя и фамилию" });
       }
-      
-      const user = await storage.createUser(userData);
-      const verifiedUser = await storage.verifyUser(user.id);
-      
-      res.status(201).json({ 
-        user: { 
-          id: verifiedUser.id, 
-          phone: verifiedUser.phone, 
-          firstName: verifiedUser.firstName,
-          lastName: verifiedUser.lastName,
-          role: verifiedUser.role 
-        } 
+      if (!password || String(password).length < 4) {
+        return res.status(400).json({ message: "Пароль должен быть не короче 4 символов" });
+      }
+      const normalized = normalizePhone(phone);
+      if (!normalized) {
+        return res.status(400).json({ message: "Некорректный номер телефона" });
+      }
+      const existingUser = await storage.getUserByPhone(normalized);
+      if (existingUser) {
+        return res.status(400).json({ message: "Пользователь с таким телефоном уже существует" });
+      }
+
+      const user = await storage.createUser({
+        phone: normalized,
+        firstName: String(firstName).trim(),
+        lastName: String(lastName).trim(),
+        role: "student",
+        isVerified: true,
+        password: String(password),
+        mustChangePassword: false,
+      } as any);
+
+      res.status(201).json({
+        user: {
+          id: user.id,
+          phone: user.phone,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          mustChangePassword: user.mustChangePassword,
+        }
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid data", errors: error.errors });
-      }
       res.status(500).json({ message: "Failed to register user" });
     }
   });
 
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const { phone } = req.body;
+      const { phone, password } = req.body;
       const normalized = normalizePhone(phone) || phone;
       const user = await storage.getUserByPhone(normalized);
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        return res.status(404).json({ message: "Пользователь не найден" });
       }
-      
       if (!user.isVerified) {
-        return res.status(400).json({ message: "User not verified" });
+        return res.status(400).json({ message: "Пользователь не подтверждён" });
       }
-      
-      // Update last login
+      if (!password || user.password !== password) {
+        return res.status(401).json({ message: "Неверный пароль" });
+      }
+
       await storage.updateUser(user.id, { lastLogin: new Date() });
-      
-      res.json({ 
-        user: { 
-          id: user.id, 
-          phone: user.phone, 
+
+      res.json({
+        user: {
+          id: user.id,
+          phone: user.phone,
           firstName: user.firstName,
           lastName: user.lastName,
-          role: user.role 
-        } 
+          role: user.role,
+          mustChangePassword: user.mustChangePassword,
+        }
       });
     } catch (error) {
       res.status(500).json({ message: "Login failed" });
@@ -101,26 +116,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/trainer-login", async (req, res) => {
     try {
-      const { phone } = req.body;
+      const { phone, password } = req.body;
       const normalized = normalizePhone(phone) || phone;
       const user = await storage.getUserByPhone(normalized);
       if (!user || user.role !== "trainer") {
-        return res.status(401).json({ message: "Invalid trainer credentials" });
+        return res.status(401).json({ message: "Неверные данные тренера" });
       }
-      
+      if (!password || user.password !== password) {
+        return res.status(401).json({ message: "Неверный пароль" });
+      }
+
       await storage.updateUser(user.id, { lastLogin: new Date() });
-      
-      res.json({ 
-        user: { 
-          id: user.id, 
-          phone: user.phone, 
+
+      res.json({
+        user: {
+          id: user.id,
+          phone: user.phone,
           firstName: user.firstName,
           lastName: user.lastName,
-          role: user.role 
-        } 
+          role: user.role,
+          mustChangePassword: user.mustChangePassword,
+        }
       });
     } catch (error) {
       res.status(500).json({ message: "Trainer login failed" });
+    }
+  });
+
+  app.post("/api/auth/change-password", async (req, res) => {
+    try {
+      const { userId, oldPassword, newPassword } = req.body;
+      if (!userId || !newPassword || newPassword.length < 4) {
+        return res.status(400).json({ message: "Новый пароль должен быть не короче 4 символов" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "Пользователь не найден" });
+      if (user.password !== oldPassword) {
+        return res.status(401).json({ message: "Неверный текущий пароль" });
+      }
+      await storage.updateUser(userId, { password: newPassword, mustChangePassword: false });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось сменить пароль" });
     }
   });
 
@@ -284,10 +321,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/trainer/students", async (req, res) => {
     try {
-      const { phone, firstName, lastName } = req.body;
+      const { phone, firstName, lastName, password } = req.body;
       if (!phone || !firstName) {
         return res.status(400).json({ message: "Имя и телефон обязательны" });
       }
+      const initialPassword = password && String(password).trim().length >= 4
+        ? String(password).trim()
+        : "12345";
       let digits = String(phone).replace(/\D/g, "");
       if (digits.length === 10) {
         digits = "7" + digits;
@@ -308,6 +348,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lastName: lastName ? String(lastName).trim() : null,
         role: "student",
         isVerified: true,
+        password: initialPassword,
+        mustChangePassword: true,
       } as any);
       res.status(201).json(user);
     } catch (error) {

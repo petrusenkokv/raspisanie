@@ -41,7 +41,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<User | null>(null);
-  const [newStudent, setNewStudent] = useState({ firstName: "", lastName: "", phone: "" });
+  const [newStudent, setNewStudent] = useState({ firstName: "", lastName: "", phone: "", password: "12345" });
   const { toast } = useToast();
 
   const { data: students = [], isLoading } = useQuery<User[]>({
@@ -56,15 +56,18 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   });
 
   const addMutation = useMutation({
-    mutationFn: async (data: { firstName: string; lastName: string; phone: string }) => {
+    mutationFn: async (data: { firstName: string; lastName: string; phone: string; password: string }) => {
       const response = await apiRequest("POST", "/api/trainer/students", data);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
-      toast({ title: "Ученик добавлен" });
+      toast({
+        title: "Ученик добавлен",
+        description: `Передайте ученику пароль для первого входа`,
+      });
       setAddDialogOpen(false);
-      setNewStudent({ firstName: "", lastName: "", phone: "" });
+      setNewStudent({ firstName: "", lastName: "", phone: "", password: "12345" });
     },
     onError: (error: any) => {
       toast({
@@ -261,6 +264,17 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 placeholder="79991234567"
                 data-testid="input-new-student-phone"
               />
+            </div>
+            <div>
+              <Label htmlFor="new-password">Пароль для первого входа</Label>
+              <Input
+                id="new-password"
+                value={newStudent.password}
+                onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })}
+                placeholder="12345"
+                data-testid="input-new-student-password"
+              />
+              <p className="text-xs text-gray-500 mt-1">Ученик сможет сменить пароль после входа.</p>
             </div>
           </div>
           <DialogFooter>

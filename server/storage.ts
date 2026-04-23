@@ -72,6 +72,8 @@ export class MemStorage implements IStorage {
       role: "trainer",
       isVerified: true,
       verificationCode: null,
+      password: "12345",
+      mustChangePassword: false,
       lastLogin: null,
       createdAt: new Date()
     };
@@ -119,6 +121,8 @@ export class MemStorage implements IStorage {
       role: insertUser.role || "student",
       isVerified: insertUser.isVerified ?? false,
       verificationCode: null,
+      password: insertUser.password ?? "",
+      mustChangePassword: insertUser.mustChangePassword ?? false,
       lastLogin: null,
       createdAt: new Date()
     };

@@ -4,18 +4,20 @@ import { CalendarView } from "@/components/gym/calendar-view";
 import { AuthModal } from "@/components/gym/auth-modal";
 import { StudentsPanel } from "@/components/gym/students-panel";
 import { BookStudentDialog } from "@/components/gym/book-student-dialog";
+import { ChangePasswordDialog } from "@/components/gym/change-password-dialog";
 import { Button } from "@/components/ui/button";
 import { useGymStore } from "@/store/gym-store";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, UserPlus } from "lucide-react";
+import { Loader2, LogOut, UserPlus, KeyRound } from "lucide-react";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [studentsPanelOpen, setStudentsPanelOpen] = useState(false);
   const [trainerBookDialogOpen, setTrainerBookDialogOpen] = useState(false);
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<string | null>(null);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { 
     currentUser, 
     isAuthenticated, 
@@ -195,15 +197,26 @@ export function GymSchedulePage() {
           
           <div className="flex items-center gap-2">
             {isAuthenticated ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLogout}
-                data-testid="button-logout"
-              >
-                <LogOut className="h-4 w-4 mr-2" />
-                Выйти
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setChangePasswordOpen(true)}
+                  data-testid="button-change-password"
+                >
+                  <KeyRound className="h-4 w-4 mr-2" />
+                  Сменить пароль
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLogout}
+                  data-testid="button-logout"
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Выйти
+                </Button>
+              </>
             ) : (
               <Button
                 size="sm"
@@ -258,6 +271,12 @@ export function GymSchedulePage() {
           if (!open) setSelectedTimeSlotId(null);
         }}
         preselectedTimeSlotId={selectedTimeSlotId}
+      />
+
+      <ChangePasswordDialog
+        open={changePasswordOpen || !!(currentUser as any)?.mustChangePassword}
+        onOpenChange={setChangePasswordOpen}
+        forced={!!(currentUser as any)?.mustChangePassword}
       />
     </div>
   );

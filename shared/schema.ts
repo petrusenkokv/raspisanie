@@ -12,6 +12,8 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("student"), // "student" or "trainer"
   isVerified: boolean("is_verified").notNull().default(false),
   verificationCode: text("verification_code"),
+  password: text("password").notNull().default(""),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
   lastLogin: timestamp("last_login"),
   createdAt: timestamp("created_at").defaultNow(),
 });
