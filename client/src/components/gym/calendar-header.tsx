@@ -62,7 +62,7 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
   };
 
   const handleViewChange = (view: ViewType) => {
-    if (view === "day") {
+    if (view === "day" || view === "month") {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       setSelectedDate(today);
