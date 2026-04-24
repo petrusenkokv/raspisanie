@@ -59,4 +59,13 @@ The application uses a simplified authentication system:
 - **Brand Customization**: User-specific theming and branding options
 - **Mobile Responsive**: Adaptive design that works across desktop and mobile devices
 
+### Student Profile & Consent Documents (gym scheduling)
+- Extended user fields: `middleName`, `birthDate`, `trainerNotes`, `parentFullName`, `parentPhone`.
+- Auto-required parent (legal representative) info when student age < 14.
+- `documents` table stores trainer-managed consent forms (default seeded: правила ТБ, разрешение на фото/видео).
+- `userConsents` table stores per-user accepted documents with timestamps.
+- Endpoints: `GET /api/documents` (active), `GET|POST|PATCH|DELETE /api/trainer/documents`, `GET|PATCH /api/trainer/students/:id`.
+- Registration (self & trainer-add) requires accepting all active documents.
+- Trainer can view/edit student card and manage documents via the Students panel.
+
 The architecture prioritizes type safety, developer experience, and scalability while maintaining a clean separation of concerns between frontend and backend systems.

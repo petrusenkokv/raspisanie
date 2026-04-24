@@ -9,6 +9,11 @@ export const users = pgTable("users", {
   phone: text("phone").notNull().unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name"),
+  middleName: text("middle_name"),
+  birthDate: text("birth_date"), // YYYY-MM-DD
+  trainerNotes: text("trainer_notes"),
+  parentFullName: text("parent_full_name"),
+  parentPhone: text("parent_phone"),
   role: text("role").notNull().default("student"), // "student" or "trainer"
   isVerified: boolean("is_verified").notNull().default(false),
   verificationCode: text("verification_code"),
@@ -16,6 +21,23 @@ export const users = pgTable("users", {
   mustChangePassword: boolean("must_change_password").notNull().default(false),
   lastLogin: timestamp("last_login"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Consent documents managed by trainer (rules, agreements, etc.)
+export const documents = pgTable("documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Records of which user accepted which document
+export const userConsents = pgTable("user_consents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  documentId: varchar("document_id").notNull().references(() => documents.id),
+  acceptedAt: timestamp("accepted_at").defaultNow(),
 });
 
 // Time slots for the schedule (8:00-20:00)
@@ -77,6 +99,16 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
   createdAt: true,
 });
 
+export const insertDocumentSchema = createInsertSchema(documents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUserConsentSchema = createInsertSchema(userConsents).omit({
+  id: true,
+  acceptedAt: true,
+});
+
 // Validation schemas
 export const phoneVerificationSchema = z.object({
   phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format"),
@@ -108,6 +140,11 @@ export type InsertBooking = z.infer<typeof insertBookingSchema>;
 export type Booking = typeof bookings.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+export type InsertDocument = z.infer<typeof insertDocumentSchema>;
+export type Document = typeof documents.$inferSelect;
+export type InsertUserConsent = z.infer<typeof insertUserConsentSchema>;
+export type UserConsent = typeof userConsents.$inferSelect;
+export type StudentWithConsents = User & { consents: (UserConsent & { document: Document })[] };
 
 // Extended types for API responses
 export type TimeSlotWithBookings = TimeSlot & {

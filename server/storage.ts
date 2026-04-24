@@ -9,7 +9,11 @@ import {
   type InsertNotification,
   type TimeSlotWithBookings,
   type BookingWithDetails,
-  type DaySchedule
+  type DaySchedule,
+  type Document,
+  type InsertDocument,
+  type UserConsent,
+  type StudentWithConsents
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -44,6 +48,18 @@ export interface IStorage {
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string): Promise<Notification>;
   
+  // Documents (consent forms managed by trainer)
+  getDocuments(activeOnly?: boolean): Promise<Document[]>;
+  getDocument(id: string): Promise<Document | undefined>;
+  createDocument(doc: InsertDocument): Promise<Document>;
+  updateDocument(id: string, updates: Partial<Document>): Promise<Document>;
+  deleteDocument(id: string): Promise<void>;
+
+  // User consents
+  getConsentsByUser(userId: string): Promise<(UserConsent & { document: Document })[]>;
+  recordConsent(userId: string, documentId: string): Promise<UserConsent>;
+  getStudentWithConsents(id: string): Promise<StudentWithConsents | undefined>;
+
   // Analytics
   getStudentsList(): Promise<User[]>;
   getScheduleForDate(date: string): Promise<DaySchedule>;
@@ -56,6 +72,8 @@ export class MemStorage implements IStorage {
   private timeSlots: Map<string, TimeSlot> = new Map();
   private bookings: Map<string, Booking> = new Map();
   private notifications: Map<string, Notification> = new Map();
+  private documents: Map<string, Document> = new Map();
+  private consents: Map<string, UserConsent> = new Map();
 
   constructor() {
     this.seedData();
@@ -69,6 +87,11 @@ export class MemStorage implements IStorage {
       phone: "79991234567",
       firstName: "Константин",
       lastName: "Владимирович",
+      middleName: null,
+      birthDate: null,
+      trainerNotes: null,
+      parentFullName: null,
+      parentPhone: null,
       role: "trainer",
       isVerified: true,
       verificationCode: null,
@@ -78,6 +101,28 @@ export class MemStorage implements IStorage {
       createdAt: new Date()
     };
     this.users.set(trainerId, trainer);
+
+    // Seed default consent documents
+    const seedDocs: { title: string; content: string }[] = [
+      {
+        title: "Правила техники безопасности в тренажёрном зале",
+        content: "1. Перед тренировкой обязательно проведите разминку.\n2. Используйте оборудование строго по назначению.\n3. Не допускайте перегрузок, при недомогании немедленно прекратите занятие и сообщите тренеру.\n4. Соблюдайте чистоту, после упражнений возвращайте инвентарь на место.\n5. Запрещено заниматься в состоянии алкогольного или наркотического опьянения.\n\nЯ ознакомлен(а) с правилами техники безопасности и обязуюсь их соблюдать."
+      },
+      {
+        title: "Разрешение на фото- и видеосъёмку",
+        content: "Я даю согласие тренеру и администрации зала на проведение фото- и видеосъёмки во время тренировок, а также на использование полученных материалов в информационных, рекламных и образовательных целях (соцсети, сайт, отчётность).\n\nСогласие может быть отозвано в любой момент по письменному заявлению."
+      }
+    ];
+    for (const d of seedDocs) {
+      const id = randomUUID();
+      this.documents.set(id, {
+        id,
+        title: d.title,
+        content: d.content,
+        isActive: true,
+        createdAt: new Date()
+      });
+    }
 
     // Generate time slots for the next 30 days
     const today = new Date();
@@ -116,8 +161,15 @@ export class MemStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
     const user: User = {
-      ...insertUser,
       id,
+      phone: insertUser.phone,
+      firstName: insertUser.firstName,
+      lastName: insertUser.lastName ?? null,
+      middleName: insertUser.middleName ?? null,
+      birthDate: insertUser.birthDate ?? null,
+      trainerNotes: insertUser.trainerNotes ?? null,
+      parentFullName: insertUser.parentFullName ?? null,
+      parentPhone: insertUser.parentPhone ?? null,
       role: insertUser.role || "student",
       isVerified: insertUser.isVerified ?? false,
       verificationCode: null,
@@ -165,7 +217,85 @@ export class MemStorage implements IStorage {
         this.notifications.delete(notifId);
       }
     }
+    // Remove all consents recorded by this user
+    for (const [consentId, consent] of Array.from(this.consents.entries())) {
+      if (consent.userId === id) {
+        this.consents.delete(consentId);
+      }
+    }
     this.users.delete(id);
+  }
+
+  // ----- Documents -----
+  async getDocuments(activeOnly = false): Promise<Document[]> {
+    const all = Array.from(this.documents.values());
+    const filtered = activeOnly ? all.filter(d => d.isActive) : all;
+    return filtered.sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
+  }
+
+  async getDocument(id: string): Promise<Document | undefined> {
+    return this.documents.get(id);
+  }
+
+  async createDocument(doc: InsertDocument): Promise<Document> {
+    const id = randomUUID();
+    const document: Document = {
+      id,
+      title: doc.title,
+      content: doc.content,
+      isActive: doc.isActive ?? true,
+      createdAt: new Date()
+    };
+    this.documents.set(id, document);
+    return document;
+  }
+
+  async updateDocument(id: string, updates: Partial<Document>): Promise<Document> {
+    const doc = this.documents.get(id);
+    if (!doc) throw new Error("Document not found");
+    const updated = { ...doc, ...updates };
+    this.documents.set(id, updated);
+    return updated;
+  }
+
+  async deleteDocument(id: string): Promise<void> {
+    if (!this.documents.has(id)) throw new Error("Document not found");
+    // Remove related consents
+    for (const [cid, c] of Array.from(this.consents.entries())) {
+      if (c.documentId === id) this.consents.delete(cid);
+    }
+    this.documents.delete(id);
+  }
+
+  // ----- Consents -----
+  async getConsentsByUser(userId: string): Promise<(UserConsent & { document: Document })[]> {
+    const list = Array.from(this.consents.values()).filter(c => c.userId === userId);
+    return list
+      .map(c => {
+        const doc = this.documents.get(c.documentId);
+        if (!doc) return null;
+        return { ...c, document: doc };
+      })
+      .filter(Boolean) as (UserConsent & { document: Document })[];
+  }
+
+  async recordConsent(userId: string, documentId: string): Promise<UserConsent> {
+    const id = randomUUID();
+    const consent: UserConsent = {
+      id,
+      userId,
+      documentId,
+      acceptedAt: new Date()
+    };
+    this.consents.set(id, consent);
+    return consent;
+  }
+
+  async getStudentWithConsents(id: string): Promise<StudentWithConsents | undefined> {
+    const user = this.users.get(id);
+    if (!user) return undefined;
+    const consents = await this.getConsentsByUser(id);
+    return { ...user, consents };
   }
 
   async getTimeSlotById(id: string): Promise<TimeSlot | undefined> {

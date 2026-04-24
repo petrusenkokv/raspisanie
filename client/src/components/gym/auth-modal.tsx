@@ -1,17 +1,32 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useGymStore } from "@/store/gym-store";
 import { Loader2, Phone, UserPlus, LogIn } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { type Document } from "@shared/schema";
+import { DocumentViewDialog } from "./document-view-dialog";
 
 interface AuthModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+function calculateAge(birthDate: string): number | null {
+  if (!birthDate) return null;
+  const b = new Date(birthDate);
+  if (isNaN(b.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - b.getFullYear();
+  const m = today.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+  return age;
 }
 
 export function AuthModal({ open, onOpenChange }: AuthModalProps) {
@@ -24,17 +39,46 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   const [studentPassword, setStudentPassword] = useState("");
   const [studentFirstName, setStudentFirstName] = useState("");
   const [studentLastName, setStudentLastName] = useState("");
+  const [studentMiddleName, setStudentMiddleName] = useState("");
+  const [studentBirthDate, setStudentBirthDate] = useState("");
+  const [parentFullName, setParentFullName] = useState("");
+  const [parentPhone, setParentPhone] = useState("");
+  const [parentConfirmed, setParentConfirmed] = useState(false);
+  const [acceptedDocs, setAcceptedDocs] = useState<Record<string, boolean>>({});
+  const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [studentMode, setStudentMode] = useState<"login" | "register">("login");
 
   // Trainer state
   const [trainerPhone, setTrainerPhone] = useState("");
   const [trainerPassword, setTrainerPassword] = useState("");
 
+  const { data: documents = [] } = useQuery<Document[]>({
+    queryKey: ["/api/documents"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/documents");
+      return r.json();
+    },
+    enabled: open && studentMode === "register",
+  });
+
+  const age = useMemo(() => calculateAge(studentBirthDate), [studentBirthDate]);
+  const requiresParent = age !== null && age < 14;
+
+  useEffect(() => {
+    if (!requiresParent) setParentConfirmed(false);
+  }, [requiresParent]);
+
   const resetStudentForm = () => {
     setStudentPhone("");
     setStudentPassword("");
     setStudentFirstName("");
     setStudentLastName("");
+    setStudentMiddleName("");
+    setStudentBirthDate("");
+    setParentFullName("");
+    setParentPhone("");
+    setParentConfirmed(false);
+    setAcceptedDocs({});
     setStudentMode("login");
   };
 
@@ -72,16 +116,45 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
 
   const handleRegister = async () => {
     if (!studentPhone.trim() || !studentFirstName.trim() || !studentLastName.trim() || !studentPassword.trim()) {
-      toast({ variant: "destructive", title: "Заполните все поля" });
+      toast({ variant: "destructive", title: "Заполните обязательные поля" });
       return;
     }
+    if (!studentBirthDate) {
+      toast({ variant: "destructive", title: "Укажите дату рождения" });
+      return;
+    }
+    if (requiresParent) {
+      if (!parentFullName.trim() || !parentPhone.trim()) {
+        toast({ variant: "destructive", title: "Заполните данные законного представителя" });
+        return;
+      }
+      if (!parentConfirmed) {
+        toast({ variant: "destructive", title: "Подтвердите, что Вы — законный представитель" });
+        return;
+      }
+    }
+    const missingDocs = documents.filter(d => !acceptedDocs[d.id]);
+    if (missingDocs.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Примите все документы",
+        description: missingDocs.map(d => d.title).join(", "),
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await apiRequest("POST", "/api/auth/register", {
         phone: studentPhone,
         firstName: studentFirstName,
         lastName: studentLastName,
+        middleName: studentMiddleName || null,
+        birthDate: studentBirthDate,
         password: studentPassword,
+        parentFullName: requiresParent ? parentFullName : null,
+        parentPhone: requiresParent ? parentPhone : null,
+        consentDocumentIds: Object.keys(acceptedDocs).filter(id => acceptedDocs[id]),
       });
       const data = await response.json();
       setUser(data.user);
@@ -127,8 +200,9 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-center">Вход в систему</DialogTitle>
         </DialogHeader>
@@ -195,6 +269,45 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
               </>
             ) : (
               <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <Label>Фамилия</Label>
+                    <Input
+                      value={studentLastName}
+                      onChange={(e) => setStudentLastName(e.target.value)}
+                      disabled={loading}
+                      data-testid="input-lastName"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Имя</Label>
+                    <Input
+                      value={studentFirstName}
+                      onChange={(e) => setStudentFirstName(e.target.value)}
+                      disabled={loading}
+                      data-testid="input-firstName"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Отчество (если есть)</Label>
+                  <Input
+                    value={studentMiddleName}
+                    onChange={(e) => setStudentMiddleName(e.target.value)}
+                    disabled={loading}
+                    data-testid="input-middleName"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Дата рождения</Label>
+                  <Input
+                    type="date"
+                    value={studentBirthDate}
+                    onChange={(e) => setStudentBirthDate(e.target.value)}
+                    disabled={loading}
+                    data-testid="input-birthDate"
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label>Номер телефона</Label>
                   <Input
@@ -203,26 +316,6 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                     value={studentPhone}
                     onChange={(e) => setStudentPhone(e.target.value)}
                     disabled={loading}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Имя</Label>
-                  <Input
-                    placeholder="Имя"
-                    value={studentFirstName}
-                    onChange={(e) => setStudentFirstName(e.target.value)}
-                    disabled={loading}
-                    data-testid="input-firstName"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Фамилия</Label>
-                  <Input
-                    placeholder="Фамилия"
-                    value={studentLastName}
-                    onChange={(e) => setStudentLastName(e.target.value)}
-                    disabled={loading}
-                    data-testid="input-lastName"
                   />
                 </div>
                 <div className="space-y-2">
@@ -236,6 +329,68 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                     data-testid="input-register-password"
                   />
                 </div>
+
+                {requiresParent && (
+                  <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20 space-y-3">
+                    <p className="text-sm font-medium">
+                      Ученику меньше 14 лет — заполните данные законного представителя
+                    </p>
+                    <div className="space-y-2">
+                      <Label>ФИО законного представителя</Label>
+                      <Input
+                        value={parentFullName}
+                        onChange={(e) => setParentFullName(e.target.value)}
+                        disabled={loading}
+                        data-testid="input-parent-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Телефон законного представителя</Label>
+                      <Input
+                        type="tel"
+                        placeholder="+79991234567"
+                        value={parentPhone}
+                        onChange={(e) => setParentPhone(e.target.value)}
+                        disabled={loading}
+                        data-testid="input-parent-phone"
+                      />
+                    </div>
+                    <label className="flex items-start gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={parentConfirmed}
+                        onCheckedChange={(v) => setParentConfirmed(!!v)}
+                        data-testid="checkbox-parent-confirmed"
+                      />
+                      <span>Я являюсь законным представителем ребёнка и подтверждаю достоверность данных.</span>
+                    </label>
+                  </div>
+                )}
+
+                {documents.length > 0 && (
+                  <div className="border rounded-lg p-3 space-y-2">
+                    <p className="text-sm font-medium">Согласия с документами</p>
+                    {documents.map(doc => (
+                      <label key={doc.id} className="flex items-start gap-2 text-sm cursor-pointer">
+                        <Checkbox
+                          checked={!!acceptedDocs[doc.id]}
+                          onCheckedChange={(v) => setAcceptedDocs(prev => ({ ...prev, [doc.id]: !!v }))}
+                          data-testid={`checkbox-doc-${doc.id}`}
+                        />
+                        <span className="flex-1">
+                          Согласен(на) с{" "}
+                          <button
+                            type="button"
+                            className="text-blue-600 underline"
+                            onClick={() => setViewingDoc(doc)}
+                          >
+                            «{doc.title}»
+                          </button>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -300,5 +455,12 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
         </Tabs>
       </DialogContent>
     </Dialog>
+
+    <DocumentViewDialog
+      document={viewingDoc}
+      open={!!viewingDoc}
+      onOpenChange={(o) => !o && setViewingDoc(null)}
+    />
+    </>
   );
 }

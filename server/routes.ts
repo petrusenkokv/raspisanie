@@ -19,6 +19,27 @@ function normalizePhone(input: string): string | null {
   return digits;
 }
 
+function calculateAgeYears(birthDate: string | null | undefined): number | null {
+  if (!birthDate) return null;
+  const b = new Date(birthDate);
+  if (isNaN(b.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - b.getFullYear();
+  const m = today.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+  return age;
+}
+
+async function recordConsents(userId: string, documentIds: string[] | undefined) {
+  if (!documentIds || !Array.isArray(documentIds)) return;
+  for (const docId of documentIds) {
+    const doc = await storage.getDocument(docId);
+    if (doc && doc.isActive) {
+      await storage.recordConsent(userId, docId);
+    }
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // Auth routes
@@ -41,7 +62,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { phone, firstName, lastName, password } = req.body;
+      const {
+        phone,
+        firstName,
+        lastName,
+        middleName,
+        birthDate,
+        password,
+        parentFullName,
+        parentPhone,
+        consentDocumentIds,
+      } = req.body;
+
       if (!firstName || !lastName) {
         return res.status(400).json({ message: "Заполните имя и фамилию" });
       }
@@ -57,15 +89,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Пользователь с таким телефоном уже существует" });
       }
 
+      // Check age and parent info
+      const age = calculateAgeYears(birthDate);
+      let normalizedParentPhone: string | null = null;
+      if (age !== null && age < 14) {
+        if (!parentFullName || !String(parentFullName).trim()) {
+          return res.status(400).json({ message: "Для ученика младше 14 лет укажите ФИО законного представителя" });
+        }
+        const np = normalizePhone(parentPhone);
+        if (!np) {
+          return res.status(400).json({ message: "Укажите корректный телефон законного представителя" });
+        }
+        normalizedParentPhone = np;
+      }
+
+      // Check that all active documents are accepted
+      const activeDocs = await storage.getDocuments(true);
+      const accepted = new Set<string>(Array.isArray(consentDocumentIds) ? consentDocumentIds : []);
+      const missing = activeDocs.filter(d => !accepted.has(d.id));
+      if (missing.length > 0) {
+        return res.status(400).json({
+          message: `Необходимо принять документы: ${missing.map(d => d.title).join(", ")}`
+        });
+      }
+
       const user = await storage.createUser({
         phone: normalized,
         firstName: String(firstName).trim(),
         lastName: String(lastName).trim(),
+        middleName: middleName ? String(middleName).trim() : null,
+        birthDate: birthDate || null,
+        parentFullName: normalizedParentPhone ? String(parentFullName).trim() : null,
+        parentPhone: normalizedParentPhone,
         role: "student",
         isVerified: true,
         password: String(password),
         mustChangePassword: false,
       } as any);
+
+      await recordConsents(user.id, Array.from(accepted));
 
       res.status(201).json({
         user: {
@@ -306,54 +368,198 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/trainer/students", async (req, res) => {
     try {
       const students = await storage.getStudentsList();
-      res.json(students.map(student => ({
-        id: student.id,
-        firstName: student.firstName,
-        lastName: student.lastName,
-        phone: student.phone,
-        createdAt: student.createdAt,
-        lastLogin: student.lastLogin
-      })));
+      res.json(students);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch students list" });
     }
   });
 
+  app.get("/api/trainer/students/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const student = await storage.getStudentWithConsents(id);
+      if (!student) return res.status(404).json({ message: "Ученик не найден" });
+      res.json(student);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось получить данные ученика" });
+    }
+  });
+
+  app.patch("/api/trainer/students/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      if (!user) return res.status(404).json({ message: "Ученик не найден" });
+      if (user.role === "trainer") return res.status(400).json({ message: "Нельзя редактировать тренера здесь" });
+
+      const { firstName, lastName, middleName, birthDate, trainerNotes, parentFullName, parentPhone } = req.body;
+      const updates: any = {};
+      if (firstName !== undefined) updates.firstName = String(firstName).trim();
+      if (lastName !== undefined) updates.lastName = lastName ? String(lastName).trim() : null;
+      if (middleName !== undefined) updates.middleName = middleName ? String(middleName).trim() : null;
+      if (birthDate !== undefined) updates.birthDate = birthDate || null;
+      if (trainerNotes !== undefined) updates.trainerNotes = trainerNotes ? String(trainerNotes) : null;
+      if (parentFullName !== undefined) updates.parentFullName = parentFullName ? String(parentFullName).trim() : null;
+      if (parentPhone !== undefined) {
+        if (parentPhone) {
+          const np = normalizePhone(parentPhone);
+          if (!np) return res.status(400).json({ message: "Некорректный телефон представителя" });
+          updates.parentPhone = np;
+        } else {
+          updates.parentPhone = null;
+        }
+      }
+      const updated = await storage.updateUser(id, updates);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось обновить данные ученика" });
+    }
+  });
+
   app.post("/api/trainer/students", async (req, res) => {
     try {
-      const { phone, firstName, lastName, password } = req.body;
+      const {
+        phone,
+        firstName,
+        lastName,
+        middleName,
+        birthDate,
+        password,
+        parentFullName,
+        parentPhone,
+        trainerNotes,
+        consentDocumentIds,
+      } = req.body;
+
       if (!phone || !firstName) {
         return res.status(400).json({ message: "Имя и телефон обязательны" });
       }
       const initialPassword = password && String(password).trim().length >= 4
         ? String(password).trim()
         : "12345";
-      let digits = String(phone).replace(/\D/g, "");
-      if (digits.length === 10) {
-        digits = "7" + digits;
-      } else if (digits.length === 11 && digits.startsWith("8")) {
-        digits = "7" + digits.slice(1);
-      }
-      if (digits.length !== 11 || !digits.startsWith("7")) {
+      const normalizedPhone = normalizePhone(phone);
+      if (!normalizedPhone) {
         return res.status(400).json({ message: "Некорректный номер телефона" });
       }
-      const normalizedPhone = digits;
       const existing = await storage.getUserByPhone(normalizedPhone);
       if (existing) {
         return res.status(400).json({ message: "Ученик с таким телефоном уже существует" });
       }
+
+      // Parent info if under 14
+      const age = calculateAgeYears(birthDate);
+      let normalizedParentPhone: string | null = null;
+      let parentName: string | null = null;
+      if (age !== null && age < 14) {
+        if (!parentFullName || !String(parentFullName).trim()) {
+          return res.status(400).json({ message: "Для ученика младше 14 лет укажите ФИО законного представителя" });
+        }
+        const np = normalizePhone(parentPhone);
+        if (!np) {
+          return res.status(400).json({ message: "Укажите корректный телефон законного представителя" });
+        }
+        normalizedParentPhone = np;
+        parentName = String(parentFullName).trim();
+      } else if (parentFullName || parentPhone) {
+        // Allow optional parent info even for older students
+        if (parentFullName) parentName = String(parentFullName).trim();
+        if (parentPhone) {
+          const np = normalizePhone(parentPhone);
+          if (np) normalizedParentPhone = np;
+        }
+      }
+
+      // Check that all active documents are accepted
+      const activeDocs = await storage.getDocuments(true);
+      const accepted = new Set<string>(Array.isArray(consentDocumentIds) ? consentDocumentIds : []);
+      const missing = activeDocs.filter(d => !accepted.has(d.id));
+      if (missing.length > 0) {
+        return res.status(400).json({
+          message: `Необходимо принять документы: ${missing.map(d => d.title).join(", ")}`
+        });
+      }
+
       const user = await storage.createUser({
         phone: normalizedPhone,
         firstName: String(firstName).trim(),
         lastName: lastName ? String(lastName).trim() : null,
+        middleName: middleName ? String(middleName).trim() : null,
+        birthDate: birthDate || null,
+        trainerNotes: trainerNotes ? String(trainerNotes) : null,
+        parentFullName: parentName,
+        parentPhone: normalizedParentPhone,
         role: "student",
         isVerified: true,
         password: initialPassword,
         mustChangePassword: true,
       } as any);
+
+      await recordConsents(user.id, Array.from(accepted));
+
       res.status(201).json(user);
     } catch (error) {
       res.status(500).json({ message: "Не удалось добавить ученика" });
+    }
+  });
+
+  // ----- Documents (consent forms) -----
+  app.get("/api/documents", async (_req, res) => {
+    try {
+      const docs = await storage.getDocuments(true);
+      res.json(docs);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось получить документы" });
+    }
+  });
+
+  app.get("/api/trainer/documents", async (_req, res) => {
+    try {
+      const docs = await storage.getDocuments(false);
+      res.json(docs);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось получить документы" });
+    }
+  });
+
+  app.post("/api/trainer/documents", async (req, res) => {
+    try {
+      const { title, content, isActive } = req.body;
+      if (!title || !content) {
+        return res.status(400).json({ message: "Укажите название и текст документа" });
+      }
+      const doc = await storage.createDocument({
+        title: String(title).trim(),
+        content: String(content),
+        isActive: isActive ?? true,
+      });
+      res.status(201).json(doc);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось создать документ" });
+    }
+  });
+
+  app.patch("/api/trainer/documents/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, content, isActive } = req.body;
+      const updates: Partial<{ title: string; content: string; isActive: boolean }> = {};
+      if (title !== undefined) updates.title = String(title).trim();
+      if (content !== undefined) updates.content = String(content);
+      if (isActive !== undefined) updates.isActive = !!isActive;
+      const doc = await storage.updateDocument(id, updates);
+      res.json(doc);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось обновить документ" });
+    }
+  });
+
+  app.delete("/api/trainer/documents/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteDocument(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось удалить документ" });
     }
   });
 
