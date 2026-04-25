@@ -3,9 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock } from "lucide-react";
 import { type TimeSlotWithBookings } from "@shared/schema";
 import { useGymStore } from "@/store/gym-store";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 interface TimeSlotProps {
@@ -19,7 +22,25 @@ interface TimeSlotProps {
 
 export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: TimeSlotProps) {
   const { currentUser, isTrainer } = useGymStore();
+  const { toast } = useToast();
   const [popoverOpen, setPopoverOpen] = useState(false);
+
+  const blockMutation = useMutation({
+    mutationFn: async (blocked: boolean) => {
+      const r = await apiRequest("PATCH", `/api/trainer/time-slots/${timeSlot.id}/block`, { blocked });
+      return r.json();
+    },
+    onSuccess: (data, blocked) => {
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      toast({
+        title: blocked ? "Слот заблокирован" : "Слот открыт",
+        description: blocked && data.cancelledCount > 0
+          ? `Отменено записей: ${data.cancelledCount}`
+          : undefined,
+      });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
 
   const isFull = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
@@ -191,18 +212,31 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
         </div>
       )}
 
-      {/* Trainer: Add student button */}
-      {isTrainer() && !isBlocked && !isFull && (
-        <div onClick={(e) => e.stopPropagation()}>
+      {/* Trainer: Add student + block buttons */}
+      {isTrainer() && !isBlocked && (
+        <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+          {!isFull && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full border-dashed text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+              onClick={() => onTrainerBook?.(timeSlot.id)}
+              data-testid={`button-trainer-add-${timeSlot.id}`}
+            >
+              <UserPlus className="h-3 w-3 mr-1" />
+              Записать ученика
+            </Button>
+          )}
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="w-full border-dashed text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-            onClick={() => onTrainerBook?.(timeSlot.id)}
-            data-testid={`button-trainer-add-${timeSlot.id}`}
+            className="w-full text-gray-600 hover:bg-gray-100"
+            onClick={() => blockMutation.mutate(true)}
+            disabled={blockMutation.isPending}
+            data-testid={`button-block-${timeSlot.id}`}
           >
-            <UserPlus className="h-3 w-3 mr-1" />
-            Записать ученика
+            <Lock className="h-3 w-3 mr-1" />
+            Заблокировать слот
           </Button>
         </div>
       )}
@@ -248,7 +282,15 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
       )}
 
       {isBlocked && isTrainer() && (
-        <Button variant="outline" size="sm" className="w-full" data-testid={`button-unblock-${timeSlot.id}`}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={(e) => { e.stopPropagation(); blockMutation.mutate(false); }}
+          disabled={blockMutation.isPending}
+          data-testid={`button-unblock-${timeSlot.id}`}
+        >
+          <Unlock className="h-3 w-3 mr-1" />
           Разблокировать
         </Button>
       )}

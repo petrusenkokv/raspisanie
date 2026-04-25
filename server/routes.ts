@@ -223,10 +223,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper: ensure recurring rules are materialized up to a given date
+  async function ensureMaterializedUntil(dateStr: string) {
+    try {
+      await storage.materializeRecurringBookings(dateStr);
+    } catch {
+      // ignore — non-fatal
+    }
+  }
+
   // Schedule routes
   app.get("/api/schedule/day/:date", async (req, res) => {
     try {
       const { date } = req.params;
+      await ensureMaterializedUntil(date);
       const schedule = await storage.getScheduleForDate(date);
       res.json(schedule);
     } catch (error) {
@@ -237,6 +247,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/schedule/week/:startDate", async (req, res) => {
     try {
       const { startDate } = req.params;
+      const end = new Date(startDate + "T00:00:00");
+      end.setDate(end.getDate() + 6);
+      await ensureMaterializedUntil(end.toISOString().split("T")[0]);
       const schedule = await storage.getScheduleForWeek(startDate);
       res.json(schedule);
     } catch (error) {
@@ -247,6 +260,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/schedule/month/:year/:month", async (req, res) => {
     try {
       const { year, month } = req.params;
+      const lastDay = new Date(parseInt(year), parseInt(month), 0);
+      await ensureMaterializedUntil(lastDay.toISOString().split("T")[0]);
       const schedule = await storage.getScheduleForMonth(parseInt(year), parseInt(month));
       res.json(schedule);
     } catch (error) {
@@ -616,6 +631,152 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(timeSlot);
     } catch (error) {
       res.status(500).json({ message: "Failed to update time slot" });
+    }
+  });
+
+  // ----- Slot blocking (trainer vacation / sick days) -----
+  async function notifyCancelled(cancelled: Array<{ studentId: string; id: string }>, reason: string) {
+    for (const b of cancelled) {
+      await storage.createNotification({
+        userId: b.studentId,
+        type: "booking_cancelled",
+        title: "Запись отменена",
+        message: reason,
+        relatedBookingId: b.id,
+      });
+    }
+  }
+
+  app.patch("/api/trainer/time-slots/:id/block", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { blocked } = req.body;
+      const result = await storage.blockSlot(id, !!blocked);
+      if (blocked) {
+        await notifyCancelled(result.cancelledBookings, "Тренер заблокировал это время. Запишитесь на другое.");
+      }
+      res.json({ slot: result.slot, cancelledCount: result.cancelledBookings.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось изменить слот" });
+    }
+  });
+
+  app.post("/api/trainer/block-day", async (req, res) => {
+    try {
+      const { date, blocked } = req.body;
+      if (!date) return res.status(400).json({ message: "Укажите дату" });
+      const result = await storage.blockDate(String(date), !!blocked);
+      if (blocked) {
+        await notifyCancelled(result.cancelledBookings, "Тренер закрыл этот день. Запишитесь на другой.");
+      }
+      res.json({ slotsCount: result.slots.length, cancelledCount: result.cancelledBookings.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось изменить день" });
+    }
+  });
+
+  app.post("/api/trainer/block-range", async (req, res) => {
+    try {
+      const { startDate, endDate, blocked } = req.body;
+      if (!startDate || !endDate) return res.status(400).json({ message: "Укажите начало и конец периода" });
+      if (String(startDate) > String(endDate)) {
+        return res.status(400).json({ message: "Начало периода должно быть не позже конца" });
+      }
+      const result = await storage.blockDateRange(String(startDate), String(endDate), !!blocked);
+      if (blocked) {
+        await notifyCancelled(result.cancelledBookings, "Тренер закрыл этот период. Запишитесь на другие даты.");
+      }
+      res.json({ slotsCount: result.slots.length, cancelledCount: result.cancelledBookings.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось изменить период" });
+    }
+  });
+
+  // ----- Recurring bookings -----
+  app.get("/api/trainer/recurring/:studentId", async (req, res) => {
+    try {
+      const { studentId } = req.params;
+      const rules = await storage.getRecurringBookingsByStudent(studentId);
+      res.json(rules);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить правила" });
+    }
+  });
+
+  app.post("/api/trainer/recurring", async (req, res) => {
+    try {
+      const { studentId, weekdays, hour, startDate, endDate, trainerId } = req.body;
+      if (!studentId) return res.status(400).json({ message: "Укажите ученика" });
+      if (!Array.isArray(weekdays) || weekdays.length === 0) {
+        return res.status(400).json({ message: "Выберите хотя бы один день недели" });
+      }
+      const wd = weekdays.map((n: any) => Number(n)).filter((n: number) => n >= 1 && n <= 7);
+      if (wd.length === 0) return res.status(400).json({ message: "Некорректные дни недели" });
+      const h = Number(hour);
+      if (!Number.isInteger(h) || h < 8 || h > 19) {
+        return res.status(400).json({ message: "Время должно быть от 08:00 до 19:00" });
+      }
+      if (!startDate) return res.status(400).json({ message: "Укажите дату начала" });
+      if (endDate && String(endDate) < String(startDate)) {
+        return res.status(400).json({ message: "Дата окончания не может быть раньше даты начала" });
+      }
+      const student = await storage.getUser(String(studentId));
+      if (!student || student.role !== "student") {
+        return res.status(404).json({ message: "Ученик не найден" });
+      }
+
+      const creator = trainerId ? await storage.getUser(String(trainerId)) : null;
+      const createdBy = creator?.id || studentId;
+
+      const rule = await storage.createRecurringBooking({
+        studentId,
+        weekdays: wd,
+        hour: h,
+        startDate: String(startDate),
+        endDate: endDate ? String(endDate) : null,
+        createdBy,
+      });
+
+      // Materialize 60 days ahead from today
+      const horizon = new Date();
+      horizon.setDate(horizon.getDate() + 60);
+      const horizonStr = horizon.toISOString().split("T")[0];
+      const result = await storage.materializeRecurringBookings(horizonStr);
+
+      // Notify student
+      await storage.createNotification({
+        userId: studentId,
+        type: "booking_confirmed",
+        title: "Постоянная запись добавлена",
+        message: `Тренер настроил для вас постоянную запись на ${String(h).padStart(2, "0")}:00`,
+        relatedBookingId: null as any,
+      });
+
+      res.status(201).json({ rule, materialized: result });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось создать постоянную запись" });
+    }
+  });
+
+  app.delete("/api/trainer/recurring/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rule = await storage.getRecurringBooking(id);
+      if (!rule) return res.status(404).json({ message: "Правило не найдено" });
+      const result = await storage.deleteRecurringBooking(id);
+      // Notify student about cancellations
+      if (result.cancelledCount > 0) {
+        await storage.createNotification({
+          userId: rule.studentId,
+          type: "booking_cancelled",
+          title: "Постоянная запись отменена",
+          message: `Тренер удалил постоянную запись. Отменено будущих занятий: ${result.cancelledCount}`,
+          relatedBookingId: null as any,
+        });
+      }
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось удалить правило" });
     }
   });
 

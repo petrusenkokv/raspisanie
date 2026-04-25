@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarHeader } from "@/components/gym/calendar-header";
 import { CalendarView } from "@/components/gym/calendar-view";
 import { AuthModal } from "@/components/gym/auth-modal";
 import { StudentsPanel } from "@/components/gym/students-panel";
 import { BookStudentDialog } from "@/components/gym/book-student-dialog";
 import { ChangePasswordDialog } from "@/components/gym/change-password-dialog";
+import { BlockPeriodDialog } from "@/components/gym/block-period-dialog";
 import { Button } from "@/components/ui/button";
 import { useGymStore } from "@/store/gym-store";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, UserPlus, KeyRound } from "lucide-react";
+import { Loader2, LogOut, UserPlus, KeyRound, Lock, Unlock, CalendarOff } from "lucide-react";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -18,17 +19,51 @@ export function GymSchedulePage() {
   const [trainerBookDialogOpen, setTrainerBookDialogOpen] = useState(false);
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<string | null>(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [blockPeriodOpen, setBlockPeriodOpen] = useState(false);
   const { 
     currentUser, 
     isAuthenticated, 
     currentView, 
     selectedDate, 
+    schedule,
     setSchedule, 
     setLoading,
+    isTrainer,
     logout
   } = useGymStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const localDate = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  const dayBlockedState = useMemo(() => {
+    if (currentView !== "day") return null;
+    const dateStr = localDate(selectedDate);
+    const day = schedule.find((s) => s.date === dateStr);
+    if (!day || day.timeSlots.length === 0) return null;
+    const allBlocked = day.timeSlots.every((s) => s.isBlocked);
+    return { allBlocked, dateStr };
+  }, [currentView, selectedDate, schedule]);
+
+  const blockDayMutation = useMutation({
+    mutationFn: async (vars: { date: string; blocked: boolean }) => {
+      const r = await apiRequest("POST", "/api/trainer/block-day", vars);
+      return r.json();
+    },
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      toast({
+        title: vars.blocked ? "День закрыт" : "День открыт",
+        description: vars.blocked && data.cancelledCount > 0 ? `Отменено записей: ${data.cancelledCount}` : undefined,
+      });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
 
   // Fetch schedule based on current view and selected date
   const { data: scheduleData, isLoading } = useQuery({
@@ -195,7 +230,33 @@ export function GymSchedulePage() {
             )}
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {isAuthenticated && isTrainer() && currentView === "day" && dayBlockedState && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => blockDayMutation.mutate({ date: dayBlockedState.dateStr, blocked: !dayBlockedState.allBlocked })}
+                disabled={blockDayMutation.isPending}
+                data-testid="button-block-day"
+              >
+                {dayBlockedState.allBlocked ? (
+                  <><Unlock className="h-4 w-4 mr-2" />Открыть день</>
+                ) : (
+                  <><Lock className="h-4 w-4 mr-2" />Закрыть день</>
+                )}
+              </Button>
+            )}
+            {isAuthenticated && isTrainer() && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBlockPeriodOpen(true)}
+                data-testid="button-vacation"
+              >
+                <CalendarOff className="h-4 w-4 mr-2" />
+                Отпуск / период
+              </Button>
+            )}
             {isAuthenticated ? (
               <>
                 <Button
@@ -277,6 +338,11 @@ export function GymSchedulePage() {
         open={changePasswordOpen || !!(currentUser as any)?.mustChangePassword}
         onOpenChange={setChangePasswordOpen}
         forced={!!(currentUser as any)?.mustChangePassword}
+      />
+
+      <BlockPeriodDialog
+        open={blockPeriodOpen}
+        onOpenChange={setBlockPeriodOpen}
       />
     </div>
   );

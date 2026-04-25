@@ -8,7 +8,10 @@ import { Button } from "@/components/ui/button";
 import { type TimeSlotWithBookings } from "@shared/schema";
 import { format, isSameDay } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Clock, Users, UserCheck, LogIn } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, Lock, Unlock } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface CalendarViewProps {
   onBook: (timeSlotId: string) => void;
@@ -244,6 +247,19 @@ interface WeekCellProps {
 
 function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: WeekCellProps) {
   const [open, setOpen] = useState(false);
+  const { toast } = useToast();
+  const blockMutation = useMutation({
+    mutationFn: async (blocked: boolean) => {
+      const r = await apiRequest("PATCH", `/api/trainer/time-slots/${timeSlot.id}/block`, { blocked });
+      return r.json();
+    },
+    onSuccess: (data, blocked) => {
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      toast({ title: blocked ? "Слот заблокирован" : "Слот открыт", description: blocked && data.cancelledCount > 0 ? `Отменено записей: ${data.cancelledCount}` : undefined });
+      setOpen(false);
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
 
   const confirmedBookings = timeSlot.bookings.filter((b) => b.status === "confirmed");
   const pendingBookings   = timeSlot.bookings.filter((b) => b.status === "pending");
@@ -286,6 +302,30 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   );
 
   if (isBlocked && !isTrainer) return cellContent;
+
+  // Trainer popover for blocked slot — allow unblocking
+  if (isBlocked && isTrainer) {
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>{cellContent}</PopoverTrigger>
+        <PopoverContent className="w-60 p-3" side="bottom" align="center">
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Слот {timeSlot.time} заблокирован</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => blockMutation.mutate(false)}
+              disabled={blockMutation.isPending}
+            >
+              <Unlock className="h-3 w-3 mr-1" />
+              Разблокировать
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -359,6 +399,16 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                 + Записать ученика
               </Button>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-gray-600"
+              onClick={() => blockMutation.mutate(true)}
+              disabled={blockMutation.isPending}
+            >
+              <Lock className="h-3 w-3 mr-1" />
+              Заблокировать слот
+            </Button>
           </div>
         )}
 

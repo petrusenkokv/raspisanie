@@ -13,7 +13,9 @@ import {
   type Document,
   type InsertDocument,
   type UserConsent,
-  type StudentWithConsents
+  type StudentWithConsents,
+  type RecurringBooking,
+  type InsertRecurringBooking,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -60,11 +62,46 @@ export interface IStorage {
   recordConsent(userId: string, documentId: string): Promise<UserConsent>;
   getStudentWithConsents(id: string): Promise<StudentWithConsents | undefined>;
 
+  // Recurring bookings
+  getRecurringBookingsByStudent(studentId: string): Promise<RecurringBooking[]>;
+  getRecurringBooking(id: string): Promise<RecurringBooking | undefined>;
+  createRecurringBooking(rule: InsertRecurringBooking): Promise<RecurringBooking>;
+  deleteRecurringBooking(id: string): Promise<{ cancelledCount: number }>;
+  materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }>;
+
+  // Slot blocking
+  blockSlot(timeSlotId: string, blocked: boolean): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }>;
+  blockDate(date: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }>;
+  blockDateRange(startDate: string, endDate: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }>;
+
   // Analytics
   getStudentsList(): Promise<User[]>;
   getScheduleForDate(date: string): Promise<DaySchedule>;
   getScheduleForWeek(startDate: string): Promise<DaySchedule[]>;
   getScheduleForMonth(year: number, month: number): Promise<DaySchedule[]>;
+}
+
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function isoWeekday(date: Date): number {
+  // Mon=1 .. Sun=7
+  const w = date.getDay();
+  return w === 0 ? 7 : w;
+}
+
+function eachDateInRange(startStr: string, endStr: string): Date[] {
+  const out: Date[] = [];
+  const start = new Date(startStr + "T00:00:00");
+  const end = new Date(endStr + "T00:00:00");
+  for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    out.push(new Date(d));
+  }
+  return out;
 }
 
 export class MemStorage implements IStorage {
@@ -74,6 +111,7 @@ export class MemStorage implements IStorage {
   private notifications: Map<string, Notification> = new Map();
   private documents: Map<string, Document> = new Map();
   private consents: Map<string, UserConsent> = new Map();
+  private recurringBookings: Map<string, RecurringBooking> = new Map();
 
   constructor() {
     this.seedData();
@@ -221,6 +259,12 @@ export class MemStorage implements IStorage {
     for (const [consentId, consent] of Array.from(this.consents.entries())) {
       if (consent.userId === id) {
         this.consents.delete(consentId);
+      }
+    }
+    // Remove recurring rules for this user
+    for (const [rid, rule] of Array.from(this.recurringBookings.entries())) {
+      if (rule.studentId === id) {
+        this.recurringBookings.delete(rid);
       }
     }
     this.users.delete(id);
@@ -435,13 +479,15 @@ export class MemStorage implements IStorage {
 
   async createBooking(insertBooking: InsertBooking): Promise<Booking> {
     const id = randomUUID();
+    const status = insertBooking.status || "pending";
     const booking: Booking = {
       ...insertBooking,
       id,
-      status: insertBooking.status || "pending",
+      status,
       notes: insertBooking.notes || null,
+      recurringBookingId: insertBooking.recurringBookingId || null,
       createdAt: new Date(),
-      confirmedAt: null,
+      confirmedAt: status === "confirmed" ? new Date() : null,
       cancelledAt: null
     };
     this.bookings.set(id, booking);
@@ -543,13 +589,181 @@ export class MemStorage implements IStorage {
     
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month - 1, day);
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = localDateStr(date);
       
       const schedule = await this.getScheduleForDate(dateStr);
       schedules.push(schedule);
     }
     
     return schedules;
+  }
+
+  // ----- Recurring bookings -----
+  private findSlot(date: string, hour: number): TimeSlot | undefined {
+    const time = `${String(hour).padStart(2, "0")}:00`;
+    return Array.from(this.timeSlots.values()).find(s => s.date === date && (s.time === time || s.time === time + ":00"));
+  }
+
+  private ensureSlot(date: string, hour: number): TimeSlot {
+    let slot = this.findSlot(date, hour);
+    if (!slot) {
+      const id = randomUUID();
+      slot = {
+        id,
+        date,
+        time: `${String(hour).padStart(2, "0")}:00`,
+        maxCapacity: 2,
+        isBlocked: false,
+        createdAt: new Date(),
+      };
+      this.timeSlots.set(id, slot);
+    }
+    return slot;
+  }
+
+  async getRecurringBookingsByStudent(studentId: string): Promise<RecurringBooking[]> {
+    return Array.from(this.recurringBookings.values())
+      .filter(r => r.studentId === studentId)
+      .sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
+  }
+
+  async getRecurringBooking(id: string): Promise<RecurringBooking | undefined> {
+    return this.recurringBookings.get(id);
+  }
+
+  async createRecurringBooking(rule: InsertRecurringBooking): Promise<RecurringBooking> {
+    const id = randomUUID();
+    const r: RecurringBooking = {
+      id,
+      studentId: rule.studentId,
+      weekdays: rule.weekdays,
+      hour: rule.hour,
+      startDate: rule.startDate,
+      endDate: rule.endDate ?? null,
+      createdBy: rule.createdBy,
+      createdAt: new Date(),
+    };
+    this.recurringBookings.set(id, r);
+    return r;
+  }
+
+  async deleteRecurringBooking(id: string): Promise<{ cancelledCount: number }> {
+    const rule = this.recurringBookings.get(id);
+    if (!rule) throw new Error("Recurring booking not found");
+    const today = localDateStr(new Date());
+    let cancelled = 0;
+    for (const [bid, booking] of Array.from(this.bookings.entries())) {
+      if (booking.recurringBookingId === id && booking.status !== "cancelled") {
+        const slot = this.timeSlots.get(booking.timeSlotId);
+        if (slot && slot.date >= today) {
+          this.bookings.set(bid, { ...booking, status: "cancelled", cancelledAt: new Date() });
+          cancelled++;
+        }
+      }
+    }
+    this.recurringBookings.delete(id);
+    return { cancelledCount: cancelled };
+  }
+
+  async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
+    let created = 0;
+    let skipped = 0;
+    const today = localDateStr(new Date());
+    const rules = Array.from(this.recurringBookings.values());
+    for (const rule of rules) {
+      const start = rule.startDate > today ? rule.startDate : today;
+      const end = rule.endDate && rule.endDate < untilDate ? rule.endDate : untilDate;
+      if (start > end) continue;
+      const dates = eachDateInRange(start, end);
+      for (const d of dates) {
+        const wd = isoWeekday(d);
+        if (!rule.weekdays.includes(wd)) continue;
+        const dateStr = localDateStr(d);
+        const slot = this.ensureSlot(dateStr, rule.hour);
+        if (slot.isBlocked) { skipped++; continue; }
+        // Already has a booking for this rule on this slot?
+        const existingForRule = Array.from(this.bookings.values()).find(b =>
+          b.recurringBookingId === rule.id && b.timeSlotId === slot.id && b.status !== "cancelled"
+        );
+        if (existingForRule) continue;
+        // Student already has a booking that day?
+        const studentSlotIdsThatDay = new Set(
+          Array.from(this.timeSlots.values()).filter(s => s.date === dateStr).map(s => s.id)
+        );
+        const studentBookedThatDay = Array.from(this.bookings.values()).find(b =>
+          b.studentId === rule.studentId && b.status !== "cancelled" && studentSlotIdsThatDay.has(b.timeSlotId)
+        );
+        if (studentBookedThatDay) { skipped++; continue; }
+        // Slot full?
+        const confirmed = Array.from(this.bookings.values()).filter(b =>
+          b.timeSlotId === slot.id && b.status === "confirmed"
+        );
+        if (confirmed.length >= slot.maxCapacity) { skipped++; continue; }
+        // Create confirmed booking
+        const bid = randomUUID();
+        this.bookings.set(bid, {
+          id: bid,
+          studentId: rule.studentId,
+          timeSlotId: slot.id,
+          status: "confirmed",
+          bookedBy: rule.createdBy,
+          notes: "Постоянная запись",
+          recurringBookingId: rule.id,
+          createdAt: new Date(),
+          confirmedAt: new Date(),
+          cancelledAt: null,
+        });
+        created++;
+      }
+    }
+    return { created, skipped };
+  }
+
+  // ----- Slot blocking -----
+  async blockSlot(timeSlotId: string, blocked: boolean): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }> {
+    const slot = this.timeSlots.get(timeSlotId);
+    if (!slot) throw new Error("Time slot not found");
+    const updated = { ...slot, isBlocked: blocked };
+    this.timeSlots.set(timeSlotId, updated);
+    const cancelled: Booking[] = [];
+    if (blocked) {
+      for (const [bid, b] of Array.from(this.bookings.entries())) {
+        if (b.timeSlotId === timeSlotId && b.status !== "cancelled") {
+          const c = { ...b, status: "cancelled" as const, cancelledAt: new Date() };
+          this.bookings.set(bid, c);
+          cancelled.push(c);
+        }
+      }
+    }
+    return { slot: updated, cancelledBookings: cancelled };
+  }
+
+  async blockDate(date: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
+    // Make sure all standard hours exist for this date
+    const hours = [8,9,10,11,12,13,14,15,16,17,18,19];
+    for (const h of hours) this.ensureSlot(date, h);
+
+    const slots = Array.from(this.timeSlots.values()).filter(s => s.date === date);
+    const updatedSlots: TimeSlot[] = [];
+    const cancelled: Booking[] = [];
+    for (const s of slots) {
+      const r = await this.blockSlot(s.id, blocked);
+      updatedSlots.push(r.slot);
+      cancelled.push(...r.cancelledBookings);
+    }
+    return { slots: updatedSlots, cancelledBookings: cancelled };
+  }
+
+  async blockDateRange(startDate: string, endDate: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
+    const dates = eachDateInRange(startDate, endDate).map(localDateStr);
+    const allSlots: TimeSlot[] = [];
+    const allCancelled: Booking[] = [];
+    for (const d of dates) {
+      const r = await this.blockDate(d, blocked);
+      allSlots.push(...r.slots);
+      allCancelled.push(...r.cancelledBookings);
+    }
+    return { slots: allSlots, cancelledBookings: allCancelled };
   }
 }
 
