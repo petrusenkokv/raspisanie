@@ -305,12 +305,16 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
 
   // Trainer popover for blocked slot — allow unblocking
   if (isBlocked && isTrainer) {
+    const reason = (timeSlot as any).blockReason as string | null | undefined;
+    const label = reason === "holiday" ? "праздник"
+                : reason === "template" ? "не рабочий час"
+                : "заблокирован";
     return (
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>{cellContent}</PopoverTrigger>
         <PopoverContent className="w-60 p-3" side="bottom" align="center">
           <div className="space-y-2">
-            <p className="text-sm font-medium">Слот {timeSlot.time} заблокирован</p>
+            <p className="text-sm font-medium">Слот {timeSlot.time} ({label})</p>
             <Button
               variant="outline"
               size="sm"
@@ -319,7 +323,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
               disabled={blockMutation.isPending}
             >
               <Unlock className="h-3 w-3 mr-1" />
-              Разблокировать
+              Открыть
             </Button>
           </div>
         </PopoverContent>

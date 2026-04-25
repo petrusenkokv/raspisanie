@@ -758,6 +758,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ----- Schedule settings (public read, trainer-only write) -----
+  app.get("/api/schedule/settings", async (_req, res) => {
+    try {
+      const settings = await storage.getTrainerSettings();
+      const holidays = await storage.getHolidays();
+      res.json({ ...settings, holidays });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить настройки" });
+    }
+  });
+
+  app.patch("/api/trainer/settings", async (req, res) => {
+    try {
+      const { trainerSettingsUpdateSchema } = await import("@shared/schema");
+      const parsed = trainerSettingsUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Неверные настройки" });
+      }
+      const result = await storage.updateTrainerSettings(parsed.data);
+      // Notify cancelled bookings: we don't have per-booking detail here, but cancelledCount is enough for response
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось сохранить настройки" });
+    }
+  });
+
+  // ----- Holidays -----
+  app.get("/api/trainer/holidays", async (_req, res) => {
+    try {
+      const list = await storage.getHolidays();
+      res.json(list);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить праздники" });
+    }
+  });
+
+  app.post("/api/trainer/holidays", async (req, res) => {
+    try {
+      const { date, name, trainerId } = req.body;
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+        return res.status(400).json({ message: "Укажите дату в формате YYYY-MM-DD" });
+      }
+      const result = await storage.addHoliday(String(date), name ?? null, trainerId ?? null);
+      // Cancelled count is exposed; cancelled bookings already have status=cancelled
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || "Не удалось добавить праздник" });
+    }
+  });
+
+  app.delete("/api/trainer/holidays/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.removeHoliday(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || "Не удалось удалить праздник" });
+    }
+  });
+
   app.delete("/api/trainer/recurring/:id", async (req, res) => {
     try {
       const { id } = req.params;

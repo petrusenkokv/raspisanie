@@ -44,6 +44,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
 
   const isFull = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
+  const blockReason = (timeSlot as any).blockReason as string | null | undefined;
+  const blockedLabel =
+    blockReason === "holiday" ? "Праздник" :
+    blockReason === "template" ? "Не работает" :
+    "Заблокировано";
 
   const userBooking = timeSlot.bookings.find(
     booking => booking.studentId === currentUser?.id && booking.status !== "cancelled"
@@ -104,7 +109,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
             variant={status === "available" ? "default" : "secondary"}
             className="text-xs"
           >
-            {status === "blocked" ? "Заблокировано" :
+            {status === "blocked" ? blockedLabel :
              status === "full" ? "Занято" :
              status === "almost-full" ? "Почти полно" : "Свободно"}
           </Badge>

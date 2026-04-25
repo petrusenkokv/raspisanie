@@ -47,6 +47,27 @@ export const timeSlots = pgTable("time_slots", {
   time: time("time").notNull(), // HH:MM format (08:00, 09:00, etc.)
   maxCapacity: integer("max_capacity").notNull().default(2), // max 2 students per hour
   isBlocked: boolean("is_blocked").notNull().default(false), // trainer can block slots
+  blockReason: text("block_reason"), // null | 'manual' | 'template' | 'holiday'
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Trainer's schedule settings (singleton)
+// weeklyTemplate: { "1": { enabled: true, startHour: 8, endHour: 20 }, ..., "7": {...} }
+// Mon=1, Sun=7 (ISO weekday). endHour is exclusive (so 20 means last open slot is 19:00).
+export const trainerSettings = pgTable("trainer_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  dayStartHour: integer("day_start_hour").notNull().default(8),
+  dayEndHour: integer("day_end_hour").notNull().default(20),
+  weeklyTemplate: text("weekly_template").notNull().default("{}"), // JSON string
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Holidays — single-day shutdowns
+export const holidays = pgTable("holidays", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: text("date").notNull().unique(), // YYYY-MM-DD
+  name: text("name"),
+  createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -127,6 +148,32 @@ export const insertRecurringBookingSchema = createInsertSchema(recurringBookings
   createdAt: true,
 });
 
+export const insertHolidaySchema = createInsertSchema(holidays).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Per-weekday template entry validation
+export const weekdayTemplateEntrySchema = z.object({
+  enabled: z.boolean(),
+  startHour: z.number().int().min(0).max(23),
+  endHour: z.number().int().min(1).max(24),
+}).refine(d => d.endHour > d.startHour, { message: "endHour must be greater than startHour" });
+
+export const weeklyTemplateSchema = z.record(
+  z.enum(["1", "2", "3", "4", "5", "6", "7"]),
+  weekdayTemplateEntrySchema,
+);
+
+export const trainerSettingsUpdateSchema = z.object({
+  dayStartHour: z.number().int().min(0).max(23).optional(),
+  dayEndHour: z.number().int().min(1).max(24).optional(),
+  weeklyTemplate: weeklyTemplateSchema.optional(),
+}).refine(
+  (d) => d.dayStartHour === undefined || d.dayEndHour === undefined || d.dayEndHour > d.dayStartHour,
+  { message: "dayEndHour must be greater than dayStartHour" },
+);
+
 // Validation schemas
 export const phoneVerificationSchema = z.object({
   phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format"),
@@ -165,6 +212,18 @@ export type UserConsent = typeof userConsents.$inferSelect;
 export type StudentWithConsents = User & { consents: (UserConsent & { document: Document })[] };
 export type InsertRecurringBooking = z.infer<typeof insertRecurringBookingSchema>;
 export type RecurringBooking = typeof recurringBookings.$inferSelect;
+export type Holiday = typeof holidays.$inferSelect;
+export type InsertHoliday = z.infer<typeof insertHolidaySchema>;
+export type WeekdayTemplateEntry = z.infer<typeof weekdayTemplateEntrySchema>;
+export type WeeklyTemplate = Partial<Record<"1" | "2" | "3" | "4" | "5" | "6" | "7", WeekdayTemplateEntry>>;
+export type TrainerSettings = {
+  id: string;
+  dayStartHour: number;
+  dayEndHour: number;
+  weeklyTemplate: WeeklyTemplate;
+  updatedAt: Date | null;
+};
+export type TrainerSettingsUpdate = z.infer<typeof trainerSettingsUpdateSchema>;
 
 // Extended types for API responses
 export type TimeSlotWithBookings = TimeSlot & {

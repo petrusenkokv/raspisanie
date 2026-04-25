@@ -6,12 +6,13 @@ import { StudentsPanel } from "@/components/gym/students-panel";
 import { BookStudentDialog } from "@/components/gym/book-student-dialog";
 import { ChangePasswordDialog } from "@/components/gym/change-password-dialog";
 import { BlockPeriodDialog } from "@/components/gym/block-period-dialog";
+import { ScheduleSettingsDialog } from "@/components/gym/schedule-settings-dialog";
 import { Button } from "@/components/ui/button";
 import { useGymStore } from "@/store/gym-store";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, UserPlus, KeyRound, Lock, Unlock, CalendarOff } from "lucide-react";
+import { Loader2, LogOut, UserPlus, KeyRound, Lock, Unlock, CalendarOff, Settings } from "lucide-react";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -20,6 +21,7 @@ export function GymSchedulePage() {
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<string | null>(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [blockPeriodOpen, setBlockPeriodOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { 
     currentUser, 
     isAuthenticated, 
@@ -257,6 +259,17 @@ export function GymSchedulePage() {
                 Отпуск / период
               </Button>
             )}
+            {isAuthenticated && isTrainer() && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSettingsOpen(true)}
+                data-testid="button-schedule-settings"
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Настройки расписания
+              </Button>
+            )}
             {isAuthenticated ? (
               <>
                 <Button
@@ -343,6 +356,11 @@ export function GymSchedulePage() {
       <BlockPeriodDialog
         open={blockPeriodOpen}
         onOpenChange={setBlockPeriodOpen}
+      />
+
+      <ScheduleSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
       />
     </div>
   );

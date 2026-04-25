@@ -16,6 +16,10 @@ import {
   type StudentWithConsents,
   type RecurringBooking,
   type InsertRecurringBooking,
+  type Holiday,
+  type TrainerSettings,
+  type TrainerSettingsUpdate,
+  type WeeklyTemplate,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -74,6 +78,15 @@ export interface IStorage {
   blockDate(date: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }>;
   blockDateRange(startDate: string, endDate: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }>;
 
+  // Trainer schedule settings
+  getTrainerSettings(): Promise<TrainerSettings>;
+  updateTrainerSettings(updates: TrainerSettingsUpdate): Promise<{ settings: TrainerSettings; cancelledCount: number }>;
+
+  // Holidays
+  getHolidays(): Promise<Holiday[]>;
+  addHoliday(date: string, name?: string | null, createdBy?: string | null): Promise<{ holiday: Holiday; cancelledCount: number }>;
+  removeHoliday(id: string): Promise<void>;
+
   // Analytics
   getStudentsList(): Promise<User[]>;
   getScheduleForDate(date: string): Promise<DaySchedule>;
@@ -104,6 +117,22 @@ function eachDateInRange(startStr: string, endStr: string): Date[] {
   return out;
 }
 
+function defaultWeeklyTemplate(startHour: number, endHour: number): WeeklyTemplate {
+  const out: WeeklyTemplate = {};
+  for (let i = 1; i <= 7; i++) {
+    out[String(i) as "1"] = { enabled: true, startHour, endHour };
+  }
+  return out;
+}
+
+// Returns true if a slot at this date+hour should be open (working) per the template.
+function isWorkingHour(template: WeeklyTemplate, date: string, hour: number): boolean {
+  const wd = isoWeekday(new Date(date + "T00:00:00"));
+  const entry = template[String(wd) as "1"];
+  if (!entry || !entry.enabled) return false;
+  return hour >= entry.startHour && hour < entry.endHour;
+}
+
 export class MemStorage implements IStorage {
   private users: Map<string, User> = new Map();
   private timeSlots: Map<string, TimeSlot> = new Map();
@@ -112,6 +141,14 @@ export class MemStorage implements IStorage {
   private documents: Map<string, Document> = new Map();
   private consents: Map<string, UserConsent> = new Map();
   private recurringBookings: Map<string, RecurringBooking> = new Map();
+  private holidays: Map<string, Holiday> = new Map();
+  private settings: TrainerSettings = {
+    id: randomUUID(),
+    dayStartHour: 8,
+    dayEndHour: 20,
+    weeklyTemplate: defaultWeeklyTemplate(8, 20),
+    updatedAt: new Date(),
+  };
 
   constructor() {
     this.seedData();
@@ -172,20 +209,26 @@ export class MemStorage implements IStorage {
   }
 
   private generateTimeSlotsForDate(date: string) {
-    const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]; // 8:00 - 19:00
-    
-    hours.forEach(hour => {
+    const startH = this.settings.dayStartHour;
+    const endH = this.settings.dayEndHour;
+    const isHoliday = Array.from(this.holidays.values()).some(h => h.date === date);
+    for (let hour = startH; hour < endH; hour++) {
       const timeSlotId = randomUUID();
+      const working = isWorkingHour(this.settings.weeklyTemplate, date, hour);
+      let blockReason: string | null = null;
+      if (isHoliday) blockReason = "holiday";
+      else if (!working) blockReason = "template";
       const timeSlot: TimeSlot = {
         id: timeSlotId,
-        date: date,
-        time: `${hour.toString().padStart(2, '0')}:00`,
+        date,
+        time: `${hour.toString().padStart(2, "0")}:00`,
         maxCapacity: 2,
-        isBlocked: false,
-        createdAt: new Date()
+        isBlocked: blockReason !== null,
+        blockReason,
+        createdAt: new Date(),
       };
       this.timeSlots.set(timeSlotId, timeSlot);
-    });
+    }
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -608,12 +651,18 @@ export class MemStorage implements IStorage {
     let slot = this.findSlot(date, hour);
     if (!slot) {
       const id = randomUUID();
+      const isHoliday = Array.from(this.holidays.values()).some(h => h.date === date);
+      const working = isWorkingHour(this.settings.weeklyTemplate, date, hour);
+      let blockReason: string | null = null;
+      if (isHoliday) blockReason = "holiday";
+      else if (!working) blockReason = "template";
       slot = {
         id,
         date,
         time: `${String(hour).padStart(2, "0")}:00`,
         maxCapacity: 2,
-        isBlocked: false,
+        isBlocked: blockReason !== null,
+        blockReason,
         createdAt: new Date(),
       };
       this.timeSlots.set(id, slot);
@@ -723,7 +772,11 @@ export class MemStorage implements IStorage {
   async blockSlot(timeSlotId: string, blocked: boolean): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }> {
     const slot = this.timeSlots.get(timeSlotId);
     if (!slot) throw new Error("Time slot not found");
-    const updated = { ...slot, isBlocked: blocked };
+    const updated: TimeSlot = {
+      ...slot,
+      isBlocked: blocked,
+      blockReason: blocked ? "manual" : null,
+    };
     this.timeSlots.set(timeSlotId, updated);
     const cancelled: Booking[] = [];
     if (blocked) {
@@ -738,10 +791,24 @@ export class MemStorage implements IStorage {
     return { slot: updated, cancelledBookings: cancelled };
   }
 
+  // Cancel any non-cancelled bookings on the given slot, returning the cancelled list.
+  private cancelBookingsOnSlot(timeSlotId: string): Booking[] {
+    const cancelled: Booking[] = [];
+    for (const [bid, b] of Array.from(this.bookings.entries())) {
+      if (b.timeSlotId === timeSlotId && b.status !== "cancelled") {
+        const c = { ...b, status: "cancelled" as const, cancelledAt: new Date() };
+        this.bookings.set(bid, c);
+        cancelled.push(c);
+      }
+    }
+    return cancelled;
+  }
+
   async blockDate(date: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
-    // Make sure all standard hours exist for this date
-    const hours = [8,9,10,11,12,13,14,15,16,17,18,19];
-    for (const h of hours) this.ensureSlot(date, h);
+    // Make sure all hours within current settings exist for this date
+    for (let h = this.settings.dayStartHour; h < this.settings.dayEndHour; h++) {
+      this.ensureSlot(date, h);
+    }
 
     const slots = Array.from(this.timeSlots.values()).filter(s => s.date === date);
     const updatedSlots: TimeSlot[] = [];
@@ -764,6 +831,145 @@ export class MemStorage implements IStorage {
       allCancelled.push(...r.cancelledBookings);
     }
     return { slots: allSlots, cancelledBookings: allCancelled };
+  }
+
+  // ----- Trainer schedule settings -----
+  async getTrainerSettings(): Promise<TrainerSettings> {
+    return { ...this.settings, weeklyTemplate: { ...this.settings.weeklyTemplate } };
+  }
+
+  async updateTrainerSettings(updates: TrainerSettingsUpdate): Promise<{ settings: TrainerSettings; cancelledCount: number }> {
+    const next: TrainerSettings = {
+      ...this.settings,
+      dayStartHour: updates.dayStartHour ?? this.settings.dayStartHour,
+      dayEndHour: updates.dayEndHour ?? this.settings.dayEndHour,
+      weeklyTemplate: updates.weeklyTemplate
+        ? { ...this.settings.weeklyTemplate, ...updates.weeklyTemplate }
+        : this.settings.weeklyTemplate,
+      updatedAt: new Date(),
+    };
+    if (next.dayEndHour <= next.dayStartHour) {
+      throw new Error("Окончание рабочего дня должно быть позже начала");
+    }
+    this.settings = next;
+
+    // Re-apply template to all today/future slots, only for slots blocked by 'template' or 'null'.
+    // Manual blocks and holiday blocks are preserved.
+    const today = localDateStr(new Date());
+    const cancelled: Booking[] = [];
+
+    // Identify all dates currently in the system (today or later)
+    const futureDates = new Set<string>();
+    for (const s of Array.from(this.timeSlots.values())) {
+      if (s.date >= today) futureDates.add(s.date);
+    }
+
+    for (const date of Array.from(futureDates)) {
+      // 1) Drop existing slots that are now outside the [dayStartHour, dayEndHour) window
+      //    AND have no active bookings AND are not manually blocked.
+      const slotsForDay = Array.from(this.timeSlots.values()).filter(s => s.date === date);
+      for (const s of slotsForDay) {
+        const hour = parseInt(s.time.slice(0, 2), 10);
+        const inRange = hour >= next.dayStartHour && hour < next.dayEndHour;
+        if (!inRange) {
+          const hasActive = Array.from(this.bookings.values()).some(b =>
+            b.timeSlotId === s.id && b.status !== "cancelled"
+          );
+          if (!hasActive && s.blockReason !== "manual") {
+            this.timeSlots.delete(s.id);
+          } else {
+            // Out of range but has active bookings or manually blocked — leave it,
+            // but ensure it's blocked so no new bookings sneak in.
+            if (!s.isBlocked) {
+              const c = this.cancelBookingsOnSlot(s.id);
+              cancelled.push(...c);
+              this.timeSlots.set(s.id, { ...s, isBlocked: true, blockReason: "template" });
+            }
+          }
+        }
+      }
+
+      // 2) Ensure all hours in the new range exist
+      for (let h = next.dayStartHour; h < next.dayEndHour; h++) {
+        this.ensureSlot(date, h);
+      }
+
+      // 3) Re-apply template-derived blocks
+      const isHolidayDay = Array.from(this.holidays.values()).some(h => h.date === date);
+      const refreshed = Array.from(this.timeSlots.values()).filter(s => s.date === date);
+      for (const s of refreshed) {
+        if (s.blockReason === "manual" || s.blockReason === "holiday") continue;
+        const hour = parseInt(s.time.slice(0, 2), 10);
+        const working = !isHolidayDay && isWorkingHour(next.weeklyTemplate, date, hour);
+        if (working) {
+          if (s.isBlocked) {
+            this.timeSlots.set(s.id, { ...s, isBlocked: false, blockReason: null });
+          }
+        } else {
+          if (!s.isBlocked) {
+            const c = this.cancelBookingsOnSlot(s.id);
+            cancelled.push(...c);
+          }
+          this.timeSlots.set(s.id, { ...s, isBlocked: true, blockReason: isHolidayDay ? "holiday" : "template" });
+        }
+      }
+    }
+
+    return { settings: await this.getTrainerSettings(), cancelledCount: cancelled.length };
+  }
+
+  // ----- Holidays -----
+  async getHolidays(): Promise<Holiday[]> {
+    return Array.from(this.holidays.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  async addHoliday(date: string, name?: string | null, createdBy?: string | null): Promise<{ holiday: Holiday; cancelledCount: number }> {
+    // Reject duplicates
+    const existing = Array.from(this.holidays.values()).find(h => h.date === date);
+    if (existing) throw new Error("Этот день уже отмечен как праздничный");
+
+    const id = randomUUID();
+    const holiday: Holiday = {
+      id,
+      date,
+      name: name ?? null,
+      createdBy: createdBy ?? null,
+      createdAt: new Date(),
+    };
+    this.holidays.set(id, holiday);
+
+    // Block all slots that day with reason 'holiday'
+    for (let h = this.settings.dayStartHour; h < this.settings.dayEndHour; h++) {
+      this.ensureSlot(date, h);
+    }
+    const cancelled: Booking[] = [];
+    const slots = Array.from(this.timeSlots.values()).filter(s => s.date === date);
+    for (const s of slots) {
+      if (s.blockReason === "manual") continue; // preserve manual
+      if (!s.isBlocked) {
+        cancelled.push(...this.cancelBookingsOnSlot(s.id));
+      }
+      this.timeSlots.set(s.id, { ...s, isBlocked: true, blockReason: "holiday" });
+    }
+    return { holiday, cancelledCount: cancelled.length };
+  }
+
+  async removeHoliday(id: string): Promise<void> {
+    const h = this.holidays.get(id);
+    if (!h) throw new Error("Праздник не найден");
+    this.holidays.delete(id);
+    // Re-evaluate slots that day: unblock those that are working per template
+    const slots = Array.from(this.timeSlots.values()).filter(s => s.date === h.date);
+    for (const s of slots) {
+      if (s.blockReason !== "holiday") continue;
+      const hour = parseInt(s.time.slice(0, 2), 10);
+      const working = isWorkingHour(this.settings.weeklyTemplate, h.date, hour);
+      if (working) {
+        this.timeSlots.set(s.id, { ...s, isBlocked: false, blockReason: null });
+      } else {
+        this.timeSlots.set(s.id, { ...s, isBlocked: true, blockReason: "template" });
+      }
+    }
   }
 }
 
