@@ -309,13 +309,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Create notification for trainer
-      const trainers = Array.from(await storage.getStudentsList()).filter(u => u.role === "trainer");
-      if (trainers.length > 0) {
+      const trainer = await storage.getTrainer();
+      if (trainer) {
+        const studentName = (await storage.getUser(studentId))?.firstName ?? "Ученик";
+        const slot = await storage.getTimeSlotById(timeSlotId);
+        const when = slot ? `${slot.date} в ${slot.time}` : "выбранное время";
         await storage.createNotification({
-          userId: trainers[0].id,
+          userId: trainer.id,
           type: "booking_request",
           title: "Новая заявка на запись",
-          message: `Ученик хочет записаться на занятие`,
+          message: `${studentName} хочет записаться: ${when}`,
           relatedBookingId: booking.id
         });
       }
@@ -852,6 +855,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.put("/api/notifications/user/:userId/read-all", async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const count = await storage.markAllNotificationsAsRead(userId);
+      res.json({ success: true, count });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to mark notifications as read" });
     }
   });
 

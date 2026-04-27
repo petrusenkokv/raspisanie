@@ -7,6 +7,7 @@ import { BookStudentDialog } from "@/components/gym/book-student-dialog";
 import { ChangePasswordDialog } from "@/components/gym/change-password-dialog";
 import { BlockPeriodDialog } from "@/components/gym/block-period-dialog";
 import { ScheduleSettingsDialog } from "@/components/gym/schedule-settings-dialog";
+import { NotificationsPopover } from "@/components/gym/notifications-popover";
 import { Button } from "@/components/ui/button";
 import { useGymStore } from "@/store/gym-store";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -269,6 +270,9 @@ export function GymSchedulePage() {
                 <Settings className="h-4 w-4 mr-2" />
                 Настройки расписания
               </Button>
+            )}
+            {isAuthenticated && currentUser && (
+              <NotificationsPopover userId={currentUser.id} />
             )}
             {isAuthenticated ? (
               <>

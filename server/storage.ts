@@ -53,6 +53,7 @@ export interface IStorage {
   getNotificationsByUser(userId: string): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string): Promise<Notification>;
+  markAllNotificationsAsRead(userId: string): Promise<number>;
   
   // Documents (consent forms managed by trainer)
   getDocuments(activeOnly?: boolean): Promise<Document[]>;
@@ -89,6 +90,7 @@ export interface IStorage {
 
   // Analytics
   getStudentsList(): Promise<User[]>;
+  getTrainer(): Promise<User | undefined>;
   getScheduleForDate(date: string): Promise<DaySchedule>;
   getScheduleForWeek(startDate: string): Promise<DaySchedule[]>;
   getScheduleForMonth(year: number, month: number): Promise<DaySchedule[]>;
@@ -599,8 +601,23 @@ export class MemStorage implements IStorage {
     return readNotification;
   }
 
+  async markAllNotificationsAsRead(userId: string): Promise<number> {
+    let count = 0;
+    for (const [id, notif] of Array.from(this.notifications.entries())) {
+      if (notif.userId === userId && !notif.isRead) {
+        this.notifications.set(id, { ...notif, isRead: true });
+        count++;
+      }
+    }
+    return count;
+  }
+
   async getStudentsList(): Promise<User[]> {
     return Array.from(this.users.values()).filter(user => user.role === "student");
+  }
+
+  async getTrainer(): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => user.role === "trainer");
   }
 
   async getScheduleForDate(date: string): Promise<DaySchedule> {
