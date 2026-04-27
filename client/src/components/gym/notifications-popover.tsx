@@ -189,7 +189,8 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
     mutationFn: async (vars: { bookingId: string; notificationId: string }) => {
       const res = await apiRequest(
         "PUT",
-        `/api/bookings/${vars.bookingId}/cancel`
+        `/api/bookings/${vars.bookingId}/cancel`,
+        { cancelledBy: userId }
       );
       const data = await res.json();
       await apiRequest("PUT", `/api/notifications/${vars.notificationId}/read`);

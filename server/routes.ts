@@ -354,17 +354,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/bookings/:id/cancel", async (req, res) => {
     try {
       const { id } = req.params;
+      const { cancelledBy } = req.body ?? {};
       const booking = await storage.cancelBooking(id);
-      
-      // Create notification for student
-      await storage.createNotification({
-        userId: booking.studentId,
-        type: "booking_cancelled",
-        title: "Запись отменена",
-        message: "Ваша запись на тренировку была отменена",
-        relatedBookingId: booking.id
-      });
-      
+
+      const slot = await storage.getTimeSlotById(booking.timeSlotId);
+      const when = slot ? `${slot.date} в ${slot.time}` : "тренировку";
+      const canceller = cancelledBy ? await storage.getUser(cancelledBy) : null;
+      const cancelledByStudent =
+        !!canceller && canceller.role === "student" &&
+        canceller.id === booking.studentId;
+
+      if (cancelledByStudent) {
+        // Student cancelled their own booking → notify the trainer
+        const trainer = await storage.getTrainer();
+        if (trainer) {
+          const studentName = canceller.firstName ?? "Ученик";
+          const studentLast = canceller.lastName ? ` ${canceller.lastName}` : "";
+          await storage.createNotification({
+            userId: trainer.id,
+            type: "booking_cancelled",
+            title: "Ученик отменил запись",
+            message: `${studentName}${studentLast} отменил(а) запись: ${when}`,
+            relatedBookingId: booking.id,
+          });
+        }
+      } else {
+        // Trainer (or system) cancelled → notify the student
+        await storage.createNotification({
+          userId: booking.studentId,
+          type: "booking_cancelled",
+          title: "Запись отменена",
+          message: `Ваша запись (${when}) отменена тренером`,
+          relatedBookingId: booking.id,
+        });
+      }
+
       const bookingWithDetails = await storage.getBooking(booking.id);
       res.json(bookingWithDetails);
     } catch (error) {
