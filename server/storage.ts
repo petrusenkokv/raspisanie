@@ -628,6 +628,10 @@ export class MemStorage implements IStorage {
   }
 
   async getScheduleForDate(date: string): Promise<DaySchedule> {
+    const hasAny = Array.from(this.timeSlots.values()).some(s => s.date === date);
+    if (!hasAny) {
+      this.generateTimeSlotsForDate(date);
+    }
     const timeSlots = await this.getTimeSlotsByDate(date);
     return {
       date,
