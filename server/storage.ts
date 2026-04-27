@@ -430,6 +430,7 @@ export class MemStorage implements IStorage {
       id,
       maxCapacity: insertTimeSlot.maxCapacity || 2,
       isBlocked: insertTimeSlot.isBlocked || false,
+      blockReason: insertTimeSlot.blockReason ?? null,
       createdAt: new Date()
     };
     this.timeSlots.set(id, timeSlot);
