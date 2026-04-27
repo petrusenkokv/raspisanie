@@ -9,7 +9,14 @@ import { type TimeSlotWithBookings } from "@shared/schema";
 import { format, isSameDay } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Clock, Users, UserCheck, LogIn, Lock, Unlock } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+
+function minutesUntilSlotMoscow(date: string, time: string): number {
+  const t = time.length >= 5 ? time.slice(0, 5) : time;
+  const ms = new Date(`${date}T${t}:00+03:00`).getTime();
+  if (isNaN(ms)) return Number.POSITIVE_INFINITY;
+  return Math.round((ms - Date.now()) / 60_000);
+}
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -248,6 +255,20 @@ interface WeekCellProps {
 function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: WeekCellProps) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
+  const { data: scheduleSettings } = useQuery<{
+    bookingDeadlineHours?: number;
+    cancelDeadlineHours?: number;
+  }>({
+    queryKey: ["/api/schedule/settings"],
+    staleTime: 60_000,
+  });
+  const bookingDeadlineH = scheduleSettings?.bookingDeadlineHours ?? 0;
+  const cancelDeadlineH = scheduleSettings?.cancelDeadlineHours ?? 0;
+  const minutesUntil = minutesUntilSlotMoscow(timeSlot.date, timeSlot.time);
+  const tooLateToBook =
+    !isTrainer && bookingDeadlineH > 0 && minutesUntil <= bookingDeadlineH * 60;
+  const tooLateToCancel =
+    !isTrainer && cancelDeadlineH > 0 && minutesUntil <= cancelDeadlineH * 60;
   const blockMutation = useMutation({
     mutationFn: async (blocked: boolean) => {
       const r = await apiRequest("PATCH", `/api/trainer/time-slots/${timeSlot.id}/block`, { blocked });
@@ -444,9 +465,16 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                   size="sm"
                   className="w-full text-red-600"
                   onClick={() => { onCancel(userBooking.id); setOpen(false); }}
+                  disabled={tooLateToCancel}
+                  title={tooLateToCancel ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.` : undefined}
                 >
-                  Отменить запись
+                  {tooLateToCancel ? "Отмена закрыта" : "Отменить запись"}
                 </Button>
+                {tooLateToCancel && (
+                  <p className="text-xs text-gray-500 text-center">
+                    Свяжитесь с тренером для отмены.
+                  </p>
+                )}
               </>
             ) : isFull ? (
               <p className="text-sm text-gray-500 text-center py-1">Мест не осталось</p>
@@ -459,8 +487,10 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                   className="w-full"
                   size="sm"
                   onClick={() => { onBook(timeSlot.id); setOpen(false); }}
+                  disabled={tooLateToBook}
+                  title={tooLateToBook ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.` : undefined}
                 >
-                  Записаться
+                  {tooLateToBook ? "Запись закрыта" : "Записаться"}
                 </Button>
               </>
             )}

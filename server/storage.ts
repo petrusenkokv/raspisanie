@@ -150,6 +150,8 @@ export class MemStorage implements IStorage {
     dayStartHour: 8,
     dayEndHour: 20,
     weeklyTemplate: defaultWeeklyTemplate(8, 20),
+    cancelDeadlineHours: 3,
+    bookingDeadlineHours: 1,
     updatedAt: new Date(),
   };
 
@@ -869,6 +871,10 @@ export class MemStorage implements IStorage {
       weeklyTemplate: updates.weeklyTemplate
         ? { ...this.settings.weeklyTemplate, ...updates.weeklyTemplate }
         : this.settings.weeklyTemplate,
+      cancelDeadlineHours:
+        updates.cancelDeadlineHours ?? this.settings.cancelDeadlineHours,
+      bookingDeadlineHours:
+        updates.bookingDeadlineHours ?? this.settings.bookingDeadlineHours,
       updatedAt: new Date(),
     };
     if (next.dayEndHour <= next.dayStartHour) {

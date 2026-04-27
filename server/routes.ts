@@ -299,6 +299,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (confirmedBookings.length >= 2) {
         return res.status(400).json({ message: "Time slot is fully booked" });
       }
+
+      // Enforce booking deadline (student-self-booking only)
+      const settings = await storage.getTrainerSettings();
+      if (settings.bookingDeadlineHours > 0) {
+        const startIso = `${targetSlot.date}T${targetSlot.time.slice(0, 5)}:00+03:00`;
+        const minutesUntil = Math.round(
+          (new Date(startIso).getTime() - Date.now()) / 60_000
+        );
+        if (minutesUntil <= settings.bookingDeadlineHours * 60) {
+          const h = settings.bookingDeadlineHours;
+          return res.status(400).json({
+            message: `Запись закрыта менее чем за ${h} ${h === 1 ? "час" : "ч."} до тренировки`,
+          });
+        }
+      }
       
       const booking = await storage.createBooking({
         studentId,
@@ -355,14 +370,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { cancelledBy } = req.body ?? {};
+
+      const existing = await storage.getBooking(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Запись не найдена" });
+      }
+
+      // Enforce cancel deadline only for student-self-cancellations
+      const canceller = cancelledBy ? await storage.getUser(cancelledBy) : null;
+      const cancelledByStudent =
+        !!canceller && canceller.role === "student" &&
+        canceller.id === existing.studentId;
+
+      if (cancelledByStudent) {
+        const settings = await storage.getTrainerSettings();
+        if (settings.cancelDeadlineHours > 0) {
+          const startIso = `${existing.timeSlot.date}T${existing.timeSlot.time.slice(0, 5)}:00+03:00`;
+          const minutesUntil = Math.round(
+            (new Date(startIso).getTime() - Date.now()) / 60_000
+          );
+          if (minutesUntil <= settings.cancelDeadlineHours * 60) {
+            const h = settings.cancelDeadlineHours;
+            return res.status(400).json({
+              message: `Отмена записи закрыта менее чем за ${h} ${h === 1 ? "час" : "ч."} до тренировки. Свяжитесь с тренером.`,
+            });
+          }
+        }
+      }
+
       const booking = await storage.cancelBooking(id);
 
       const slot = await storage.getTimeSlotById(booking.timeSlotId);
       const when = slot ? `${slot.date} в ${slot.time}` : "тренировку";
-      const canceller = cancelledBy ? await storage.getUser(cancelledBy) : null;
-      const cancelledByStudent =
-        !!canceller && canceller.role === "student" &&
-        canceller.id === booking.studentId;
 
       if (cancelledByStudent) {
         // Student cancelled their own booking → notify the trainer

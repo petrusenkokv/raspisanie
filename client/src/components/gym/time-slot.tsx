@@ -6,10 +6,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock } from "lucide-react";
 import { type TimeSlotWithBookings } from "@shared/schema";
 import { useGymStore } from "@/store/gym-store";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+
+function minutesUntilSlotMoscow(date: string, time: string): number {
+  const t = time.length >= 5 ? time.slice(0, 5) : time;
+  const ms = new Date(`${date}T${t}:00+03:00`).getTime();
+  if (isNaN(ms)) return Number.POSITIVE_INFINITY;
+  return Math.round((ms - Date.now()) / 60_000);
+}
 
 interface TimeSlotProps {
   timeSlot: TimeSlotWithBookings;
@@ -24,6 +31,21 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const { currentUser, isTrainer } = useGymStore();
   const { toast } = useToast();
   const [popoverOpen, setPopoverOpen] = useState(false);
+
+  const { data: scheduleSettings } = useQuery<{
+    bookingDeadlineHours?: number;
+    cancelDeadlineHours?: number;
+  }>({
+    queryKey: ["/api/schedule/settings"],
+    staleTime: 60_000,
+  });
+  const bookingDeadlineH = scheduleSettings?.bookingDeadlineHours ?? 0;
+  const cancelDeadlineH = scheduleSettings?.cancelDeadlineHours ?? 0;
+  const minutesUntil = minutesUntilSlotMoscow(timeSlot.date, timeSlot.time);
+  const tooLateToBook =
+    !isTrainer() && bookingDeadlineH > 0 && minutesUntil <= bookingDeadlineH * 60;
+  const tooLateToCancel =
+    !isTrainer() && cancelDeadlineH > 0 && minutesUntil <= cancelDeadlineH * 60;
 
   const blockMutation = useMutation({
     mutationFn: async (blocked: boolean) => {
@@ -266,6 +288,8 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                 size="sm"
                 onClick={() => onCancel(userBooking.id)}
                 className="text-red-600 hover:text-red-700"
+                disabled={tooLateToCancel}
+                title={tooLateToCancel ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.` : undefined}
                 data-testid={`button-cancel-${timeSlot.id}`}
               >
                 Отменить
@@ -277,9 +301,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                 onClick={() => onBook(timeSlot.id)}
                 className="flex-1"
                 size="sm"
+                disabled={tooLateToBook}
+                title={tooLateToBook ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.` : undefined}
                 data-testid={`button-book-${timeSlot.id}`}
               >
-                Записаться
+                {tooLateToBook ? "Запись закрыта" : "Записаться"}
               </Button>
             )
           )}

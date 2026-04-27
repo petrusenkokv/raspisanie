@@ -169,6 +169,10 @@ export const trainerSettingsUpdateSchema = z.object({
   dayStartHour: z.number().int().min(0).max(23).optional(),
   dayEndHour: z.number().int().min(1).max(24).optional(),
   weeklyTemplate: weeklyTemplateSchema.optional(),
+  // Hours before training when student can no longer cancel (0 = no restriction)
+  cancelDeadlineHours: z.number().int().min(0).max(168).optional(),
+  // Hours before training when student can no longer book (0 = no restriction)
+  bookingDeadlineHours: z.number().int().min(0).max(168).optional(),
 }).refine(
   (d) => d.dayStartHour === undefined || d.dayEndHour === undefined || d.dayEndHour > d.dayStartHour,
   { message: "dayEndHour must be greater than dayStartHour" },
@@ -221,6 +225,8 @@ export type TrainerSettings = {
   dayStartHour: number;
   dayEndHour: number;
   weeklyTemplate: WeeklyTemplate;
+  cancelDeadlineHours: number;
+  bookingDeadlineHours: number;
   updatedAt: Date | null;
 };
 export type TrainerSettingsUpdate = z.infer<typeof trainerSettingsUpdateSchema>;

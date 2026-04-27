@@ -39,6 +39,8 @@ type SettingsResponse = {
   dayStartHour: number;
   dayEndHour: number;
   weeklyTemplate: WeeklyTemplate;
+  cancelDeadlineHours: number;
+  bookingDeadlineHours: number;
   holidays: Holiday[];
 };
 
@@ -63,6 +65,8 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
   const [dayStart, setDayStart] = useState(8);
   const [dayEnd, setDayEnd] = useState(20);
   const [template, setTemplate] = useState<WeeklyTemplate>({});
+  const [cancelDeadline, setCancelDeadline] = useState(3);
+  const [bookingDeadline, setBookingDeadline] = useState(1);
   const [newHolidayDate, setNewHolidayDate] = useState<string>(todayLocalStr());
   const [newHolidayName, setNewHolidayName] = useState<string>("");
 
@@ -70,6 +74,8 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
     if (data) {
       setDayStart(data.dayStartHour);
       setDayEnd(data.dayEndHour);
+      setCancelDeadline(data.cancelDeadlineHours ?? 0);
+      setBookingDeadline(data.bookingDeadlineHours ?? 0);
       // Fill in any missing weekdays with default working values
       const next: WeeklyTemplate = { ...data.weeklyTemplate };
       for (let i = 1; i <= 7; i++) {
@@ -172,13 +178,16 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
           </div>
         ) : (
           <Tabs defaultValue="hours" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="hours" data-testid="tab-hours">
                 <Clock className="h-4 w-4 mr-1" />
                 Часы
               </TabsTrigger>
               <TabsTrigger value="week" data-testid="tab-week">
                 Неделя
+              </TabsTrigger>
+              <TabsTrigger value="limits" data-testid="tab-limits">
+                Ограничения
               </TabsTrigger>
               <TabsTrigger value="holidays" data-testid="tab-holidays">
                 <CalendarOff className="h-4 w-4 mr-1" />
@@ -300,6 +309,66 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
               <p className="text-xs text-gray-500">
                 Существующие записи в часы, которые становятся нерабочими, будут отменены.
               </p>
+            </TabsContent>
+
+            {/* Limits tab — booking & cancel deadlines */}
+            <TabsContent value="limits" className="space-y-4 pt-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Запретить ученикам записываться или отменять запись слишком близко к началу тренировки.
+                Установите 0, чтобы убрать ограничение.
+              </p>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <Label>Закрыть запись за (часов до тренировки)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={168}
+                    value={bookingDeadline}
+                    onChange={(e) =>
+                      setBookingDeadline(Math.max(0, Math.min(168, Number(e.target.value) || 0)))
+                    }
+                    data-testid="input-booking-deadline"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {bookingDeadline === 0
+                      ? "Записаться можно вплоть до начала тренировки."
+                      : `Ученик не сможет записаться, если до тренировки осталось ${bookingDeadline} ч. или меньше.`}
+                  </p>
+                </div>
+                <div>
+                  <Label>Закрыть отмену за (часов до тренировки)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={168}
+                    value={cancelDeadline}
+                    onChange={(e) =>
+                      setCancelDeadline(Math.max(0, Math.min(168, Number(e.target.value) || 0)))
+                    }
+                    data-testid="input-cancel-deadline"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {cancelDeadline === 0
+                      ? "Ученик может отменить запись в любое время."
+                      : `Ученик не сможет отменить запись, если до тренировки осталось ${cancelDeadline} ч. или меньше. Тренер всегда может отменить.`}
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() =>
+                  saveSettings.mutate({
+                    bookingDeadlineHours: bookingDeadline,
+                    cancelDeadlineHours: cancelDeadline,
+                  })
+                }
+                disabled={saveSettings.isPending}
+                className="w-full"
+                data-testid="button-save-limits"
+              >
+                {saveSettings.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Сохранить ограничения
+              </Button>
             </TabsContent>
 
             {/* Holidays tab */}
