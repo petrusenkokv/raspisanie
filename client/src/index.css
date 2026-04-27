@@ -100,37 +100,3 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
-
-.workflow-node {
-  position: relative;
-  background: white;
-  border: 2px solid hsl(var(--border));
-  border-radius: var(--radius);
-  padding: 16px;
-  min-width: 200px;
-  cursor: move;
-}
-
-.workflow-node:hover {
-  border-color: hsl(var(--primary));
-  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.15);
-}
-
-.connection-line {
-  stroke: hsl(var(--muted-foreground));
-  stroke-width: 2;
-  fill: none;
-  marker-end: url(#arrowhead);
-}
-
-.app-integration-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: hsl(var(--secondary));
-  border-radius: calc(var(--radius) - 2px);
-  font-size: 14px;
-  font-weight: 500;
-  color: hsl(var(--secondary-foreground));
-}

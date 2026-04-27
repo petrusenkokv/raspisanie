@@ -1,71 +1,60 @@
-# FlowCraft - Workflow Automation Platform
+# Расписание тренировок
 
 ## Overview
 
-FlowCraft is a comprehensive workflow automation platform that enables users to create, manage, and execute automated workflows through a visual node-based interface. The application allows users to connect various third-party services and applications to build powerful automation sequences without coding. It features a modern React frontend with TypeScript, an Express.js backend, and PostgreSQL database for data persistence.
+Веб-приложение для управления расписанием тренировок в зале: студенты записываются на свободные слоты, тренер ведёт расписание, карточки учеников и согласия на обработку документов.
 
 ## User Preferences
 
-Preferred communication style: Simple, everyday language.
+Preferred communication style: Simple, everyday language (Russian).
 
 ## System Architecture
 
-### Frontend Architecture
-The frontend is built using React 18 with TypeScript and follows a modern component-based architecture:
+### Frontend
+- React 18 + TypeScript, сборка через Vite
+- UI: shadcn/ui поверх Radix UI, TailwindCSS
+- Маршрутизация: wouter (одна страница `/` — `GymSchedulePage`, всё остальное → `NotFound`)
+- Состояние: Zustand (`store/gym-store.ts`)
+- Серверные данные: TanStack Query
+- Формы: React Hook Form + Zod
 
-- **Framework**: React with TypeScript and Vite for fast development and building
-- **UI Components**: Utilizes shadcn/ui component library built on Radix UI primitives for consistent, accessible design
-- **Styling**: TailwindCSS with CSS variables for theming and responsive design
-- **State Management**: Zustand for global state management with separate stores for workflows, templates, and user data
-- **Routing**: Wouter for lightweight client-side routing
-- **Data Fetching**: TanStack Query (React Query) for server state management, caching, and API calls
-- **Forms**: React Hook Form with Zod validation for type-safe form handling
+### Backend
+- Express.js + TypeScript
+- REST API в `server/routes.ts`
+- In-memory хранилище в `server/storage.ts` (интерфейс `IStorage` + `MemStorage`)
+- Валидация запросов через Zod-схемы из `@shared/schema`
 
-### Backend Architecture
-The backend follows a RESTful API design pattern with Express.js:
+### Структура клиента
+- `client/src/pages/` — `gym-schedule.tsx`, `not-found.tsx`
+- `client/src/components/gym/` — модалки и виджеты расписания (календарь, слоты, авторизация, панель учеников, документы и т. д.)
+- `client/src/components/ui/` — компоненты shadcn
+- `client/src/store/gym-store.ts` — глобальное состояние приложения
+- `client/src/lib/queryClient.ts` — настроенный TanStack Query + `apiRequest`
 
-- **Framework**: Express.js with TypeScript for type safety
-- **API Design**: RESTful endpoints for workflows, templates, integrations, and analytics
-- **Middleware**: Custom logging middleware for API request/response tracking
-- **Error Handling**: Centralized error handling with proper HTTP status codes
-- **Validation**: Zod schema validation for request data integrity
+### Данные
+- `shared/schema.ts` — таблицы `users`, `bookings`, `timeSlots`, `documents`, `userConsents`, `scheduleSettings` и Zod-схемы к ним
+- Drizzle ORM (типы), но рантайм использует in-memory `MemStorage`
 
-### Data Storage Solutions
-- **Database**: PostgreSQL as the primary database with Drizzle ORM for type-safe database operations
-- **Database Provider**: Neon serverless PostgreSQL for scalable cloud database hosting
-- **Schema Management**: Drizzle Kit for database migrations and schema management
-- **Connection**: @neondatabase/serverless for optimized serverless database connections
+### Ключевые фичи
+- День / неделя / месяц в расписании
+- Запись на слот с лимитом мест
+- Авторизация по телефону (демо-код в логах сервера)
+- Карточки учеников: ФИО, дата рождения, заметки тренера, законный представитель для младше 14
+- Документы и согласия: тренер управляет списком, ученик принимает при регистрации
+- Блокировка периодов и настройки расписания тренером
 
-### Authentication and Authorization
-The application uses a simplified authentication system:
-- **User Management**: Basic user model with username/password authentication
-- **Session Management**: Session-based authentication (implementation indicated by session-related dependencies)
-- **Authorization**: User-scoped data access for workflows, integrations, and analytics
+### Учётные данные тренера
+- Тренер создаётся при первом запуске; вход — через модалку «Войти», далее доступна панель учеников и настройки
 
-### External Dependencies
-- **Node.js Runtime**: ESM modules with TypeScript compilation
-- **Build System**: Vite for frontend bundling and esbuild for backend compilation
-- **Development Tools**: Replit-specific plugins for development environment integration
-- **UI Framework**: Comprehensive Radix UI component suite for accessible interface components
-- **Date Handling**: date-fns for date manipulation and formatting
-- **Validation**: Zod for runtime type checking and schema validation
-- **HTTP Client**: Native fetch API with custom wrapper functions for API requests
+## Endpoints (основное)
+- `POST /api/auth/send-verification`, `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/change-password`
+- `GET /api/schedule/day/:date`, `GET /api/schedule/week/:date`, `GET /api/schedule/month/:date`
+- `POST /api/bookings`, `DELETE /api/bookings/:id`
+- `GET /api/documents`
+- `GET|POST|PATCH|DELETE /api/trainer/documents`
+- `GET|PATCH /api/trainer/students/:id`
+- `POST /api/trainer/block`, `DELETE /api/trainer/block/:id`
+- `GET|PATCH /api/trainer/schedule-settings`
 
-### Key Features
-- **Visual Workflow Builder**: Drag-and-drop interface for creating workflow nodes and connections
-- **Template System**: Pre-built workflow templates for common automation scenarios
-- **Integration Hub**: Connect and manage third-party application integrations
-- **Analytics Dashboard**: Real-time metrics and performance tracking for workflows
-- **Brand Customization**: User-specific theming and branding options
-- **Mobile Responsive**: Adaptive design that works across desktop and mobile devices
-
-### Student Profile & Consent Documents (gym scheduling)
-- Extended user fields: `middleName`, `birthDate`, `trainerNotes`, `parentFullName`, `parentPhone`.
-- Auto-required parent (legal representative) info when student age < 14.
-- `documents` table stores trainer-managed consent forms (default seeded: правила ТБ, разрешение на фото/видео).
-- `userConsents` table stores per-user accepted documents with timestamps.
-- Endpoints: `GET /api/documents` (active), `GET|POST|PATCH|DELETE /api/trainer/documents`, `GET|PATCH /api/trainer/students/:id`.
-- Registration (self & trainer-add) requires accepting all active documents.
-- Trainer can view/edit student card and manage documents via the Students panel.
-
-The architecture prioritizes type safety, developer experience, and scalability while maintaining a clean separation of concerns between frontend and backend systems.
+## Запуск
+- Workflow `Start application` запускает `npm run dev` (Express + Vite на одном порту 5000).
