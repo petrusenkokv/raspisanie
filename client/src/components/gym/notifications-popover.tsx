@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Bell, Check, CheckCheck, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,46 @@ import type { Notification } from "@shared/schema";
 interface Props {
   userId: string;
   isTrainer: boolean;
+}
+
+function playChime() {
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    const tones = [880, 1320];
+    tones.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const start = now + i * 0.15;
+      const stop = start + 0.18;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.15, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, stop);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(stop + 0.05);
+    });
+    setTimeout(() => ctx.close().catch(() => {}), 800);
+  } catch {
+    /* ignore */
+  }
+}
+
+function showBrowserNotification(title: string, body: string) {
+  try {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (window.Notification.permission !== "granted") return;
+    new window.Notification(title, { body, tag: "gym-booking-request" });
+  } catch {
+    /* ignore */
+  }
 }
 
 const TYPE_DOT: Record<string, string> = {
@@ -42,11 +83,50 @@ function formatTime(value: Date | string | null): string {
 export function NotificationsPopover({ userId, isTrainer }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const seenIdsRef = useRef<Set<string> | null>(null);
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications", userId],
     refetchInterval: 15000,
   });
+
+  // Ask for browser-notifications permission once for trainer
+  useEffect(() => {
+    if (!isTrainer) return;
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (window.Notification.permission === "default") {
+      window.Notification.requestPermission().catch(() => {});
+    }
+  }, [isTrainer]);
+
+  // Detect new booking requests since last poll → chime + browser notification
+  useEffect(() => {
+    if (!isTrainer) return;
+
+    // First load: prime the seen set without firing alerts
+    if (seenIdsRef.current === null) {
+      seenIdsRef.current = new Set(notifications.map((n) => n.id));
+      return;
+    }
+
+    const seen = seenIdsRef.current;
+    const fresh = notifications.filter(
+      (n) => !seen.has(n.id) && n.type === "booking_request" && !n.isRead
+    );
+
+    notifications.forEach((n) => seen.add(n.id));
+
+    if (fresh.length > 0) {
+      playChime();
+      const first = fresh[0];
+      const body =
+        fresh.length === 1
+          ? first.message
+          : `${first.message} (и ещё ${fresh.length - 1})`;
+      showBrowserNotification(first.title, body);
+      toast({ title: first.title, description: body });
+    }
+  }, [notifications, isTrainer, toast]);
 
   const sorted = [...notifications].sort(
     (a, b) =>
