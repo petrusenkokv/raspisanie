@@ -272,7 +272,10 @@ export function GymSchedulePage() {
               </Button>
             )}
             {isAuthenticated && currentUser && (
-              <NotificationsPopover userId={currentUser.id} />
+              <NotificationsPopover
+                userId={currentUser.id}
+                isTrainer={isTrainer()}
+              />
             )}
             {isAuthenticated ? (
               <>
