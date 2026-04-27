@@ -44,6 +44,7 @@ export interface IStorage {
   getBooking(id: string): Promise<BookingWithDetails | undefined>;
   getBookingsByStudent(studentId: string): Promise<BookingWithDetails[]>;
   getBookingsByTimeSlot(timeSlotId: string): Promise<BookingWithDetails[]>;
+  listActiveBookings(): Promise<Booking[]>;
   createBooking(booking: InsertBooking): Promise<Booking>;
   updateBooking(id: string, updates: Partial<Booking>): Promise<Booking>;
   confirmBooking(id: string): Promise<Booking>;
@@ -496,6 +497,10 @@ export class MemStorage implements IStorage {
     );
 
     return bookingsWithDetails.filter(Boolean) as BookingWithDetails[];
+  }
+
+  async listActiveBookings(): Promise<Booking[]> {
+    return Array.from(this.bookings.values()).filter(b => b.status !== "cancelled");
   }
 
   async getBookingsByTimeSlot(timeSlotId: string): Promise<BookingWithDetails[]> {

@@ -48,11 +48,11 @@ function playChime() {
   }
 }
 
-function showBrowserNotification(title: string, body: string) {
+function showBrowserNotification(title: string, body: string, tag = "gym-app") {
   try {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (window.Notification.permission !== "granted") return;
-    new window.Notification(title, { body, tag: "gym-booking-request" });
+    new window.Notification(title, { body, tag });
   } catch {
     /* ignore */
   }
@@ -62,6 +62,7 @@ const TYPE_DOT: Record<string, string> = {
   booking_request: "bg-blue-500",
   booking_confirmed: "bg-green-500",
   booking_cancelled: "bg-red-500",
+  training_reminder: "bg-amber-500",
 };
 
 function formatTime(value: Date | string | null): string {
@@ -90,19 +91,16 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
     refetchInterval: 15000,
   });
 
-  // Ask for browser-notifications permission once for trainer
+  // Ask for browser-notifications permission once (trainer + students)
   useEffect(() => {
-    if (!isTrainer) return;
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (window.Notification.permission === "default") {
       window.Notification.requestPermission().catch(() => {});
     }
-  }, [isTrainer]);
+  }, []);
 
-  // Detect new booking requests since last poll → chime + browser notification
+  // Detect new alerts since last poll → chime + browser notification + toast
   useEffect(() => {
-    if (!isTrainer) return;
-
     // First load: prime the seen set without firing alerts
     if (seenIdsRef.current === null) {
       seenIdsRef.current = new Set(notifications.map((n) => n.id));
@@ -110,8 +108,12 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
     }
 
     const seen = seenIdsRef.current;
+    const alertTypes = isTrainer
+      ? new Set(["booking_request", "booking_cancelled"])
+      : new Set(["training_reminder", "booking_confirmed", "booking_cancelled"]);
+
     const fresh = notifications.filter(
-      (n) => !seen.has(n.id) && n.type === "booking_request" && !n.isRead
+      (n) => !seen.has(n.id) && alertTypes.has(n.type) && !n.isRead
     );
 
     notifications.forEach((n) => seen.add(n.id));
@@ -123,7 +125,7 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
         fresh.length === 1
           ? first.message
           : `${first.message} (и ещё ${fresh.length - 1})`;
-      showBrowserNotification(first.title, body);
+      showBrowserNotification(first.title, body, `gym-${first.type}`);
       toast({ title: first.title, description: body });
     }
   }, [notifications, isTrainer, toast]);
