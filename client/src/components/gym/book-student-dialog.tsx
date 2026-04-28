@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,10 +8,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useGymStore } from "@/store/gym-store";
 import { useToast } from "@/hooks/use-toast";
-import { type User } from "@shared/schema";
+import { type User, type TimeSlotWithBookings } from "@shared/schema";
 import { Calendar, UserCheck, Loader2, Search } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+
+function todayLocalStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 interface BookStudentDialogProps {
   open: boolean;
@@ -33,8 +38,16 @@ export function BookStudentDialog({
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
-  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedDate, setSelectedDate] = useState<string>(todayLocalStr());
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState(preselectedTimeSlotId || "");
+
+  // Reset date to today when the dialog opens (so it doesn't keep stale state)
+  useEffect(() => {
+    if (open && !preselectedTimeSlotId) {
+      setSelectedDate(todayLocalStr());
+      setSelectedTimeSlotId("");
+    }
+  }, [open, preselectedTimeSlotId]);
 
   const { data: students = [] } = useQuery<User[]>({
     queryKey: ["/api/trainer/students"],
@@ -72,7 +85,7 @@ export function BookStudentDialog({
   const handleClose = () => {
     setSearchQuery("");
     setSelectedStudentId("");
-    setSelectedDate("");
+    setSelectedDate(todayLocalStr());
     setSelectedTimeSlotId(preselectedTimeSlotId || "");
     onOpenChange(false);
   };
@@ -85,15 +98,24 @@ export function BookStudentDialog({
     }
   };
 
-  // Available dates from schedule (with free spots)
-  const availableDates = schedule
-    .filter(day => day.timeSlots.some((ts: any) => ts.availableSpots > 0 && !ts.isBlocked))
-    .map(day => day.date);
+  // Fetch slots for the chosen date directly from the server, so the trainer
+  // can pick any future date — not only what's currently visible in the schedule.
+  const { data: dayData, isLoading: dayLoading } = useQuery<{
+    date: string;
+    timeSlots: TimeSlotWithBookings[];
+  }>({
+    queryKey: ["schedule", "day", selectedDate],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/schedule/day/${selectedDate}`);
+      return res.json();
+    },
+    enabled: open && !preselectedTimeSlotId && !!selectedDate,
+    staleTime: 0,
+  });
 
-  const availableSlots = selectedDate
-    ? (schedule.find(day => day.date === selectedDate)?.timeSlots || [])
-        .filter((ts: any) => ts.availableSpots > 0 && !ts.isBlocked)
-    : [];
+  const availableSlots = (dayData?.timeSlots || []).filter(
+    (ts) => ts.availableSpots > 0 && !ts.isBlocked
+  );
 
   const filteredStudents = students.filter(s => {
     const q = searchQuery.toLowerCase();
@@ -179,26 +201,23 @@ export function BookStudentDialog({
           ) : (
             <>
               <div className="space-y-2">
-                <Label>Дата</Label>
-                <Select
+                <Label htmlFor="book-date">Дата</Label>
+                <Input
+                  id="book-date"
+                  type="date"
                   value={selectedDate}
-                  onValueChange={(v) => { setSelectedDate(v); setSelectedTimeSlotId(""); }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите дату..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableDates.length === 0 ? (
-                      <SelectItem value="none" disabled>Нет доступных дат</SelectItem>
-                    ) : (
-                      availableDates.map((date: string) => (
-                        <SelectItem key={date} value={date}>
-                          {format(new Date(date + "T00:00:00"), "d MMMM yyyy (EEEE)", { locale: ru })}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                  min={todayLocalStr()}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value);
+                    setSelectedTimeSlotId("");
+                  }}
+                  data-testid="input-book-date"
+                />
+                {selectedDate && (
+                  <p className="text-xs text-gray-500">
+                    {format(new Date(selectedDate + "T00:00:00"), "d MMMM yyyy (EEEE)", { locale: ru })}
+                  </p>
+                )}
               </div>
 
               {selectedDate && (
@@ -206,14 +225,28 @@ export function BookStudentDialog({
                   <Label>Время</Label>
                   <Select value={selectedTimeSlotId} onValueChange={setSelectedTimeSlotId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Выберите время..." />
+                      <SelectValue
+                        placeholder={
+                          dayLoading
+                            ? "Загружаем..."
+                            : availableSlots.length === 0
+                            ? "Нет свободных слотов"
+                            : "Выберите время..."
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableSlots.map((ts: any) => (
-                        <SelectItem key={ts.id} value={ts.id}>
-                          {ts.time} — свободно мест: {ts.availableSpots}
+                      {availableSlots.length === 0 ? (
+                        <SelectItem value="none" disabled>
+                          {dayLoading ? "Загружаем..." : "Нет свободных слотов в этот день"}
                         </SelectItem>
-                      ))}
+                      ) : (
+                        availableSlots.map((ts) => (
+                          <SelectItem key={ts.id} value={ts.id}>
+                            {ts.time} — свободно мест: {ts.availableSpots}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
