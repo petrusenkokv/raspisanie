@@ -11,6 +11,20 @@ function slotStartTime(date: string, time: string): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+function moscowDateString(d: Date): string {
+  // Moscow is fixed UTC+3 (no DST). Shift and read the UTC calendar date.
+  return new Date(d.getTime() + 3 * 60 * 60_000).toISOString().slice(0, 10);
+}
+
+function dayPrefix(slotDate: string, now: Date): "today" | "tomorrow" | "other" {
+  const today = moscowDateString(now);
+  const tomorrowMs = now.getTime() + 24 * 60 * 60_000;
+  const tomorrow = moscowDateString(new Date(tomorrowMs));
+  if (slotDate === today) return "today";
+  if (slotDate === tomorrow) return "tomorrow";
+  return "other";
+}
+
 function formatHuman(date: string, time: string): string {
   return `${date} в ${time}`;
 }
@@ -30,17 +44,25 @@ async function tick() {
       if (minutesUntil <= 0) continue;
 
       const when = formatHuman(slot.date, slot.time.slice(0, 5));
+      const prefix = dayPrefix(slot.date, new Date(now));
+      const timeOnly = slot.time.slice(0, 5);
 
       if (
         minutesUntil > 60 &&
         minutesUntil <= 1440 &&
         !sent24h.has(booking.id)
       ) {
+        const message =
+          prefix === "today"
+            ? `Сегодня у вас тренировка в ${timeOnly}`
+            : prefix === "tomorrow"
+            ? `Завтра у вас тренировка в ${timeOnly}`
+            : `Скоро тренировка: ${when}`;
         await storage.createNotification({
           userId: booking.studentId,
           type: "training_reminder",
           title: "Напоминание о тренировке",
-          message: `Завтра у вас тренировка: ${when}`,
+          message,
           relatedBookingId: booking.id,
         });
         sent24h.add(booking.id);
