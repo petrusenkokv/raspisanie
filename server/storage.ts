@@ -133,7 +133,11 @@ function isWorkingHour(template: WeeklyTemplate, date: string, hour: number): bo
   const wd = isoWeekday(new Date(date + "T00:00:00"));
   const entry = template[String(wd) as "1"];
   if (!entry || !entry.enabled) return false;
-  return hour >= entry.startHour && hour < entry.endHour;
+  if (hour < entry.startHour || hour >= entry.endHour) return false;
+  if (entry.breakStartHour != null && entry.breakEndHour != null) {
+    if (hour >= entry.breakStartHour && hour < entry.breakEndHour) return false;
+  }
+  return true;
 }
 
 export class MemStorage implements IStorage {

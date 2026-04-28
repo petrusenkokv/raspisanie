@@ -158,7 +158,28 @@ export const weekdayTemplateEntrySchema = z.object({
   enabled: z.boolean(),
   startHour: z.number().int().min(0).max(23),
   endHour: z.number().int().min(1).max(24),
-}).refine(d => d.endHour > d.startHour, { message: "endHour must be greater than startHour" });
+  breakStartHour: z.number().int().min(0).max(23).nullable().optional(),
+  breakEndHour: z.number().int().min(1).max(24).nullable().optional(),
+}).refine(d => d.endHour > d.startHour, { message: "endHour must be greater than startHour" })
+  .refine(
+    (d) => {
+      const hasStart = d.breakStartHour !== undefined && d.breakStartHour !== null;
+      const hasEnd = d.breakEndHour !== undefined && d.breakEndHour !== null;
+      return hasStart === hasEnd;
+    },
+    { message: "Break start and end must be set together" },
+  )
+  .refine(
+    (d) => {
+      if (d.breakStartHour == null || d.breakEndHour == null) return true;
+      return (
+        d.breakEndHour > d.breakStartHour &&
+        d.breakStartHour >= d.startHour &&
+        d.breakEndHour <= d.endHour
+      );
+    },
+    { message: "Break must be inside working hours and end > start" },
+  );
 
 export const weeklyTemplateSchema = z.record(
   z.enum(["1", "2", "3", "4", "5", "6", "7"]),

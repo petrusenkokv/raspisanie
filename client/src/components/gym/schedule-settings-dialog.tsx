@@ -157,9 +157,26 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
     // Validate each day
     for (const k of Object.keys(template)) {
       const e = template[k as "1"];
-      if (e && e.enabled && e.endHour <= e.startHour) {
+      if (!e || !e.enabled) continue;
+      if (e.endHour <= e.startHour) {
         toast({ title: "Ошибка", description: `${WEEKDAY_LABELS[k]}: окончание должно быть позже начала`, variant: "destructive" });
         return;
+      }
+      const bs = e.breakStartHour;
+      const be = e.breakEndHour;
+      if ((bs == null) !== (be == null)) {
+        toast({ title: "Ошибка", description: `${WEEKDAY_LABELS[k]}: задайте начало и конец перерыва`, variant: "destructive" });
+        return;
+      }
+      if (bs != null && be != null) {
+        if (be <= bs) {
+          toast({ title: "Ошибка", description: `${WEEKDAY_LABELS[k]}: конец перерыва должен быть позже начала`, variant: "destructive" });
+          return;
+        }
+        if (bs < e.startHour || be > e.endHour) {
+          toast({ title: "Ошибка", description: `${WEEKDAY_LABELS[k]}: перерыв должен быть внутри рабочих часов`, variant: "destructive" });
+          return;
+        }
       }
     }
     saveSettings.mutate({ weeklyTemplate: template });
@@ -253,45 +270,98 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
               <div className="space-y-2">
                 {(["1", "2", "3", "4", "5", "6", "7"] as const).map((k) => {
                   const entry = template[k] || { enabled: true, startHour: dayStart, endHour: dayEnd };
+                  const breakOn = entry.breakStartHour != null && entry.breakEndHour != null;
+                  const breakStart = entry.breakStartHour ?? 13;
+                  const breakEnd = entry.breakEndHour ?? 14;
                   return (
                     <div
                       key={k}
-                      className="flex items-center gap-3 border rounded p-3"
+                      className="border rounded p-3 space-y-2"
                       data-testid={`row-weekday-${k}`}
                     >
-                      <div className="w-32 text-sm font-medium">{WEEKDAY_LABELS[k]}</div>
-                      <Switch
-                        checked={entry.enabled}
-                        onCheckedChange={(checked) => updateDayEntry(k, { enabled: checked })}
-                        data-testid={`switch-weekday-${k}`}
-                      />
-                      {entry.enabled ? (
-                        <div className="flex items-center gap-2 ml-auto">
-                          <select
-                            className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
-                            value={entry.startHour}
-                            onChange={(e) => updateDayEntry(k, { startHour: Number(e.target.value) })}
-                            data-testid={`select-start-${k}`}
-                          >
-                            {Array.from({ length: 24 }).map((_, h) => (
-                              <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
-                            ))}
-                          </select>
-                          <span className="text-sm">—</span>
-                          <select
-                            className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
-                            value={entry.endHour}
-                            onChange={(e) => updateDayEntry(k, { endHour: Number(e.target.value) })}
-                            data-testid={`select-end-${k}`}
-                          >
-                            {Array.from({ length: 24 }).map((_, i) => {
-                              const h = i + 1;
-                              return <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>;
-                            })}
-                          </select>
+                      <div className="flex items-center gap-3">
+                        <div className="w-32 text-sm font-medium">{WEEKDAY_LABELS[k]}</div>
+                        <Switch
+                          checked={entry.enabled}
+                          onCheckedChange={(checked) => updateDayEntry(k, { enabled: checked })}
+                          data-testid={`switch-weekday-${k}`}
+                        />
+                        {entry.enabled ? (
+                          <div className="flex items-center gap-2 ml-auto">
+                            <select
+                              className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
+                              value={entry.startHour}
+                              onChange={(e) => updateDayEntry(k, { startHour: Number(e.target.value) })}
+                              data-testid={`select-start-${k}`}
+                            >
+                              {Array.from({ length: 24 }).map((_, h) => (
+                                <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
+                              ))}
+                            </select>
+                            <span className="text-sm">—</span>
+                            <select
+                              className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
+                              value={entry.endHour}
+                              onChange={(e) => updateDayEntry(k, { endHour: Number(e.target.value) })}
+                              data-testid={`select-end-${k}`}
+                            >
+                              {Array.from({ length: 24 }).map((_, i) => {
+                                const h = i + 1;
+                                return <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>;
+                              })}
+                            </select>
+                          </div>
+                        ) : (
+                          <span className="ml-auto text-sm text-gray-500">Выходной</span>
+                        )}
+                      </div>
+
+                      {entry.enabled && (
+                        <div className="flex items-center gap-3 pl-32">
+                          <span className="text-xs text-gray-600 dark:text-gray-400">Перерыв</span>
+                          <Switch
+                            checked={breakOn}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                const bs = Math.max(entry.startHour, Math.min(13, entry.endHour - 1));
+                                const be = Math.min(entry.endHour, bs + 1);
+                                updateDayEntry(k, { breakStartHour: bs, breakEndHour: be });
+                              } else {
+                                updateDayEntry(k, { breakStartHour: null, breakEndHour: null });
+                              }
+                            }}
+                            data-testid={`switch-break-${k}`}
+                          />
+                          {breakOn ? (
+                            <div className="flex items-center gap-2 ml-auto">
+                              <select
+                                className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
+                                value={breakStart}
+                                onChange={(e) => updateDayEntry(k, { breakStartHour: Number(e.target.value) })}
+                                data-testid={`select-break-start-${k}`}
+                              >
+                                {Array.from({ length: entry.endHour - entry.startHour }).map((_, i) => {
+                                  const h = entry.startHour + i;
+                                  return <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>;
+                                })}
+                              </select>
+                              <span className="text-sm">—</span>
+                              <select
+                                className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
+                                value={breakEnd}
+                                onChange={(e) => updateDayEntry(k, { breakEndHour: Number(e.target.value) })}
+                                data-testid={`select-break-end-${k}`}
+                              >
+                                {Array.from({ length: entry.endHour - entry.startHour }).map((_, i) => {
+                                  const h = entry.startHour + 1 + i;
+                                  return <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>;
+                                })}
+                              </select>
+                            </div>
+                          ) : (
+                            <span className="ml-auto text-xs text-gray-500">Без перерыва</span>
+                          )}
                         </div>
-                      ) : (
-                        <span className="ml-auto text-sm text-gray-500">Выходной</span>
                       )}
                     </div>
                   );
