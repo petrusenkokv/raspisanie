@@ -26,7 +26,8 @@ function dayPrefix(slotDate: string, now: Date): "today" | "tomorrow" | "other" 
 }
 
 function formatHuman(date: string, time: string): string {
-  return `${date} в ${time}`;
+  const [y, m, d] = date.split("-");
+  return `${d}-${m}-${y} в ${time}`;
 }
 
 async function tick() {

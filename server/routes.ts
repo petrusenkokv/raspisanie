@@ -401,7 +401,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const booking = await storage.cancelBooking(id);
 
       const slot = await storage.getTimeSlotById(booking.timeSlotId);
-      const when = slot ? `${slot.date} в ${slot.time}` : "тренировку";
+      const when = slot
+        ? (() => {
+            const [y, m, d] = slot.date.split("-");
+            return `${d}-${m}-${y} в ${slot.time}`;
+          })()
+        : "тренировку";
 
       if (cancelledByStudent) {
         // Student cancelled their own booking → notify the trainer
