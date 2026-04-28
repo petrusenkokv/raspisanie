@@ -45,7 +45,8 @@ export const timeSlots = pgTable("time_slots", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   date: date("date").notNull(), // YYYY-MM-DD
   time: time("time").notNull(), // HH:MM format (08:00, 09:00, etc.)
-  maxCapacity: integer("max_capacity").notNull().default(2), // max 2 students per hour
+  maxCapacity: integer("max_capacity").notNull().default(2), // current resolved capacity
+  isManualCapacity: boolean("is_manual_capacity").notNull().default(false), // true => capacity manually overridden, ignore template/default
   isBlocked: boolean("is_blocked").notNull().default(false), // trainer can block slots
   blockReason: text("block_reason"), // null | 'manual' | 'template' | 'holiday'
   createdAt: timestamp("created_at").defaultNow(),
@@ -160,6 +161,7 @@ export const weekdayTemplateEntrySchema = z.object({
   endHour: z.number().int().min(1).max(24),
   breakStartHour: z.number().int().min(0).max(23).nullable().optional(),
   breakEndHour: z.number().int().min(1).max(24).nullable().optional(),
+  capacity: z.number().int().min(1).max(50).nullable().optional(), // null/undefined => use defaultCapacity
 }).refine(d => d.endHour > d.startHour, { message: "endHour must be greater than startHour" })
   .refine(
     (d) => {
@@ -194,10 +196,16 @@ export const trainerSettingsUpdateSchema = z.object({
   cancelDeadlineHours: z.number().int().min(0).max(168).optional(),
   // Hours before training when student can no longer book (0 = no restriction)
   bookingDeadlineHours: z.number().int().min(0).max(168).optional(),
+  // Default number of student spots per hour (used when weekday template doesn't override)
+  defaultCapacity: z.number().int().min(1).max(50).optional(),
 }).refine(
   (d) => d.dayStartHour === undefined || d.dayEndHour === undefined || d.dayEndHour > d.dayStartHour,
   { message: "dayEndHour must be greater than dayStartHour" },
 );
+
+export const slotCapacityUpdateSchema = z.object({
+  capacity: z.number().int().min(1).max(50).nullable(), // null => reset to template/default
+});
 
 // Validation schemas
 export const phoneVerificationSchema = z.object({
@@ -248,9 +256,11 @@ export type TrainerSettings = {
   weeklyTemplate: WeeklyTemplate;
   cancelDeadlineHours: number;
   bookingDeadlineHours: number;
+  defaultCapacity: number;
   updatedAt: Date | null;
 };
 export type TrainerSettingsUpdate = z.infer<typeof trainerSettingsUpdateSchema>;
+export type SlotCapacityUpdate = z.infer<typeof slotCapacityUpdateSchema>;
 
 // Extended types for API responses
 export type TimeSlotWithBookings = TimeSlot & {

@@ -41,6 +41,7 @@ type SettingsResponse = {
   weeklyTemplate: WeeklyTemplate;
   cancelDeadlineHours: number;
   bookingDeadlineHours: number;
+  defaultCapacity: number;
   holidays: Holiday[];
 };
 
@@ -67,6 +68,7 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
   const [template, setTemplate] = useState<WeeklyTemplate>({});
   const [cancelDeadline, setCancelDeadline] = useState(3);
   const [bookingDeadline, setBookingDeadline] = useState(1);
+  const [defaultCapacity, setDefaultCapacity] = useState(2);
   const [newHolidayDate, setNewHolidayDate] = useState<string>(todayLocalStr());
   const [newHolidayName, setNewHolidayName] = useState<string>("");
 
@@ -76,6 +78,7 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
       setDayEnd(data.dayEndHour);
       setCancelDeadline(data.cancelDeadlineHours ?? 0);
       setBookingDeadline(data.bookingDeadlineHours ?? 0);
+      setDefaultCapacity(data.defaultCapacity ?? 2);
       // Fill in any missing weekdays with default working values
       const next: WeeklyTemplate = { ...data.weeklyTemplate };
       for (let i = 1; i <= 7; i++) {
@@ -150,7 +153,11 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
       toast({ title: "Ошибка", description: "Окончание должно быть позже начала", variant: "destructive" });
       return;
     }
-    saveSettings.mutate({ dayStartHour: dayStart, dayEndHour: dayEnd });
+    saveSettings.mutate({
+      dayStartHour: dayStart,
+      dayEndHour: dayEnd,
+      defaultCapacity,
+    });
   };
 
   const handleSaveTemplate = () => {
@@ -250,6 +257,24 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
               <p className="text-xs text-gray-500">
                 Например, 07:00 — 22:00 означает занятия с 7:00 до 21:00 включительно.
               </p>
+
+              <div className="border-t pt-4 mt-4 space-y-2">
+                <Label>Мест в час по умолчанию</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={defaultCapacity}
+                  onChange={(e) =>
+                    setDefaultCapacity(Math.max(1, Math.min(50, Number(e.target.value) || 1)))
+                  }
+                  data-testid="input-default-capacity"
+                />
+                <p className="text-xs text-gray-500">
+                  Применяется ко всем часам, для которых не задано особое правило в шаблоне или вручную.
+                </p>
+              </div>
+
               <Button
                 onClick={handleSaveHours}
                 disabled={saveSettings.isPending}
@@ -273,6 +298,7 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
                   const breakOn = entry.breakStartHour != null && entry.breakEndHour != null;
                   const breakStart = entry.breakStartHour ?? 13;
                   const breakEnd = entry.breakEndHour ?? 14;
+                  const capOverride = entry.capacity != null;
                   return (
                     <div
                       key={k}
@@ -360,6 +386,38 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
                             </div>
                           ) : (
                             <span className="ml-auto text-xs text-gray-500">Без перерыва</span>
+                          )}
+                        </div>
+                      )}
+
+                      {entry.enabled && (
+                        <div className="flex items-center gap-3 pl-32">
+                          <span className="text-xs text-gray-600 dark:text-gray-400">Мест в час</span>
+                          <Switch
+                            checked={capOverride}
+                            onCheckedChange={(checked) =>
+                              updateDayEntry(k, { capacity: checked ? defaultCapacity : null })
+                            }
+                            data-testid={`switch-capacity-${k}`}
+                          />
+                          {capOverride ? (
+                            <Input
+                              type="number"
+                              min={1}
+                              max={50}
+                              value={entry.capacity ?? defaultCapacity}
+                              onChange={(e) =>
+                                updateDayEntry(k, {
+                                  capacity: Math.max(1, Math.min(50, Number(e.target.value) || 1)),
+                                })
+                              }
+                              className="ml-auto w-24 h-8"
+                              data-testid={`input-capacity-${k}`}
+                            />
+                          ) : (
+                            <span className="ml-auto text-xs text-gray-500">
+                              По умолчанию ({defaultCapacity})
+                            </span>
                           )}
                         </div>
                       )}

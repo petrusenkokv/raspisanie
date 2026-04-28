@@ -38,6 +38,7 @@ export interface IStorage {
   getTimeSlotsByDateRange(startDate: string, endDate: string): Promise<TimeSlotWithBookings[]>;
   createTimeSlot(timeSlot: InsertTimeSlot): Promise<TimeSlot>;
   updateTimeSlot(id: string, updates: Partial<TimeSlot>): Promise<TimeSlot>;
+  updateSlotCapacity(slotId: string, capacity: number | null): Promise<TimeSlot>;
   generateTimeSlots(date: string): Promise<TimeSlot[]>;
   
   // Bookings
@@ -140,6 +141,14 @@ function isWorkingHour(template: WeeklyTemplate, date: string, hour: number): bo
   return true;
 }
 
+// Returns the resolved capacity for a date based on weekly template + global default.
+function resolveCapacity(template: WeeklyTemplate, defaultCapacity: number, date: string): number {
+  const wd = isoWeekday(new Date(date + "T00:00:00"));
+  const entry = template[String(wd) as "1"];
+  if (entry && entry.capacity != null) return entry.capacity;
+  return defaultCapacity;
+}
+
 export class MemStorage implements IStorage {
   private users: Map<string, User> = new Map();
   private timeSlots: Map<string, TimeSlot> = new Map();
@@ -156,6 +165,7 @@ export class MemStorage implements IStorage {
     weeklyTemplate: defaultWeeklyTemplate(8, 20),
     cancelDeadlineHours: 3,
     bookingDeadlineHours: 1,
+    defaultCapacity: 2,
     updatedAt: new Date(),
   };
 
@@ -221,6 +231,7 @@ export class MemStorage implements IStorage {
     const startH = this.settings.dayStartHour;
     const endH = this.settings.dayEndHour;
     const isHoliday = Array.from(this.holidays.values()).some(h => h.date === date);
+    const capacity = resolveCapacity(this.settings.weeklyTemplate, this.settings.defaultCapacity, date);
     for (let hour = startH; hour < endH; hour++) {
       const timeSlotId = randomUUID();
       const working = isWorkingHour(this.settings.weeklyTemplate, date, hour);
@@ -231,7 +242,8 @@ export class MemStorage implements IStorage {
         id: timeSlotId,
         date,
         time: `${hour.toString().padStart(2, "0")}:00`,
-        maxCapacity: 2,
+        maxCapacity: capacity,
+        isManualCapacity: false,
         isBlocked: blockReason !== null,
         blockReason,
         createdAt: new Date(),
@@ -409,7 +421,7 @@ export class MemStorage implements IStorage {
       return {
         ...slot,
         bookings: activeBookings,
-        availableSpots: slot.maxCapacity - confirmedBookings.length
+        availableSpots: Math.max(0, slot.maxCapacity - confirmedBookings.length)
       };
     }));
   }
@@ -427,7 +439,7 @@ export class MemStorage implements IStorage {
       return {
         ...slot,
         bookings: activeBookings,
-        availableSpots: slot.maxCapacity - confirmedBookings.length
+        availableSpots: Math.max(0, slot.maxCapacity - confirmedBookings.length)
       };
     }));
   }
@@ -437,7 +449,8 @@ export class MemStorage implements IStorage {
     const timeSlot: TimeSlot = {
       ...insertTimeSlot,
       id,
-      maxCapacity: insertTimeSlot.maxCapacity || 2,
+      maxCapacity: insertTimeSlot.maxCapacity || resolveCapacity(this.settings.weeklyTemplate, this.settings.defaultCapacity, insertTimeSlot.date),
+      isManualCapacity: insertTimeSlot.isManualCapacity ?? false,
       isBlocked: insertTimeSlot.isBlocked || false,
       blockReason: insertTimeSlot.blockReason ?? null,
       createdAt: new Date()
@@ -693,7 +706,8 @@ export class MemStorage implements IStorage {
         id,
         date,
         time: `${String(hour).padStart(2, "0")}:00`,
-        maxCapacity: 2,
+        maxCapacity: resolveCapacity(this.settings.weeklyTemplate, this.settings.defaultCapacity, date),
+        isManualCapacity: false,
         isBlocked: blockReason !== null,
         blockReason,
         createdAt: new Date(),
@@ -883,6 +897,8 @@ export class MemStorage implements IStorage {
         updates.cancelDeadlineHours ?? this.settings.cancelDeadlineHours,
       bookingDeadlineHours:
         updates.bookingDeadlineHours ?? this.settings.bookingDeadlineHours,
+      defaultCapacity:
+        updates.defaultCapacity ?? this.settings.defaultCapacity,
       updatedAt: new Date(),
     };
     if (next.dayEndHour <= next.dayStartHour) {
@@ -950,9 +966,54 @@ export class MemStorage implements IStorage {
           this.timeSlots.set(s.id, { ...s, isBlocked: true, blockReason: isHolidayDay ? "holiday" : "template" });
         }
       }
+
+      // 4) Re-apply capacity for slots that aren't manually overridden.
+      //    Don't reduce below the number of confirmed bookings — keep the higher value.
+      const newCapacity = resolveCapacity(next.weeklyTemplate, next.defaultCapacity, date);
+      const finalSlots = Array.from(this.timeSlots.values()).filter(s => s.date === date);
+      for (const s of finalSlots) {
+        if (s.isManualCapacity) continue;
+        const confirmed = Array.from(this.bookings.values()).filter(
+          b => b.timeSlotId === s.id && b.status === "confirmed",
+        ).length;
+        const target = Math.max(newCapacity, confirmed);
+        if (s.maxCapacity !== target) {
+          this.timeSlots.set(s.id, { ...s, maxCapacity: target });
+        }
+      }
     }
 
     return { settings: await this.getTrainerSettings(), cancelledCount: cancelled.length };
+  }
+
+  // Per-slot capacity override.
+  // capacity = null  => clear override and resolve from template/default.
+  // capacity = number => set explicit value, mark slot as manually overridden.
+  async updateSlotCapacity(slotId: string, capacity: number | null): Promise<TimeSlot> {
+    const slot = this.timeSlots.get(slotId);
+    if (!slot) throw new Error("Слот не найден");
+
+    const confirmed = Array.from(this.bookings.values()).filter(
+      b => b.timeSlotId === slotId && b.status === "confirmed",
+    ).length;
+
+    let nextCapacity: number;
+    let manual: boolean;
+    if (capacity === null) {
+      nextCapacity = resolveCapacity(this.settings.weeklyTemplate, this.settings.defaultCapacity, slot.date);
+      manual = false;
+    } else {
+      nextCapacity = capacity;
+      manual = true;
+    }
+
+    if (nextCapacity < confirmed) {
+      throw new Error(`Нельзя задать ${nextCapacity} мест: уже подтверждено записей — ${confirmed}`);
+    }
+
+    const updated: TimeSlot = { ...slot, maxCapacity: nextCapacity, isManualCapacity: manual };
+    this.timeSlots.set(slotId, updated);
+    return updated;
   }
 
   // ----- Holidays -----

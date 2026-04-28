@@ -713,6 +713,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  app.patch("/api/trainer/time-slots/:id/capacity", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { slotCapacityUpdateSchema } = await import("@shared/schema");
+      const parsed = slotCapacityUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Неверная вместимость" });
+      }
+      const slot = await storage.updateSlotCapacity(id, parsed.data.capacity);
+      res.json({ slot });
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || "Не удалось изменить количество мест" });
+    }
+  });
+
   app.patch("/api/trainer/time-slots/:id/block", async (req, res) => {
     try {
       const { id } = req.params;

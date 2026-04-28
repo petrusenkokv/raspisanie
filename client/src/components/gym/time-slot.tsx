@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { type TimeSlotWithBookings } from "@shared/schema";
 import { useGymStore } from "@/store/gym-store";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -62,6 +63,24 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
       });
     },
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  const [capPopoverOpen, setCapPopoverOpen] = useState(false);
+  const [capInput, setCapInput] = useState<number>(timeSlot.maxCapacity);
+  const isManualCap = (timeSlot as any).isManualCapacity as boolean | undefined;
+
+  const capacityMutation = useMutation({
+    mutationFn: async (capacity: number | null) => {
+      const r = await apiRequest("PATCH", `/api/trainer/time-slots/${timeSlot.id}/capacity`, { capacity });
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      setCapPopoverOpen(false);
+      toast({ title: "Количество мест обновлено" });
+    },
+    onError: (e: any) =>
+      toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
   });
 
   const isFull = timeSlot.availableSpots === 0;
@@ -136,11 +155,79 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
              status === "almost-full" ? "Почти полно" : "Свободно"}
           </Badge>
 
-          {!isBlocked && (
+          {!isBlocked && !isTrainer() && (
             <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
               <Users className="h-3 w-3" />
               <span>{confirmedBookings.length}/{timeSlot.maxCapacity}</span>
             </div>
+          )}
+          {!isBlocked && isTrainer() && (
+            <Popover open={capPopoverOpen} onOpenChange={(o) => {
+              setCapPopoverOpen(o);
+              if (o) setCapInput(timeSlot.maxCapacity);
+            }}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(e) => e.stopPropagation()}
+                  className={cn(
+                    "flex items-center gap-1 text-sm rounded px-1.5 py-0.5 hover:bg-gray-200/60 dark:hover:bg-gray-700/60",
+                    isManualCap
+                      ? "text-blue-700 dark:text-blue-300 font-medium"
+                      : "text-gray-600 dark:text-gray-400"
+                  )}
+                  title={isManualCap ? "Особое количество мест для этого слота" : "Изменить количество мест"}
+                  data-testid={`button-edit-capacity-${timeSlot.id}`}
+                >
+                  <Users className="h-3 w-3" />
+                  <span>{confirmedBookings.length}/{timeSlot.maxCapacity}</span>
+                  <Pencil className="h-3 w-3 opacity-60" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-3" side="top" onClick={(e) => e.stopPropagation()}>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      Места на {timeSlot.time}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Записано: {confirmedBookings.length}. Минимум — это число.
+                    </p>
+                  </div>
+                  <Input
+                    type="number"
+                    min={Math.max(1, confirmedBookings.length)}
+                    max={50}
+                    value={capInput}
+                    onChange={(e) => setCapInput(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                    data-testid={`input-slot-capacity-${timeSlot.id}`}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      disabled={capacityMutation.isPending}
+                      onClick={() => capacityMutation.mutate(capInput)}
+                      data-testid={`button-save-capacity-${timeSlot.id}`}
+                    >
+                      Сохранить
+                    </Button>
+                    {isManualCap && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={capacityMutation.isPending}
+                        onClick={() => capacityMutation.mutate(null)}
+                        title="Вернуть к значению из шаблона"
+                        data-testid={`button-reset-capacity-${timeSlot.id}`}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           )}
         </div>
       </div>
