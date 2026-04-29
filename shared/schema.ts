@@ -111,7 +111,8 @@ export const membershipPayments = pgTable("membership_payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   studentId: varchar("student_id").notNull().references(() => users.id),
   type: text("type").notNull(), // "monthly_cv" | "one_time_bv"
-  month: text("month"), // YYYY-MM (only for monthly_cv)
+  month: text("month"), // YYYY-MM (only for monthly_cv) — derived from paidDate
+  paidDate: text("paid_date"), // YYYY-MM-DD — фактическая дата оплаты ЧВ (только для monthly_cv)
   date: text("date"), // YYYY-MM-DD (only for one_time_bv)
   note: text("note"),
   createdBy: varchar("created_by").notNull().references(() => users.id),
@@ -207,7 +208,7 @@ export type MembershipPaymentType = (typeof MEMBERSHIP_PAYMENT_TYPES)[number];
 export const membershipPaymentInputSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("monthly_cv"),
-    month: z.string().regex(/^\d{4}-\d{2}$/, "Месяц должен быть в формате YYYY-MM"),
+    paidDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата оплаты должна быть в формате YYYY-MM-DD"),
     note: z.string().max(300).nullable().optional(),
   }),
   z.object({

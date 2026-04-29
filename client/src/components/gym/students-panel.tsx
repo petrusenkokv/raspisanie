@@ -1075,7 +1075,7 @@ function PaymentsSection({ studentId }: { studentId: string }) {
 function MembershipSubsection({ studentId }: { studentId: string }) {
   const { toast } = useToast();
   const [type, setType] = useState<"monthly_cv" | "one_time_bv">("monthly_cv");
-  const [month, setMonth] = useState<string>(currentMonthStr());
+  const [paidDate, setPaidDate] = useState<string>(todayLocalStr());
   const [date, setDate] = useState<string>(todayLocalStr());
   const [note, setNote] = useState<string>("");
 
@@ -1092,7 +1092,7 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
     mutationFn: async () => {
       const payload =
         type === "monthly_cv"
-          ? { type, month, note: note || null }
+          ? { type, paidDate, note: note || null }
           : { type, date, note: note || null };
       const r = await apiRequest("POST", `/api/trainer/students/${studentId}/membership-payments`, payload);
       return r.json();
@@ -1158,14 +1158,17 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
         </div>
         {type === "monthly_cv" ? (
           <div className="flex-1">
-            <Label className="text-xs">Месяц</Label>
+            <Label className="text-xs">Дата оплаты</Label>
             <Input
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
+              type="date"
+              value={paidDate}
+              onChange={(e) => setPaidDate(e.target.value)}
               className="text-sm"
-              data-testid="input-cv-month"
+              data-testid="input-cv-paid-date"
             />
+            <p className="text-[10px] text-gray-500 mt-0.5">
+              Засчитается за {paidDate ? monthLabel(paidDate.slice(0, 7)) : "—"}
+            </p>
           </div>
         ) : (
           <div className="flex-1">
@@ -1191,7 +1194,7 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
         size="sm"
         className="w-full"
         onClick={() => addMutation.mutate()}
-        disabled={addMutation.isPending || (type === "monthly_cv" ? !month : !date)}
+        disabled={addMutation.isPending || (type === "monthly_cv" ? !paidDate : !date)}
         data-testid="button-add-membership"
       >
         {addMutation.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
@@ -1213,7 +1216,11 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
               <div className="flex flex-col">
                 <span className="font-medium">
                   {p.type === "monthly_cv"
-                    ? `ЧВ — ${monthLabel(p.month || "")}`
+                    ? `ЧВ за ${monthLabel(p.month || "")}${
+                        p.paidDate
+                          ? ` — оплачен ${format(new Date(p.paidDate), "d MMM yyyy", { locale: ru })}`
+                          : ""
+                      }`
                     : `БВ — ${p.date ? format(new Date(p.date), "d MMM yyyy", { locale: ru }) : ""}`}
                 </span>
                 {p.note && <span className="text-gray-500">{p.note}</span>}

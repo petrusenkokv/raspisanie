@@ -843,10 +843,12 @@ export class MemStorage implements IStorage {
     if (!user) throw new Error("User not found");
     if (user.role !== "student") throw new Error("Only students have memberships");
 
+    let derivedMonth: string | null = null;
     if (input.type === "monthly_cv") {
-      // Prevent duplicate ЧВ for the same month
+      derivedMonth = input.paidDate.slice(0, 7);
+      // Prevent duplicate ЧВ for the same covered month
       const dup = Array.from(this.membershipPayments.values()).find(
-        p => p.studentId === studentId && p.type === "monthly_cv" && p.month === input.month,
+        p => p.studentId === studentId && p.type === "monthly_cv" && p.month === derivedMonth,
       );
       if (dup) throw new Error("DUPLICATE_MONTH");
     } else {
@@ -861,7 +863,8 @@ export class MemStorage implements IStorage {
       id,
       studentId,
       type: input.type,
-      month: input.type === "monthly_cv" ? input.month : null,
+      month: input.type === "monthly_cv" ? derivedMonth : null,
+      paidDate: input.type === "monthly_cv" ? input.paidDate : null,
       date: input.type === "one_time_bv" ? input.date : null,
       note: input.note ?? null,
       createdBy,
