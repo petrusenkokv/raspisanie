@@ -245,14 +245,14 @@ export const weekdayTemplateEntrySchema = z.object({
   breakStartHour: z.number().int().min(0).max(23).nullable().optional(),
   breakEndHour: z.number().int().min(1).max(24).nullable().optional(),
   capacity: z.number().int().min(1).max(50).nullable().optional(), // null/undefined => use defaultCapacity
-}).refine(d => d.endHour > d.startHour, { message: "endHour must be greater than startHour" })
+}).refine(d => d.endHour > d.startHour, { message: "Час окончания должен быть позже часа начала" })
   .refine(
     (d) => {
       const hasStart = d.breakStartHour !== undefined && d.breakStartHour !== null;
       const hasEnd = d.breakEndHour !== undefined && d.breakEndHour !== null;
       return hasStart === hasEnd;
     },
-    { message: "Break start and end must be set together" },
+    { message: "Начало и конец перерыва должны быть указаны вместе" },
   )
   .refine(
     (d) => {
@@ -263,7 +263,7 @@ export const weekdayTemplateEntrySchema = z.object({
         d.breakEndHour <= d.endHour
       );
     },
-    { message: "Break must be inside working hours and end > start" },
+    { message: "Перерыв должен быть внутри рабочих часов, конец позже начала" },
   );
 
 export const weeklyTemplateSchema = z.record(
@@ -283,7 +283,7 @@ export const trainerSettingsUpdateSchema = z.object({
   defaultCapacity: z.number().int().min(1).max(50).optional(),
 }).refine(
   (d) => d.dayStartHour === undefined || d.dayEndHour === undefined || d.dayEndHour > d.dayStartHour,
-  { message: "dayEndHour must be greater than dayStartHour" },
+  { message: "Час окончания дня должен быть позже часа начала дня" },
 );
 
 export const slotCapacityUpdateSchema = z.object({
@@ -307,19 +307,19 @@ export const sickLeaveUpdateSchema = z.object({
 
 // Validation schemas
 export const phoneVerificationSchema = z.object({
-  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format"),
-  code: z.string().length(6, "Verification code must be 6 digits"),
+  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Неверный формат номера телефона"),
+  code: z.string().length(6, "Код подтверждения должен состоять из 6 цифр"),
 });
 
 export const studentRegistrationSchema = z.object({
-  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format"),
-  firstName: z.string().min(2, "First name must be at least 2 characters"),
-  lastName: z.string().min(2, "Last name must be at least 2 characters"),
+  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Неверный формат номера телефона"),
+  firstName: z.string().min(2, "Имя должно содержать минимум 2 символа"),
+  lastName: z.string().min(2, "Фамилия должна содержать минимум 2 символа"),
 });
 
 export const trainerLoginSchema = z.object({
   phone: z.string(),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: z.string().min(6, "Пароль должен содержать минимум 6 символов"),
 });
 
 export const bookingRequestSchema = z.object({

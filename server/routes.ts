@@ -54,9 +54,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`SMS to ${phone}: Your verification code is ${verificationCode}`);
       
       // For demo, we'll store the code (in real app, use temporary storage)
-      res.json({ success: true, message: "Verification code sent", code: verificationCode });
+      res.json({ success: true, message: "Код подтверждения отправлен", code: verificationCode });
     } catch (error) {
-      res.status(500).json({ message: "Failed to send verification code" });
+      res.status(500).json({ message: "Не удалось отправить код подтверждения" });
     }
   });
 
@@ -140,7 +140,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
     } catch (error) {
-      res.status(500).json({ message: "Failed to register user" });
+      res.status(500).json({ message: "Не удалось зарегистрировать пользователя" });
     }
   });
 
@@ -172,7 +172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
     } catch (error) {
-      res.status(500).json({ message: "Login failed" });
+      res.status(500).json({ message: "Ошибка входа" });
     }
   });
 
@@ -201,7 +201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
     } catch (error) {
-      res.status(500).json({ message: "Trainer login failed" });
+      res.status(500).json({ message: "Ошибка входа тренера" });
     }
   });
 
@@ -240,7 +240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const schedule = await storage.getScheduleForDate(date);
       res.json(schedule);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch daily schedule" });
+      res.status(500).json({ message: "Не удалось получить расписание дня" });
     }
   });
 
@@ -253,7 +253,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const schedule = await storage.getScheduleForWeek(startDate);
       res.json(schedule);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch weekly schedule" });
+      res.status(500).json({ message: "Не удалось получить расписание недели" });
     }
   });
 
@@ -265,7 +265,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const schedule = await storage.getScheduleForMonth(parseInt(year), parseInt(month));
       res.json(schedule);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch monthly schedule" });
+      res.status(500).json({ message: "Не удалось получить расписание месяца" });
     }
   });
 
@@ -277,7 +277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get the target time slot to know its date
       const targetSlot = await storage.getTimeSlotById(timeSlotId);
       if (!targetSlot) {
-        return res.status(404).json({ message: "Time slot not found" });
+        return res.status(404).json({ message: "Слот не найден" });
       }
 
       // Check if student already has an active booking on this date
@@ -297,7 +297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const confirmedBookings = existingBookings.filter(b => b.status === "confirmed");
       
       if (confirmedBookings.length >= 2) {
-        return res.status(400).json({ message: "Time slot is fully booked" });
+        return res.status(400).json({ message: "Все места в этом слоте заняты" });
       }
 
       // Enforce booking deadline (student-self-booking only)
@@ -341,7 +341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bookingWithDetails = await storage.getBooking(booking.id);
       res.status(201).json(bookingWithDetails);
     } catch (error) {
-      res.status(500).json({ message: "Failed to create booking" });
+      res.status(500).json({ message: "Не удалось создать запись" });
     }
   });
 
@@ -362,7 +362,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bookingWithDetails = await storage.getBooking(booking.id);
       res.json(bookingWithDetails);
     } catch (error) {
-      res.status(500).json({ message: "Failed to confirm booking" });
+      res.status(500).json({ message: "Не удалось подтвердить запись" });
     }
   });
 
@@ -436,7 +436,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bookingWithDetails = await storage.getBooking(booking.id);
       res.json(bookingWithDetails);
     } catch (error) {
-      res.status(500).json({ message: "Failed to cancel booking" });
+      res.status(500).json({ message: "Не удалось отменить запись" });
     }
   });
 
@@ -446,7 +446,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bookings = await storage.getBookingsByStudent(studentId);
       res.json(bookings);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch student bookings" });
+      res.status(500).json({ message: "Не удалось получить записи ученика" });
     }
   });
 
@@ -456,7 +456,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const students = await storage.getStudentsList();
       res.json(students);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch students list" });
+      res.status(500).json({ message: "Не удалось получить список учеников" });
     }
   });
 
@@ -690,7 +690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bookingWithDetails = await storage.getBooking(booking.id);
       res.status(201).json(bookingWithDetails);
     } catch (error) {
-      res.status(500).json({ message: "Failed to book student" });
+      res.status(500).json({ message: "Не удалось записать ученика" });
     }
   });
 
@@ -701,7 +701,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const timeSlot = await storage.updateTimeSlot(id, updates);
       res.json(timeSlot);
     } catch (error) {
-      res.status(500).json({ message: "Failed to update time slot" });
+      res.status(500).json({ message: "Не удалось обновить слот" });
     }
   });
 
@@ -1101,7 +1101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         )
       );
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch notifications" });
+      res.status(500).json({ message: "Не удалось получить уведомления" });
     }
   });
 
@@ -1111,7 +1111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const count = await storage.markAllNotificationsAsRead(userId);
       res.json({ success: true, count });
     } catch (error) {
-      res.status(500).json({ message: "Failed to mark notifications as read" });
+      res.status(500).json({ message: "Не удалось отметить уведомления как прочитанные" });
     }
   });
 
@@ -1121,7 +1121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const notification = await storage.markNotificationAsRead(id);
       res.json(notification);
     } catch (error) {
-      res.status(500).json({ message: "Failed to mark notification as read" });
+      res.status(500).json({ message: "Не удалось отметить уведомление как прочитанное" });
     }
   });
 
