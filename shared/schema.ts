@@ -99,9 +99,37 @@ export const bookings = pgTable("bookings", {
   attendanceStatus: text("attendance_status"),
   attendanceNote: text("attendance_note"), // e.g. "ОРВИ, до 5 мая"
   attendanceMarkedAt: timestamp("attendance_marked_at"),
+  // If attendance consumed a trainer subscription session, link is stored here
+  consumedTrainerPaymentId: varchar("consumed_trainer_payment_id"),
   createdAt: timestamp("created_at").defaultNow(),
   confirmedAt: timestamp("confirmed_at"),
   cancelledAt: timestamp("cancelled_at"),
+});
+
+// Membership payments: ЧВ (monthly) or БВ (one-time)
+export const membershipPayments = pgTable("membership_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  studentId: varchar("student_id").notNull().references(() => users.id),
+  type: text("type").notNull(), // "monthly_cv" | "one_time_bv"
+  month: text("month"), // YYYY-MM (only for monthly_cv)
+  date: text("date"), // YYYY-MM-DD (only for one_time_bv)
+  note: text("note"),
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Trainer payment subscriptions: разовая / неделя / месяц
+export const trainerPayments = pgTable("trainer_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  studentId: varchar("student_id").notNull().references(() => users.id),
+  type: text("type").notNull(), // "single" | "weekly" | "monthly"
+  totalSessions: integer("total_sessions").notNull(), // 1, 2..3, 8..13
+  startDate: text("start_date").notNull(), // YYYY-MM-DD
+  status: text("status").notNull().default("active"), // "active" | "completed" | "cancelled"
+  note: text("note"),
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
 });
 
 // Notification system for trainer confirmations
@@ -159,6 +187,54 @@ export const insertHolidaySchema = createInsertSchema(holidays).omit({
   id: true,
   createdAt: true,
 });
+
+export const insertMembershipPaymentSchema = createInsertSchema(membershipPayments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertTrainerPaymentSchema = createInsertSchema(trainerPayments).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+  status: true,
+});
+
+// Membership payment input from API
+export const MEMBERSHIP_PAYMENT_TYPES = ["monthly_cv", "one_time_bv"] as const;
+export type MembershipPaymentType = (typeof MEMBERSHIP_PAYMENT_TYPES)[number];
+
+export const membershipPaymentInputSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("monthly_cv"),
+    month: z.string().regex(/^\d{4}-\d{2}$/, "Месяц должен быть в формате YYYY-MM"),
+    note: z.string().max(300).nullable().optional(),
+  }),
+  z.object({
+    type: z.literal("one_time_bv"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата должна быть в формате YYYY-MM-DD"),
+    note: z.string().max(300).nullable().optional(),
+  }),
+]);
+
+// Trainer payment subscription input
+export const TRAINER_PAYMENT_TYPES = ["single", "weekly", "monthly"] as const;
+export type TrainerPaymentType = (typeof TRAINER_PAYMENT_TYPES)[number];
+
+export const trainerPaymentInputSchema = z.object({
+  type: z.enum(TRAINER_PAYMENT_TYPES),
+  totalSessions: z.number().int().min(1).max(50),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  note: z.string().max(300).nullable().optional(),
+}).refine(
+  (d) => {
+    if (d.type === "single") return d.totalSessions === 1;
+    if (d.type === "weekly") return d.totalSessions >= 1 && d.totalSessions <= 7;
+    if (d.type === "monthly") return d.totalSessions >= 1 && d.totalSessions <= 31;
+    return true;
+  },
+  { message: "Количество тренировок не подходит под выбранный тип абонемента" },
+);
 
 // Per-weekday template entry validation
 export const weekdayTemplateEntrySchema = z.object({
@@ -268,6 +344,19 @@ export type InsertRecurringBooking = z.infer<typeof insertRecurringBookingSchema
 export type RecurringBooking = typeof recurringBookings.$inferSelect;
 export type Holiday = typeof holidays.$inferSelect;
 export type InsertHoliday = z.infer<typeof insertHolidaySchema>;
+export type MembershipPayment = typeof membershipPayments.$inferSelect;
+export type InsertMembershipPayment = z.infer<typeof insertMembershipPaymentSchema>;
+export type MembershipPaymentInput = z.infer<typeof membershipPaymentInputSchema>;
+export type TrainerPayment = typeof trainerPayments.$inferSelect;
+export type InsertTrainerPayment = z.infer<typeof insertTrainerPaymentSchema>;
+export type TrainerPaymentInput = z.infer<typeof trainerPaymentInputSchema>;
+export type TrainerPaymentWithUsage = TrainerPayment & { usedSessions: number };
+export type StudentPaymentStatus = {
+  hasMembership: boolean; // ЧВ за текущий месяц или БВ на дату
+  membershipKind: "monthly_cv" | "one_time_bv" | null;
+  hasTrainerPayment: boolean; // есть активный абонемент с остатком
+  activeTrainerPayment: TrainerPaymentWithUsage | null;
+};
 export type WeekdayTemplateEntry = z.infer<typeof weekdayTemplateEntrySchema>;
 export type WeeklyTemplate = Partial<Record<"1" | "2" | "3" | "4" | "5" | "6" | "7", WeekdayTemplateEntry>>;
 export type TrainerSettings = {

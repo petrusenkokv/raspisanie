@@ -21,6 +21,12 @@ import {
   type TrainerSettingsUpdate,
   type WeeklyTemplate,
   type AttendanceStatus,
+  type MembershipPayment,
+  type MembershipPaymentInput,
+  type TrainerPayment,
+  type TrainerPaymentInput,
+  type TrainerPaymentWithUsage,
+  type StudentPaymentStatus,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -103,6 +109,20 @@ export interface IStorage {
   addHoliday(date: string, name?: string | null, createdBy?: string | null): Promise<{ holiday: Holiday; cancelledCount: number }>;
   removeHoliday(id: string): Promise<void>;
 
+  // Payments — membership (ЧВ/БВ)
+  getMembershipPayments(studentId: string): Promise<MembershipPayment[]>;
+  addMembershipPayment(studentId: string, input: MembershipPaymentInput, createdBy: string): Promise<MembershipPayment>;
+  deleteMembershipPayment(id: string): Promise<void>;
+
+  // Payments — trainer subscription
+  getTrainerPayments(studentId: string): Promise<TrainerPaymentWithUsage[]>;
+  addTrainerPayment(studentId: string, input: TrainerPaymentInput, createdBy: string): Promise<TrainerPaymentWithUsage>;
+  cancelTrainerPayment(id: string): Promise<TrainerPaymentWithUsage>;
+  deleteTrainerPayment(id: string): Promise<void>;
+
+  // Payment status for a student on a particular date
+  getStudentPaymentStatus(studentId: string, dateStr: string): Promise<StudentPaymentStatus>;
+
   // Analytics
   getStudentsList(): Promise<User[]>;
   getTrainer(): Promise<User | undefined>;
@@ -171,6 +191,8 @@ export class MemStorage implements IStorage {
   private consents: Map<string, UserConsent> = new Map();
   private recurringBookings: Map<string, RecurringBooking> = new Map();
   private holidays: Map<string, Holiday> = new Map();
+  private membershipPayments: Map<string, MembershipPayment> = new Map();
+  private trainerPayments: Map<string, TrainerPayment> = new Map();
   private settings: TrainerSettings = {
     id: randomUUID(),
     dayStartHour: 8,
@@ -576,6 +598,7 @@ export class MemStorage implements IStorage {
       attendanceStatus: null,
       attendanceNote: null,
       attendanceMarkedAt: null,
+      consumedTrainerPaymentId: null,
       createdAt: new Date(),
       confirmedAt: status === "confirmed" ? new Date() : null,
       cancelledAt: null
@@ -609,11 +632,19 @@ export class MemStorage implements IStorage {
   async cancelBooking(id: string): Promise<Booking> {
     const booking = this.bookings.get(id);
     if (!booking) throw new Error("Booking not found");
-    
-    const cancelledBooking = { 
-      ...booking, 
-      status: "cancelled" as const, 
-      cancelledAt: new Date() 
+
+    // If this booking had consumed a trainer session, refund it
+    let consumedId = booking.consumedTrainerPaymentId ?? null;
+    if (consumedId) {
+      this.refundTrainerSession(consumedId);
+      consumedId = null;
+    }
+
+    const cancelledBooking = {
+      ...booking,
+      status: "cancelled" as const,
+      cancelledAt: new Date(),
+      consumedTrainerPaymentId: consumedId,
     };
     this.bookings.set(id, cancelledBooking);
     return cancelledBooking;
@@ -626,14 +657,85 @@ export class MemStorage implements IStorage {
   ): Promise<Booking> {
     const booking = this.bookings.get(bookingId);
     if (!booking) throw new Error("Booking not found");
+
+    const wasConsuming = booking.attendanceStatus === "attended" || booking.attendanceStatus === "late";
+    const willConsume = status === "attended" || status === "late";
+
+    let consumedId: string | null = booking.consumedTrainerPaymentId ?? null;
+
+    // Refund previously consumed session if attendance no longer counts
+    if (wasConsuming && !willConsume && consumedId) {
+      this.refundTrainerSession(consumedId);
+      consumedId = null;
+    }
+
+    // Consume a session if newly counting attendance and not yet linked to a subscription
+    if (willConsume && !consumedId) {
+      const slot = this.timeSlots.get(booking.timeSlotId);
+      if (slot) {
+        const sub = this.findActiveTrainerSubscriptionFor(booking.studentId, slot.date);
+        if (sub) {
+          consumedId = sub.id;
+          this.consumeTrainerSession(sub.id);
+        }
+      }
+    }
+
     const updated: Booking = {
       ...booking,
       attendanceStatus: status,
       attendanceNote: status ? (note ?? null) : null,
       attendanceMarkedAt: status ? new Date() : null,
+      consumedTrainerPaymentId: consumedId,
     };
     this.bookings.set(bookingId, updated);
     return updated;
+  }
+
+  // ----- Trainer subscription helpers -----
+  private countUsedSessions(subscriptionId: string): number {
+    let used = 0;
+    for (const b of Array.from(this.bookings.values())) {
+      if (b.consumedTrainerPaymentId === subscriptionId) used++;
+    }
+    return used;
+  }
+
+  private findActiveTrainerSubscriptionFor(studentId: string, dateStr: string): TrainerPayment | null {
+    // Pick the oldest active subscription with remaining capacity, started on/before date
+    const candidates = Array.from(this.trainerPayments.values())
+      .filter(p => p.studentId === studentId && p.status === "active" && p.startDate <= dateStr)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate) || (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
+    for (const p of candidates) {
+      if (this.countUsedSessions(p.id) < p.totalSessions) return p;
+    }
+    return null;
+  }
+
+  private consumeTrainerSession(subscriptionId: string) {
+    const sub = this.trainerPayments.get(subscriptionId);
+    if (!sub) return;
+    const used = this.countUsedSessions(subscriptionId);
+    if (used >= sub.totalSessions && sub.status === "active") {
+      this.trainerPayments.set(subscriptionId, {
+        ...sub,
+        status: "completed",
+        completedAt: new Date(),
+      });
+    }
+  }
+
+  private refundTrainerSession(subscriptionId: string) {
+    const sub = this.trainerPayments.get(subscriptionId);
+    if (!sub) return;
+    // After refund the subscription should be active again if it was completed
+    if (sub.status === "completed") {
+      this.trainerPayments.set(subscriptionId, {
+        ...sub,
+        status: "active",
+        completedAt: null,
+      });
+    }
   }
 
   async getStudentAttendanceStats(studentId: string): Promise<AttendanceStats> {
@@ -699,6 +801,12 @@ export class MemStorage implements IStorage {
         const slot = this.timeSlots.get(booking.timeSlotId);
         if (!slot) continue;
         if (slot.date < fromStr || slot.date > sickUntil) continue;
+        // Refund any consumed trainer session: excused doesn't count
+        let consumedId = booking.consumedTrainerPaymentId ?? null;
+        if (consumedId) {
+          this.refundTrainerSession(consumedId);
+          consumedId = null;
+        }
         const cancelled: Booking = {
           ...booking,
           status: "cancelled",
@@ -706,12 +814,151 @@ export class MemStorage implements IStorage {
           attendanceStatus: "excused",
           attendanceNote: sickNote ? `Болезнь: ${sickNote}` : "Болезнь",
           attendanceMarkedAt: new Date(),
+          consumedTrainerPaymentId: consumedId,
         };
         this.bookings.set(bid, cancelled);
         cancelledCount++;
       }
     }
     return { user: updatedUser, cancelledCount };
+  }
+
+  // ====== Payments: membership (ЧВ/БВ) ======
+  async getMembershipPayments(studentId: string): Promise<MembershipPayment[]> {
+    return Array.from(this.membershipPayments.values())
+      .filter(p => p.studentId === studentId)
+      .sort((a, b) => {
+        const ka = a.month || a.date || "";
+        const kb = b.month || b.date || "";
+        return kb.localeCompare(ka);
+      });
+  }
+
+  async addMembershipPayment(
+    studentId: string,
+    input: MembershipPaymentInput,
+    createdBy: string,
+  ): Promise<MembershipPayment> {
+    const user = this.users.get(studentId);
+    if (!user) throw new Error("User not found");
+    if (user.role !== "student") throw new Error("Only students have memberships");
+
+    if (input.type === "monthly_cv") {
+      // Prevent duplicate ЧВ for the same month
+      const dup = Array.from(this.membershipPayments.values()).find(
+        p => p.studentId === studentId && p.type === "monthly_cv" && p.month === input.month,
+      );
+      if (dup) throw new Error("DUPLICATE_MONTH");
+    } else {
+      const dup = Array.from(this.membershipPayments.values()).find(
+        p => p.studentId === studentId && p.type === "one_time_bv" && p.date === input.date,
+      );
+      if (dup) throw new Error("DUPLICATE_DATE");
+    }
+
+    const id = randomUUID();
+    const payment: MembershipPayment = {
+      id,
+      studentId,
+      type: input.type,
+      month: input.type === "monthly_cv" ? input.month : null,
+      date: input.type === "one_time_bv" ? input.date : null,
+      note: input.note ?? null,
+      createdBy,
+      createdAt: new Date(),
+    };
+    this.membershipPayments.set(id, payment);
+    return payment;
+  }
+
+  async deleteMembershipPayment(id: string): Promise<void> {
+    if (!this.membershipPayments.has(id)) throw new Error("Payment not found");
+    this.membershipPayments.delete(id);
+  }
+
+  // ====== Payments: trainer subscription ======
+  private withUsage(p: TrainerPayment): TrainerPaymentWithUsage {
+    return { ...p, usedSessions: this.countUsedSessions(p.id) };
+  }
+
+  async getTrainerPayments(studentId: string): Promise<TrainerPaymentWithUsage[]> {
+    return Array.from(this.trainerPayments.values())
+      .filter(p => p.studentId === studentId)
+      .sort((a, b) => b.startDate.localeCompare(a.startDate))
+      .map(p => this.withUsage(p));
+  }
+
+  async addTrainerPayment(
+    studentId: string,
+    input: TrainerPaymentInput,
+    createdBy: string,
+  ): Promise<TrainerPaymentWithUsage> {
+    const user = this.users.get(studentId);
+    if (!user) throw new Error("User not found");
+    if (user.role !== "student") throw new Error("Only students have subscriptions");
+
+    const id = randomUUID();
+    const payment: TrainerPayment = {
+      id,
+      studentId,
+      type: input.type,
+      totalSessions: input.totalSessions,
+      startDate: input.startDate,
+      status: "active",
+      note: input.note ?? null,
+      createdBy,
+      createdAt: new Date(),
+      completedAt: null,
+    };
+    this.trainerPayments.set(id, payment);
+    return this.withUsage(payment);
+  }
+
+  async cancelTrainerPayment(id: string): Promise<TrainerPaymentWithUsage> {
+    const sub = this.trainerPayments.get(id);
+    if (!sub) throw new Error("Subscription not found");
+    const updated: TrainerPayment = {
+      ...sub,
+      status: "cancelled",
+      completedAt: new Date(),
+    };
+    this.trainerPayments.set(id, updated);
+    return this.withUsage(updated);
+  }
+
+  async deleteTrainerPayment(id: string): Promise<void> {
+    const sub = this.trainerPayments.get(id);
+    if (!sub) throw new Error("Subscription not found");
+    // Clear consumption links from bookings
+    for (const [bid, b] of Array.from(this.bookings.entries())) {
+      if (b.consumedTrainerPaymentId === id) {
+        this.bookings.set(bid, { ...b, consumedTrainerPaymentId: null });
+      }
+    }
+    this.trainerPayments.delete(id);
+  }
+
+  async getStudentPaymentStatus(studentId: string, dateStr: string): Promise<StudentPaymentStatus> {
+    const month = dateStr.slice(0, 7);
+    let membershipKind: "monthly_cv" | "one_time_bv" | null = null;
+    for (const p of Array.from(this.membershipPayments.values())) {
+      if (p.studentId !== studentId) continue;
+      if (p.type === "monthly_cv" && p.month === month) {
+        membershipKind = "monthly_cv";
+        break;
+      }
+      if (p.type === "one_time_bv" && p.date === dateStr) {
+        membershipKind = "one_time_bv";
+        // keep looking for a monthly which takes priority
+      }
+    }
+    const sub = this.findActiveTrainerSubscriptionFor(studentId, dateStr);
+    return {
+      hasMembership: membershipKind !== null,
+      membershipKind,
+      hasTrainerPayment: sub !== null,
+      activeTrainerPayment: sub ? this.withUsage(sub) : null,
+    };
   }
 
   async getNotificationsByUser(userId: string): Promise<Notification[]> {
@@ -923,6 +1170,7 @@ export class MemStorage implements IStorage {
           attendanceStatus: null,
           attendanceNote: null,
           attendanceMarkedAt: null,
+          consumedTrainerPaymentId: null,
           createdAt: new Date(),
           confirmedAt: new Date(),
           cancelledAt: null,

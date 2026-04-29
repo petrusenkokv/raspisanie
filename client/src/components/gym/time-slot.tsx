@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, CircleSlash, Heart, AlarmClock } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { type TimeSlotWithBookings, type AttendanceStatus } from "@shared/schema";
+import { type TimeSlotWithBookings, type AttendanceStatus, type StudentPaymentStatus } from "@shared/schema";
+import { Wallet, Dumbbell } from "lucide-react";
 import { useGymStore } from "@/store/gym-store";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -93,6 +94,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+      queryClient.invalidateQueries({ queryKey: ["payment-status"] });
       toast({
         title: vars.status === null ? "Отметка снята" : "Посещаемость отмечена",
       });
@@ -275,7 +277,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-sm min-w-0">
+                      <div className="flex items-center gap-2 text-sm min-w-0 flex-wrap">
                         {booking.status === "confirmed"
                           ? <UserCheck className="h-3 w-3 text-green-600 shrink-0" />
                           : <Clock className="h-3 w-3 text-yellow-600 shrink-0" />
@@ -292,6 +294,9 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                           >
                             {booking.status === "confirmed" ? "Записан" : "Заявка"}
                           </Badge>
+                        )}
+                        {booking.status === "confirmed" && (
+                          <BookingPaymentBadges studentId={booking.studentId} dateStr={timeSlot.date} />
                         )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -588,5 +593,57 @@ function AttendanceButton({
       {icon}
       <span>{label}</span>
     </button>
+  );
+}
+
+function BookingPaymentBadges({ studentId, dateStr }: { studentId: string; dateStr: string }) {
+  const { data } = useQuery<StudentPaymentStatus>({
+    queryKey: ["payment-status", studentId, dateStr],
+    queryFn: async () => {
+      const r = await apiRequest(
+        "GET",
+        `/api/trainer/students/${studentId}/payment-status?date=${encodeURIComponent(dateStr)}`,
+      );
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+
+  if (!data) return null;
+
+  const cvOk = data.hasMembership;
+  const cvLabel = data.membershipKind === "monthly_cv" ? "ЧВ" : data.membershipKind === "one_time_bv" ? "БВ" : "ЧВ";
+  const trainerOk = data.hasTrainerPayment;
+  const trainerLabel = data.activeTrainerPayment
+    ? `${Math.max(0, data.activeTrainerPayment.totalSessions - data.activeTrainerPayment.usedSessions)}/${data.activeTrainerPayment.totalSessions}`
+    : "—";
+
+  return (
+    <span className="inline-flex items-center gap-1 shrink-0">
+      <span
+        className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border ${
+          cvOk
+            ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+            : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+        }`}
+        title={cvOk ? `${cvLabel} оплачен` : "ЧВ/БВ не оплачены"}
+        data-testid={`badge-payment-cv-${studentId}`}
+      >
+        <Wallet className="h-2.5 w-2.5" />
+        {cvOk ? cvLabel : "ЧВ ✗"}
+      </span>
+      <span
+        className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border ${
+          trainerOk
+            ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+            : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+        }`}
+        title={trainerOk ? "Оплата тренеру есть" : "Нет оплаты тренеру"}
+        data-testid={`badge-payment-trainer-${studentId}`}
+      >
+        <Dumbbell className="h-2.5 w-2.5" />
+        {trainerOk ? trainerLabel : "✗"}
+      </span>
+    </span>
   );
 }

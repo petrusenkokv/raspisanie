@@ -26,11 +26,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { type User, type Document, type StudentWithConsents, type RecurringBooking } from "@shared/schema";
+import {
+  type User,
+  type Document,
+  type StudentWithConsents,
+  type RecurringBooking,
+  type MembershipPayment,
+  type TrainerPaymentWithUsage,
+  type TrainerPaymentType,
+} from "@shared/schema";
 import { BookStudentDialog } from "./book-student-dialog";
 import { DocumentViewDialog } from "./document-view-dialog";
 import { DocumentsManagerDialog } from "./documents-manager-dialog";
-import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart } from "lucide-react";
+import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -604,6 +612,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               )}
             </div>
             <AttendanceSection studentId={student.id} />
+            <PaymentsSection studentId={student.id} />
             <SickLeaveSection student={student} />
             <RecurringBookingsSection studentId={student.id} />
             <DialogFooter>
@@ -1020,6 +1029,431 @@ function SickLeaveSection({ student }: { student: User }) {
       </div>
       <p className="text-[11px] text-gray-500">
         При установке больничного все будущие записи в указанном периоде отменяются с пометкой «уважительная причина».
+      </p>
+    </div>
+  );
+}
+
+// ====== Payments section ======
+const TRAINER_TYPE_LABELS: Record<TrainerPaymentType, string> = {
+  single: "Разовая",
+  weekly: "Неделя",
+  monthly: "Месяц",
+};
+
+const TRAINER_TYPE_DEFAULT_SESSIONS: Record<TrainerPaymentType, number> = {
+  single: 1,
+  weekly: 2,
+  monthly: 8,
+};
+
+function currentMonthStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(yyyymm: string): string {
+  if (!yyyymm) return "";
+  const [y, m] = yyyymm.split("-").map(Number);
+  if (!y || !m) return yyyymm;
+  return format(new Date(y, m - 1, 1), "LLLL yyyy", { locale: ru });
+}
+
+function PaymentsSection({ studentId }: { studentId: string }) {
+  return (
+    <div className="border rounded p-3 space-y-3">
+      <p className="font-medium text-sm flex items-center gap-2">
+        <Wallet className="h-4 w-4" />
+        Оплаты
+      </p>
+      <MembershipSubsection studentId={studentId} />
+      <TrainerSubscriptionSubsection studentId={studentId} />
+    </div>
+  );
+}
+
+function MembershipSubsection({ studentId }: { studentId: string }) {
+  const { toast } = useToast();
+  const [type, setType] = useState<"monthly_cv" | "one_time_bv">("monthly_cv");
+  const [month, setMonth] = useState<string>(currentMonthStr());
+  const [date, setDate] = useState<string>(todayLocalStr());
+  const [note, setNote] = useState<string>("");
+
+  const { data: payments = [], isLoading } = useQuery<MembershipPayment[]>({
+    queryKey: ["/api/trainer/students", studentId, "membership-payments"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/trainer/students/${studentId}/membership-payments`);
+      return r.json();
+    },
+    enabled: !!studentId,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const payload =
+        type === "monthly_cv"
+          ? { type, month, note: note || null }
+          : { type, date, note: note || null };
+      const r = await apiRequest("POST", `/api/trainer/students/${studentId}/membership-payments`, payload);
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "membership-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      setNote("");
+      toast({ title: type === "monthly_cv" ? "ЧВ отмечен" : "БВ отмечен" });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await apiRequest("DELETE", `/api/trainer/membership-payments/${id}`);
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "membership-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      toast({ title: "Оплата удалена" });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  const hasCvCurrentMonth = payments.some(p => p.type === "monthly_cv" && p.month === currentMonthStr());
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          Зал — членский взнос
+        </p>
+        <span
+          className={`text-[10px] px-1.5 py-0.5 rounded border ${
+            hasCvCurrentMonth
+              ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+              : "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800"
+          }`}
+          data-testid="badge-cv-current-month"
+        >
+          {hasCvCurrentMonth
+            ? `ЧВ за ${monthLabel(currentMonthStr())} оплачен`
+            : `ЧВ за ${monthLabel(currentMonthStr())} не оплачен`}
+        </span>
+      </div>
+
+      <div className="flex gap-2 items-end">
+        <div className="flex-1">
+          <Label className="text-xs">Тип</Label>
+          <select
+            className="w-full text-sm border rounded px-2 py-1 bg-background"
+            value={type}
+            onChange={(e) => setType(e.target.value as "monthly_cv" | "one_time_bv")}
+            data-testid="select-membership-type"
+          >
+            <option value="monthly_cv">ЧВ (месяц)</option>
+            <option value="one_time_bv">БВ (разово)</option>
+          </select>
+        </div>
+        {type === "monthly_cv" ? (
+          <div className="flex-1">
+            <Label className="text-xs">Месяц</Label>
+            <Input
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              className="text-sm"
+              data-testid="input-cv-month"
+            />
+          </div>
+        ) : (
+          <div className="flex-1">
+            <Label className="text-xs">Дата</Label>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="text-sm"
+              data-testid="input-bv-date"
+            />
+          </div>
+        )}
+      </div>
+      <Input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Примечание (необязательно)"
+        className="text-sm"
+        data-testid="input-membership-note"
+      />
+      <Button
+        size="sm"
+        className="w-full"
+        onClick={() => addMutation.mutate()}
+        disabled={addMutation.isPending || (type === "monthly_cv" ? !month : !date)}
+        data-testid="button-add-membership"
+      >
+        {addMutation.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+        Отметить оплату
+      </Button>
+
+      {isLoading ? (
+        <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin" /></div>
+      ) : payments.length === 0 ? (
+        <p className="text-xs text-gray-500">Оплат пока нет.</p>
+      ) : (
+        <div className="space-y-1">
+          {payments.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center justify-between text-xs border rounded px-2 py-1 bg-gray-50 dark:bg-gray-800"
+              data-testid={`row-membership-${p.id}`}
+            >
+              <div className="flex flex-col">
+                <span className="font-medium">
+                  {p.type === "monthly_cv"
+                    ? `ЧВ — ${monthLabel(p.month || "")}`
+                    : `БВ — ${p.date ? format(new Date(p.date), "d MMM yyyy", { locale: ru }) : ""}`}
+                </span>
+                {p.note && <span className="text-gray-500">{p.note}</span>}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => deleteMutation.mutate(p.id)}
+                disabled={deleteMutation.isPending}
+                data-testid={`button-delete-membership-${p.id}`}
+              >
+                <Trash2 className="h-3.5 w-3.5 text-red-500" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
+  const { toast } = useToast();
+  const [type, setType] = useState<TrainerPaymentType>("monthly");
+  const [totalSessions, setTotalSessions] = useState<number>(8);
+  const [startDate, setStartDate] = useState<string>(todayLocalStr());
+  const [note, setNote] = useState<string>("");
+
+  const { data: payments = [], isLoading } = useQuery<TrainerPaymentWithUsage[]>({
+    queryKey: ["/api/trainer/students", studentId, "trainer-payments"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/trainer/students/${studentId}/trainer-payments`);
+      return r.json();
+    },
+    enabled: !!studentId,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/trainer/students/${studentId}/trainer-payments`, {
+        type,
+        totalSessions,
+        startDate,
+        note: note || null,
+      });
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "trainer-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      setNote("");
+      toast({ title: "Абонемент добавлен" });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await apiRequest("PATCH", `/api/trainer/trainer-payments/${id}/cancel`);
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "trainer-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      toast({ title: "Абонемент отменён" });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await apiRequest("DELETE", `/api/trainer/trainer-payments/${id}`);
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "trainer-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      toast({ title: "Абонемент удалён" });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  const handleTypeChange = (next: TrainerPaymentType) => {
+    setType(next);
+    setTotalSessions(TRAINER_TYPE_DEFAULT_SESSIONS[next]);
+  };
+
+  const active = payments.find((p) => p.status === "active");
+  const remaining = active ? Math.max(0, active.totalSessions - active.usedSessions) : 0;
+
+  return (
+    <div className="space-y-2 pt-2 border-t">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          Тренер — абонемент
+        </p>
+        {active ? (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded border bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+            data-testid="badge-trainer-active"
+          >
+            {TRAINER_TYPE_LABELS[active.type as TrainerPaymentType]}: {active.usedSessions}/{active.totalSessions}
+            {remaining > 0 && ` (осталось ${remaining})`}
+          </span>
+        ) : (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800"
+            data-testid="badge-trainer-none"
+          >
+            Нет активного абонемента
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 items-end">
+        <div>
+          <Label className="text-xs">Тип</Label>
+          <select
+            className="w-full text-sm border rounded px-2 py-1 bg-background"
+            value={type}
+            onChange={(e) => handleTypeChange(e.target.value as TrainerPaymentType)}
+            data-testid="select-trainer-type"
+          >
+            <option value="single">Разовая</option>
+            <option value="weekly">Неделя</option>
+            <option value="monthly">Месяц</option>
+          </select>
+        </div>
+        <div>
+          <Label className="text-xs">Тренировок</Label>
+          <Input
+            type="number"
+            min={1}
+            max={type === "single" ? 1 : type === "weekly" ? 7 : 31}
+            value={totalSessions}
+            onChange={(e) => setTotalSessions(Number(e.target.value) || 1)}
+            disabled={type === "single"}
+            className="text-sm"
+            data-testid="input-trainer-sessions"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">Начало</Label>
+          <Input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="text-sm"
+            data-testid="input-trainer-start"
+          />
+        </div>
+      </div>
+      <Input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Примечание (необязательно)"
+        className="text-sm"
+        data-testid="input-trainer-note"
+      />
+      <Button
+        size="sm"
+        className="w-full"
+        onClick={() => addMutation.mutate()}
+        disabled={addMutation.isPending || !startDate || totalSessions < 1}
+        data-testid="button-add-trainer-payment"
+      >
+        {addMutation.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+        Создать абонемент
+      </Button>
+
+      {isLoading ? (
+        <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin" /></div>
+      ) : payments.length === 0 ? (
+        <p className="text-xs text-gray-500">Абонементов пока нет.</p>
+      ) : (
+        <div className="space-y-1">
+          {payments.map((p) => {
+            const left = Math.max(0, p.totalSessions - p.usedSessions);
+            const statusLabel =
+              p.status === "active"
+                ? `${p.usedSessions}/${p.totalSessions} • осталось ${left}`
+                : p.status === "completed"
+                ? "израсходован"
+                : "отменён";
+            return (
+              <div
+                key={p.id}
+                className={`flex items-center justify-between text-xs border rounded px-2 py-1 ${
+                  p.status === "active"
+                    ? "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900"
+                    : "bg-gray-50 dark:bg-gray-800"
+                }`}
+                data-testid={`row-trainer-payment-${p.id}`}
+              >
+                <div className="flex flex-col flex-1">
+                  <span className="font-medium flex items-center gap-1">
+                    <Dumbbell className="h-3 w-3" />
+                    {TRAINER_TYPE_LABELS[p.type as TrainerPaymentType]} —{" "}
+                    {format(new Date(p.startDate), "d MMM yyyy", { locale: ru })}
+                  </span>
+                  <span className="text-gray-500">{statusLabel}</span>
+                  {p.note && <span className="text-gray-500">{p.note}</span>}
+                </div>
+                <div className="flex items-center gap-1">
+                  {p.status === "active" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => cancelMutation.mutate(p.id)}
+                      disabled={cancelMutation.isPending}
+                      title="Отменить (закрыть досрочно)"
+                      data-testid={`button-cancel-trainer-payment-${p.id}`}
+                    >
+                      <X className="h-3.5 w-3.5 text-amber-600" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => deleteMutation.mutate(p.id)}
+                    disabled={deleteMutation.isPending}
+                    title="Удалить совсем"
+                    data-testid={`button-delete-trainer-payment-${p.id}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-[11px] text-gray-500">
+        Тренировки списываются автоматически при отметке «Пришёл» или «Опоздал».
       </p>
     </div>
   );

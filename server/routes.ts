@@ -833,6 +833,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ----- Payments: membership (ЧВ/БВ) -----
+  app.get("/api/trainer/students/:id/membership-payments", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const list = await storage.getMembershipPayments(id);
+      res.json(list);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить оплаты" });
+    }
+  });
+
+  app.post("/api/trainer/students/:id/membership-payments", async (req, res) => {
+    try {
+      const { membershipPaymentInputSchema } = await import("@shared/schema");
+      const parsed = membershipPaymentInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Неверные данные" });
+      }
+      const { id } = req.params;
+      const trainerIdRaw = (req.body as any)?.trainerId;
+      const trainer = trainerIdRaw ? await storage.getUser(String(trainerIdRaw)) : await storage.getTrainer();
+      const createdBy = trainer?.id || id;
+      const payment = await storage.addMembershipPayment(id, parsed.data, createdBy);
+      res.json(payment);
+    } catch (error: any) {
+      if (error?.message === "DUPLICATE_MONTH") {
+        return res.status(409).json({ message: "ЧВ за этот месяц уже отмечен" });
+      }
+      if (error?.message === "DUPLICATE_DATE") {
+        return res.status(409).json({ message: "БВ на эту дату уже отмечен" });
+      }
+      res.status(400).json({ message: error?.message || "Не удалось сохранить оплату" });
+    }
+  });
+
+  app.delete("/api/trainer/membership-payments/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteMembershipPayment(id);
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(404).json({ message: error?.message || "Не удалось удалить" });
+    }
+  });
+
+  // ----- Payments: trainer subscriptions -----
+  app.get("/api/trainer/students/:id/trainer-payments", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const list = await storage.getTrainerPayments(id);
+      res.json(list);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить абонементы" });
+    }
+  });
+
+  app.post("/api/trainer/students/:id/trainer-payments", async (req, res) => {
+    try {
+      const { trainerPaymentInputSchema } = await import("@shared/schema");
+      const parsed = trainerPaymentInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Неверные данные" });
+      }
+      const { id } = req.params;
+      const trainerIdRaw = (req.body as any)?.trainerId;
+      const trainer = trainerIdRaw ? await storage.getUser(String(trainerIdRaw)) : await storage.getTrainer();
+      const createdBy = trainer?.id || id;
+      const payment = await storage.addTrainerPayment(id, parsed.data, createdBy);
+      res.json(payment);
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || "Не удалось сохранить абонемент" });
+    }
+  });
+
+  app.patch("/api/trainer/trainer-payments/:id/cancel", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updated = await storage.cancelTrainerPayment(id);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || "Не удалось отменить" });
+    }
+  });
+
+  app.delete("/api/trainer/trainer-payments/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteTrainerPayment(id);
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(404).json({ message: error?.message || "Не удалось удалить" });
+    }
+  });
+
+  // Payment status for a specific student on a specific date (YYYY-MM-DD)
+  app.get("/api/trainer/students/:id/payment-status", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const dateStr = String(req.query.date || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return res.status(400).json({ message: "Укажите параметр date в формате YYYY-MM-DD" });
+      }
+      const status = await storage.getStudentPaymentStatus(id, dateStr);
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить статус оплаты" });
+    }
+  });
+
   // ----- Recurring bookings -----
   app.get("/api/trainer/recurring/:studentId", async (req, res) => {
     try {
