@@ -453,10 +453,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Trainer routes
   app.get("/api/trainer/students", async (req, res) => {
     try {
-      const students = await storage.getStudentsList();
+      const includeInactive = req.query.includeInactive === "true";
+      const students = await storage.getStudentsList(includeInactive);
       res.json(students);
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить список учеников" });
+    }
+  });
+
+  app.patch("/api/trainer/students/:id/status", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { isActive, resetCv } = req.body as { isActive: boolean; resetCv?: boolean };
+      if (typeof isActive !== "boolean") {
+        return res.status(400).json({ message: "Укажите isActive (boolean)" });
+      }
+      const user = await storage.setUserActiveStatus(id, isActive, resetCv ?? false);
+      res.json(user);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось изменить статус ученика" });
     }
   });
 

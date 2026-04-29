@@ -16,6 +16,8 @@ export const users = pgTable("users", {
   parentPhone: text("parent_phone"),
   sickUntil: text("sick_until"), // YYYY-MM-DD; while set, student is on sick leave
   sickNote: text("sick_note"),
+  isActive: boolean("is_active").notNull().default(true), // false = student paused/archived
+  cvRestartDate: text("cv_restart_date"), // YYYY-MM-DD; when set, ignore ЧВ payments before this date
   role: text("role").notNull().default("student"), // "student" or "trainer"
   isVerified: boolean("is_verified").notNull().default(false),
   verificationCode: text("verification_code"),

@@ -124,8 +124,11 @@ export interface IStorage {
   // Payment status for a student on a particular date
   getStudentPaymentStatus(studentId: string, dateStr: string): Promise<StudentPaymentStatus>;
 
+  // Student active status
+  setUserActiveStatus(id: string, isActive: boolean, resetCv?: boolean): Promise<User>;
+
   // Analytics
-  getStudentsList(): Promise<User[]>;
+  getStudentsList(includeInactive?: boolean): Promise<User[]>;
   getTrainer(): Promise<User | undefined>;
   getScheduleForDate(date: string): Promise<DaySchedule>;
   getScheduleForWeek(startDate: string): Promise<DaySchedule[]>;
@@ -232,6 +235,8 @@ export class MemStorage implements IStorage {
       parentPhone: null,
       sickUntil: null,
       sickNote: null,
+      isActive: true,
+      cvRestartDate: null,
       role: "trainer",
       isVerified: true,
       verificationCode: null,
@@ -320,6 +325,8 @@ export class MemStorage implements IStorage {
       parentPhone: insertUser.parentPhone ?? null,
       sickUntil: insertUser.sickUntil ?? null,
       sickNote: insertUser.sickNote ?? null,
+      isActive: true,
+      cvRestartDate: null,
       role: insertUser.role || "student",
       isVerified: insertUser.isVerified ?? false,
       verificationCode: null,
@@ -907,9 +914,17 @@ export class MemStorage implements IStorage {
   }
 
   async getNextCvAllowedDate(studentId: string): Promise<string | null> {
-    // Find the most recent monthly_cv payment
+    const student = this.users.get(studentId);
+    const cvRestartDate = student?.cvRestartDate ?? null;
+
+    // Find the most recent monthly_cv payment (ignoring those before cvRestartDate if set)
     const cvPayments = Array.from(this.membershipPayments.values())
-      .filter(p => p.studentId === studentId && p.type === "monthly_cv" && p.paidDate)
+      .filter(p =>
+        p.studentId === studentId &&
+        p.type === "monthly_cv" &&
+        p.paidDate &&
+        (!cvRestartDate || p.paidDate >= cvRestartDate),
+      )
       .sort((a, b) => (b.paidDate! > a.paidDate! ? 1 : -1));
 
     const last = cvPayments[0];
@@ -1065,8 +1080,24 @@ export class MemStorage implements IStorage {
     return count;
   }
 
-  async getStudentsList(): Promise<User[]> {
-    return Array.from(this.users.values()).filter(user => user.role === "student");
+  async getStudentsList(includeInactive = false): Promise<User[]> {
+    return Array.from(this.users.values()).filter(
+      user => user.role === "student" && (includeInactive || user.isActive !== false),
+    );
+  }
+
+  async setUserActiveStatus(id: string, isActive: boolean, resetCv = false): Promise<User> {
+    const user = this.users.get(id);
+    if (!user) throw new Error("User not found");
+    if (user.role === "trainer") throw new Error("Нельзя изменить статус тренера");
+    const today = localDateStr(new Date());
+    const updated: User = {
+      ...user,
+      isActive,
+      cvRestartDate: resetCv && isActive ? today : user.cvRestartDate,
+    };
+    this.users.set(id, updated);
+    return updated;
   }
 
   async getTrainer(): Promise<User | undefined> {

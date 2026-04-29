@@ -72,10 +72,14 @@ const emptyNewStudent = {
 
 export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<User | null>(null);
+  const [studentToDeactivate, setStudentToDeactivate] = useState<User | null>(null);
+  const [studentToReactivate, setStudentToReactivate] = useState<User | null>(null);
+  const [reactivateResetCv, setReactivateResetCv] = useState(true);
   const [viewStudentId, setViewStudentId] = useState<string | null>(null);
   const [docsManagerOpen, setDocsManagerOpen] = useState(false);
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
@@ -84,9 +88,10 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const { toast } = useToast();
 
   const { data: students = [], isLoading } = useQuery<User[]>({
-    queryKey: ["/api/trainer/students"],
+    queryKey: ["/api/trainer/students", showInactive],
     queryFn: async () => {
-      const response = await apiRequest("GET", "/api/trainer/students");
+      const url = showInactive ? "/api/trainer/students?includeInactive=true" : "/api/trainer/students";
+      const response = await apiRequest("GET", url);
       return response.json();
     },
     enabled: open,
@@ -148,6 +153,21 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
         variant: "destructive",
       });
     },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: async ({ id, isActive, resetCv }: { id: string; isActive: boolean; resetCv?: boolean }) => {
+      const r = await apiRequest("PATCH", `/api/trainer/students/${id}/status`, { isActive, resetCv: resetCv ?? false });
+      return r.json();
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", showInactive] });
+      toast({ title: vars.isActive ? "Ученик восстановлен" : "Ученик приостановлен" });
+      setStudentToDeactivate(null);
+      setStudentToReactivate(null);
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
   });
 
   const filteredStudents = students.filter(student => {
@@ -228,7 +248,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
           </div>
 
           {/* Search */}
-          <div className="relative mb-4">
+          <div className="relative mb-2">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
               placeholder="Поиск по имени или телефону..."
@@ -238,10 +258,22 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
             />
           </div>
 
-          {/* Stats */}
-          <div className="flex items-center gap-2 mb-4 text-sm text-gray-600 dark:text-gray-400">
-            <UserCheck className="h-4 w-4" />
-            <span>Всего учеников: <strong>{students.length}</strong></span>
+          {/* Stats + inactive toggle */}
+          <div className="flex items-center justify-between mb-4 text-sm text-gray-600 dark:text-gray-400">
+            <div className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4" />
+              <span>Учеников: <strong>{filteredStudents.length}</strong></span>
+            </div>
+            <button
+              className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                showInactive
+                  ? "bg-gray-200 text-gray-800 border-gray-300 dark:bg-gray-700 dark:text-gray-200"
+                  : "bg-transparent text-gray-500 border-gray-200 hover:border-gray-400"
+              }`}
+              onClick={() => setShowInactive(v => !v)}
+            >
+              {showInactive ? "Скрыть архив" : "Показать архив"}
+            </button>
           </div>
 
           {/* Students list */}
@@ -257,8 +289,9 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
             <div className="space-y-3">
               {filteredStudents.map((student) => {
                 const age = calculateAge((student as any).birthDate);
+                const isInactive = (student as any).isActive === false;
                 return (
-                  <div key={student.id} className="border rounded-lg p-4 bg-white dark:bg-gray-800 hover:shadow-sm transition-shadow">
+                  <div key={student.id} className={`border rounded-lg p-4 transition-shadow ${isInactive ? "bg-gray-50 dark:bg-gray-900 opacity-70 border-dashed" : "bg-white dark:bg-gray-800 hover:shadow-sm"}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1 min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -270,6 +303,11 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                           >
                             {student.lastName} {student.firstName} {(student as any).middleName || ""}
                           </button>
+                          {isInactive && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-400">
+                              архив
+                            </span>
+                          )}
                           {age !== null && (
                             <Badge variant="secondary" className="text-xs">
                               {age} {age === 1 ? "год" : age >= 2 && age <= 4 ? "года" : "лет"}
@@ -288,14 +326,16 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                         )}
                       </div>
                       <div className="flex flex-col gap-1 shrink-0">
-                        <Button
-                          size="sm"
-                          onClick={() => handleBookStudent(student)}
-                          data-testid={`button-book-student-${student.id}`}
-                        >
-                          <Calendar className="h-4 w-4 mr-1" />
-                          Записать
-                        </Button>
+                        {!isInactive && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleBookStudent(student)}
+                            data-testid={`button-book-student-${student.id}`}
+                          >
+                            <Calendar className="h-4 w-4 mr-1" />
+                            Записать
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -304,15 +344,37 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                           <Eye className="h-4 w-4 mr-1" />
                           Карточка
                         </Button>
+                        {isInactive ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={() => { setStudentToReactivate(student); setReactivateResetCv(true); }}
+                          >
+                            <UserCheck className="h-4 w-4 mr-1" />
+                            Восстановить
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                            onClick={() => setStudentToDeactivate(student)}
+                            data-testid={`button-deactivate-student-${student.id}`}
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Приостановить
+                          </Button>
+                        )}
                         <Button
                           size="sm"
-                          variant="outline"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
                           onClick={() => setStudentToDelete(student)}
                           data-testid={`button-delete-student-${student.id}`}
                         >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Удалить
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Удалить совсем
                         </Button>
                       </div>
                     </div>
@@ -485,6 +547,67 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
               data-testid="button-confirm-delete-student"
             >
               Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Deactivate confirmation */}
+      <AlertDialog open={!!studentToDeactivate} onOpenChange={(open) => !open && setStudentToDeactivate(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Приостановить ученика?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {studentToDeactivate && (
+                <><strong>{studentToDeactivate.firstName} {studentToDeactivate.lastName}</strong> будет перемещён в архив. Данные и история сохранятся. Ученика можно восстановить в любой момент.</>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-500 hover:bg-amber-600"
+              onClick={() => studentToDeactivate && statusMutation.mutate({ id: studentToDeactivate.id, isActive: false })}
+            >
+              Приостановить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reactivate dialog */}
+      <AlertDialog open={!!studentToReactivate} onOpenChange={(open) => !open && setStudentToReactivate(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Восстановить ученика?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                {studentToReactivate && (
+                  <><strong>{studentToReactivate.firstName} {studentToReactivate.lastName}</strong> снова станет активным учеником.</>
+                )}
+                <div className="mt-3">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={reactivateResetCv}
+                      onChange={(e) => setReactivateResetCv(e.target.checked)}
+                    />
+                    <span className="text-sm">
+                      Сбросить счётчик ЧВ — следующая отметка доступна сразу после восстановления (рекомендуется при долгом перерыве)
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-green-600 hover:bg-green-700"
+              onClick={() => studentToReactivate && statusMutation.mutate({ id: studentToReactivate.id, isActive: true, resetCv: reactivateResetCv })}
+            >
+              Восстановить
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
