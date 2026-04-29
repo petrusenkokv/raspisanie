@@ -30,7 +30,7 @@ import { type User, type Document, type StudentWithConsents, type RecurringBooki
 import { BookStudentDialog } from "./book-student-dialog";
 import { DocumentViewDialog } from "./document-view-dialog";
 import { DocumentsManagerDialog } from "./documents-manager-dialog";
-import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit } from "lucide-react";
+import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -603,6 +603,8 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                 ))
               )}
             </div>
+            <AttendanceSection studentId={student.id} />
+            <SickLeaveSection student={student} />
             <RecurringBookingsSection studentId={student.id} />
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Закрыть</Button>
@@ -857,6 +859,168 @@ function RecurringBookingsSection({ studentId }: { studentId: string }) {
           Создать правило
         </Button>
       </div>
+    </div>
+  );
+}
+
+type AttendanceStats = {
+  total: number;
+  attended: number;
+  late: number;
+  excused: number;
+  noShow: number;
+  pending: number;
+};
+
+function AttendanceSection({ studentId }: { studentId: string }) {
+  const { data, isLoading } = useQuery<AttendanceStats>({
+    queryKey: ["/api/trainer/students", studentId, "attendance-stats"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/trainer/students/${studentId}/attendance-stats`);
+      return r.json();
+    },
+    enabled: !!studentId,
+  });
+
+  const total = data?.total ?? 0;
+  const attendedTotal = (data?.attended ?? 0) + (data?.late ?? 0);
+  const attendedPct = total > 0 ? Math.round((attendedTotal / total) * 100) : null;
+
+  return (
+    <div className="border rounded p-3 space-y-2">
+      <p className="font-medium text-sm flex items-center gap-2">
+        <Activity className="h-4 w-4" />
+        Посещаемость
+      </p>
+      {isLoading ? (
+        <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin" /></div>
+      ) : !data || total === 0 ? (
+        <p className="text-xs text-gray-500">Пока нет состоявшихся занятий</p>
+      ) : (
+        <>
+          {attendedPct !== null && (
+            <div className="text-xs text-gray-600 dark:text-gray-300">
+              Посещаемость: <span className="font-semibold">{attendedPct}%</span> (за всё время)
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-1 text-xs">
+            <Stat label="Пришёл" value={data.attended} color="text-green-600" />
+            <Stat label="Опоздал" value={data.late} color="text-yellow-600" />
+            <Stat label="Уваж. причина" value={data.excused} color="text-blue-600" />
+            <Stat label="Прогулы" value={data.noShow} color="text-red-600" />
+            {data.pending > 0 && (
+              <div className="col-span-2 text-xs text-gray-500 pt-1 border-t">
+                Не отмечено: <span className="font-medium">{data.pending}</span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded px-2 py-1">
+      <span className="text-gray-600 dark:text-gray-300">{label}</span>
+      <span className={`font-semibold ${color}`}>{value}</span>
+    </div>
+  );
+}
+
+function SickLeaveSection({ student }: { student: User }) {
+  const { toast } = useToast();
+  const [until, setUntil] = useState<string>(student.sickUntil || "");
+  const [note, setNote] = useState<string>(student.sickNote || "");
+
+  useEffect(() => {
+    setUntil(student.sickUntil || "");
+    setNote(student.sickNote || "");
+  }, [student.id, student.sickUntil, student.sickNote]);
+
+  const setMutation = useMutation({
+    mutationFn: async (payload: { sickUntil: string | null; sickNote: string | null }) => {
+      const r = await apiRequest("PATCH", `/api/trainer/students/${student.id}/sick-leave`, payload);
+      return r.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      const cancelled = data?.cancelledCount ?? 0;
+      toast({
+        title: data?.user?.sickUntil ? "Ученик отмечен как болеющий" : "Болезнь снята",
+        description: cancelled > 0 ? `Отменено будущих записей: ${cancelled}` : undefined,
+      });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  const isSick = !!student.sickUntil;
+
+  return (
+    <div className={`border rounded p-3 space-y-2 ${isSick ? "bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900" : ""}`}>
+      <p className="font-medium text-sm flex items-center gap-2">
+        <Heart className={`h-4 w-4 ${isSick ? "text-rose-600" : ""}`} />
+        Больничный
+      </p>
+      {isSick && (
+        <div className="text-xs text-rose-700 dark:text-rose-300">
+          Сейчас на больничном до{" "}
+          <span className="font-semibold">
+            {format(new Date(student.sickUntil!), "d MMMM yyyy", { locale: ru })}
+          </span>
+          {student.sickNote && <div className="text-gray-600 dark:text-gray-300 mt-1">{student.sickNote}</div>}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-xs">Болеет до</Label>
+          <Input
+            type="date"
+            value={until}
+            onChange={(e) => setUntil(e.target.value)}
+            className="text-sm"
+            data-testid="input-sick-until"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">Причина (необяз.)</Label>
+          <Input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="ОРВИ"
+            className="text-sm"
+            data-testid="input-sick-note"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          className="flex-1"
+          onClick={() => setMutation.mutate({ sickUntil: until || null, sickNote: note || null })}
+          disabled={setMutation.isPending || !until}
+          data-testid="button-set-sick"
+        >
+          {setMutation.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+          {isSick ? "Обновить" : "Отметить"}
+        </Button>
+        {isSick && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setMutation.mutate({ sickUntil: null, sickNote: null })}
+            disabled={setMutation.isPending}
+            data-testid="button-clear-sick"
+          >
+            Выздоровел
+          </Button>
+        )}
+      </div>
+      <p className="text-[11px] text-gray-500">
+        При установке больничного все будущие записи в указанном периоде отменяются с пометкой «уважительная причина».
+      </p>
     </div>
   );
 }

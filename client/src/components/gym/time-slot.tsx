@@ -3,9 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, CircleSlash, Heart, AlarmClock } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { type TimeSlotWithBookings } from "@shared/schema";
+import { type TimeSlotWithBookings, type AttendanceStatus } from "@shared/schema";
 import { useGymStore } from "@/store/gym-store";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -82,6 +82,26 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     onError: (e: any) =>
       toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
   });
+
+  const attendanceMutation = useMutation({
+    mutationFn: async ({ bookingId, status }: { bookingId: string; status: AttendanceStatus | null }) => {
+      const r = await apiRequest("PATCH", `/api/trainer/bookings/${bookingId}/attendance`, {
+        status,
+      });
+      return r.json();
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+      toast({
+        title: vars.status === null ? "Отметка снята" : "Посещаемость отмечена",
+      });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  // A slot is considered "past" 1 hour after its start time (a typical lesson length)
+  const isPast = minutesUntil < -60;
 
   const isFull = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
@@ -241,57 +261,121 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
               {allActiveBookings.length === 0 && (
                 <p className="text-sm text-gray-500 dark:text-gray-400">Нет записей</p>
               )}
-              {allActiveBookings.map((booking) => (
-                <div
-                  key={booking.id}
-                  className={`flex items-center justify-between gap-2 rounded px-2 py-1 ${
-                    booking.status === "pending"
-                      ? "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800"
-                      : "bg-white dark:bg-gray-900"
-                  }`}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex items-center gap-2 text-sm min-w-0">
-                    {booking.status === "confirmed"
-                      ? <UserCheck className="h-3 w-3 text-green-600 shrink-0" />
-                      : <Clock className="h-3 w-3 text-yellow-600 shrink-0" />
-                    }
-                    <span className="text-gray-900 dark:text-white truncate">
-                      {booking.student.firstName} {booking.student.lastName}
-                    </span>
-                    <Badge
-                      variant={booking.status === "confirmed" ? "default" : "secondary"}
-                      className="text-xs shrink-0"
-                    >
-                      {booking.status === "confirmed" ? "Записан" : "Заявка"}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {booking.status === "pending" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onConfirm(booking.id)}
-                        className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                        title="Подтвердить запись"
-                        data-testid={`button-trainer-confirm-${booking.id}`}
-                      >
-                        <Check className="h-3 w-3" />
-                      </Button>
+              {allActiveBookings.map((booking) => {
+                const att = (booking as any).attendanceStatus as AttendanceStatus | null | undefined;
+                const showAttendance = isPast && booking.status === "confirmed";
+                return (
+                  <div
+                    key={booking.id}
+                    className={`rounded px-2 py-1 space-y-1 ${
+                      booking.status === "pending"
+                        ? "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800"
+                        : "bg-white dark:bg-gray-900"
+                    }`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-sm min-w-0">
+                        {booking.status === "confirmed"
+                          ? <UserCheck className="h-3 w-3 text-green-600 shrink-0" />
+                          : <Clock className="h-3 w-3 text-yellow-600 shrink-0" />
+                        }
+                        <span className="text-gray-900 dark:text-white truncate">
+                          {booking.student.firstName} {booking.student.lastName}
+                        </span>
+                        {att ? (
+                          <AttendanceBadge status={att} />
+                        ) : (
+                          <Badge
+                            variant={booking.status === "confirmed" ? "default" : "secondary"}
+                            className="text-xs shrink-0"
+                          >
+                            {booking.status === "confirmed" ? "Записан" : "Заявка"}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {booking.status === "pending" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onConfirm(booking.id)}
+                            className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            title="Подтвердить запись"
+                            data-testid={`button-trainer-confirm-${booking.id}`}
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {!showAttendance && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onCancel(booking.id)}
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            title="Удалить запись"
+                            data-testid={`button-trainer-cancel-${booking.id}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    {showAttendance && (
+                      <div className="flex flex-wrap gap-1 pt-1 border-t border-gray-100 dark:border-gray-800">
+                        <AttendanceButton
+                          label="Пришёл"
+                          icon={<UserCheck className="h-3 w-3" />}
+                          color="green"
+                          active={att === "attended"}
+                          onClick={() => attendanceMutation.mutate({
+                            bookingId: booking.id,
+                            status: att === "attended" ? null : "attended",
+                          })}
+                          disabled={attendanceMutation.isPending}
+                          testId={`button-attend-${booking.id}`}
+                        />
+                        <AttendanceButton
+                          label="Опоздал"
+                          icon={<AlarmClock className="h-3 w-3" />}
+                          color="yellow"
+                          active={att === "late"}
+                          onClick={() => attendanceMutation.mutate({
+                            bookingId: booking.id,
+                            status: att === "late" ? null : "late",
+                          })}
+                          disabled={attendanceMutation.isPending}
+                          testId={`button-late-${booking.id}`}
+                        />
+                        <AttendanceButton
+                          label="Уваж."
+                          icon={<Heart className="h-3 w-3" />}
+                          color="blue"
+                          active={att === "excused"}
+                          onClick={() => attendanceMutation.mutate({
+                            bookingId: booking.id,
+                            status: att === "excused" ? null : "excused",
+                          })}
+                          disabled={attendanceMutation.isPending}
+                          testId={`button-excused-${booking.id}`}
+                        />
+                        <AttendanceButton
+                          label="Прогул"
+                          icon={<CircleSlash className="h-3 w-3" />}
+                          color="red"
+                          active={att === "no_show"}
+                          onClick={() => attendanceMutation.mutate({
+                            bookingId: booking.id,
+                            status: att === "no_show" ? null : "no_show",
+                          })}
+                          disabled={attendanceMutation.isPending}
+                          testId={`button-noshow-${booking.id}`}
+                        />
+                      </div>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onCancel(booking.id)}
-                      className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                      title="Удалить запись"
-                      data-testid={`button-trainer-cancel-${booking.id}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             // Student view
@@ -444,4 +528,65 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   }
 
   return cardContent;
+}
+
+const ATTENDANCE_BADGE: Record<AttendanceStatus, { label: string; className: string }> = {
+  attended: { label: "Пришёл", className: "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800" },
+  late: { label: "Опоздал", className: "bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800" },
+  excused: { label: "Уваж.", className: "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800" },
+  no_show: { label: "Прогул", className: "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800" },
+};
+
+function AttendanceBadge({ status }: { status: AttendanceStatus }) {
+  const { label, className } = ATTENDANCE_BADGE[status];
+  return (
+    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border shrink-0 ${className}`}>
+      {label}
+    </span>
+  );
+}
+
+function AttendanceButton({
+  label,
+  icon,
+  color,
+  active,
+  onClick,
+  disabled,
+  testId,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  color: "green" | "yellow" | "blue" | "red";
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  testId?: string;
+}) {
+  const colors: Record<string, string> = {
+    green: active
+      ? "bg-green-600 text-white border-green-600"
+      : "text-green-700 border-green-300 hover:bg-green-50 dark:text-green-300 dark:border-green-800 dark:hover:bg-green-900/30",
+    yellow: active
+      ? "bg-yellow-500 text-white border-yellow-500"
+      : "text-yellow-700 border-yellow-300 hover:bg-yellow-50 dark:text-yellow-300 dark:border-yellow-800 dark:hover:bg-yellow-900/30",
+    blue: active
+      ? "bg-blue-600 text-white border-blue-600"
+      : "text-blue-700 border-blue-300 hover:bg-blue-50 dark:text-blue-300 dark:border-blue-800 dark:hover:bg-blue-900/30",
+    red: active
+      ? "bg-red-600 text-white border-red-600"
+      : "text-red-600 border-red-300 hover:bg-red-50 dark:text-red-300 dark:border-red-800 dark:hover:bg-red-900/30",
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      data-testid={testId}
+      className={`flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded border transition disabled:opacity-50 ${colors[color]}`}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
 }

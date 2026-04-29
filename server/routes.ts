@@ -778,6 +778,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ----- Attendance -----
+  app.patch("/api/trainer/bookings/:id/attendance", async (req, res) => {
+    try {
+      const { attendanceUpdateSchema } = await import("@shared/schema");
+      const parsed = attendanceUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Неверные данные" });
+      }
+      const { id } = req.params;
+      const updated = await storage.markAttendance(id, parsed.data.status, parsed.data.note ?? null);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || "Не удалось сохранить отметку" });
+    }
+  });
+
+  app.get("/api/trainer/students/:id/attendance-stats", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const stats = await storage.getStudentAttendanceStats(id);
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить статистику" });
+    }
+  });
+
+  app.patch("/api/trainer/students/:id/sick-leave", async (req, res) => {
+    try {
+      const { sickLeaveUpdateSchema } = await import("@shared/schema");
+      const parsed = sickLeaveUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Неверные данные" });
+      }
+      const { id } = req.params;
+      const result = await storage.setStudentSickLeave(
+        id,
+        parsed.data.sickUntil,
+        parsed.data.sickNote ?? null,
+        parsed.data.startDate,
+      );
+      if (parsed.data.sickUntil && result.cancelledCount > 0) {
+        await storage.createNotification({
+          userId: id,
+          type: "booking_cancelled",
+          title: "Записи отменены — болезнь",
+          message: `Тренер отметил вас как болеющего до ${parsed.data.sickUntil}. Отменено занятий: ${result.cancelledCount}.`,
+          relatedBookingId: null as any,
+        });
+      }
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || "Не удалось сохранить" });
+    }
+  });
+
   // ----- Recurring bookings -----
   app.get("/api/trainer/recurring/:studentId", async (req, res) => {
     try {

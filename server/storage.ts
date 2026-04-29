@@ -20,8 +20,18 @@ import {
   type TrainerSettings,
   type TrainerSettingsUpdate,
   type WeeklyTemplate,
+  type AttendanceStatus,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+
+export type AttendanceStats = {
+  total: number;
+  attended: number;
+  late: number;
+  excused: number;
+  noShow: number;
+  pending: number; // confirmed past bookings without attendance set
+};
 
 export interface IStorage {
   // Users
@@ -50,6 +60,9 @@ export interface IStorage {
   updateBooking(id: string, updates: Partial<Booking>): Promise<Booking>;
   confirmBooking(id: string): Promise<Booking>;
   cancelBooking(id: string): Promise<Booking>;
+  markAttendance(bookingId: string, status: AttendanceStatus | null, note: string | null): Promise<Booking>;
+  getStudentAttendanceStats(studentId: string): Promise<AttendanceStats>;
+  setStudentSickLeave(studentId: string, sickUntil: string | null, sickNote: string | null, startDate?: string): Promise<{ user: User; cancelledCount: number }>;
   
   // Notifications
   getNotificationsByUser(userId: string): Promise<Notification[]>;
@@ -186,6 +199,8 @@ export class MemStorage implements IStorage {
       trainerNotes: null,
       parentFullName: null,
       parentPhone: null,
+      sickUntil: null,
+      sickNote: null,
       role: "trainer",
       isVerified: true,
       verificationCode: null,
@@ -272,6 +287,8 @@ export class MemStorage implements IStorage {
       trainerNotes: insertUser.trainerNotes ?? null,
       parentFullName: insertUser.parentFullName ?? null,
       parentPhone: insertUser.parentPhone ?? null,
+      sickUntil: insertUser.sickUntil ?? null,
+      sickNote: insertUser.sickNote ?? null,
       role: insertUser.role || "student",
       isVerified: insertUser.isVerified ?? false,
       verificationCode: null,
@@ -556,6 +573,9 @@ export class MemStorage implements IStorage {
       status,
       notes: insertBooking.notes || null,
       recurringBookingId: insertBooking.recurringBookingId || null,
+      attendanceStatus: null,
+      attendanceNote: null,
+      attendanceMarkedAt: null,
       createdAt: new Date(),
       confirmedAt: status === "confirmed" ? new Date() : null,
       cancelledAt: null
@@ -597,6 +617,101 @@ export class MemStorage implements IStorage {
     };
     this.bookings.set(id, cancelledBooking);
     return cancelledBooking;
+  }
+
+  async markAttendance(
+    bookingId: string,
+    status: AttendanceStatus | null,
+    note: string | null,
+  ): Promise<Booking> {
+    const booking = this.bookings.get(bookingId);
+    if (!booking) throw new Error("Booking not found");
+    const updated: Booking = {
+      ...booking,
+      attendanceStatus: status,
+      attendanceNote: status ? (note ?? null) : null,
+      attendanceMarkedAt: status ? new Date() : null,
+    };
+    this.bookings.set(bookingId, updated);
+    return updated;
+  }
+
+  async getStudentAttendanceStats(studentId: string): Promise<AttendanceStats> {
+    const stats: AttendanceStats = {
+      total: 0,
+      attended: 0,
+      late: 0,
+      excused: 0,
+      noShow: 0,
+      pending: 0,
+    };
+    const nowMs = Date.now();
+    for (const booking of Array.from(this.bookings.values())) {
+      if (booking.studentId !== studentId) continue;
+      // Count any booking that has an attendance status, even if cancelled (excused via sick-leave)
+      if (booking.attendanceStatus) {
+        stats.total++;
+        switch (booking.attendanceStatus) {
+          case "attended": stats.attended++; break;
+          case "late": stats.late++; break;
+          case "excused": stats.excused++; break;
+          case "no_show": stats.noShow++; break;
+        }
+        continue;
+      }
+      // Pending: confirmed booking that already happened
+      if (booking.status === "confirmed") {
+        const slot = this.timeSlots.get(booking.timeSlotId);
+        if (!slot) continue;
+        const slotMs = new Date(`${slot.date}T${slot.time.slice(0, 5)}:00+03:00`).getTime();
+        if (!isNaN(slotMs) && slotMs + 60 * 60 * 1000 < nowMs) {
+          stats.pending++;
+          stats.total++;
+        }
+      }
+    }
+    return stats;
+  }
+
+  async setStudentSickLeave(
+    studentId: string,
+    sickUntil: string | null,
+    sickNote: string | null,
+    startDate?: string,
+  ): Promise<{ user: User; cancelledCount: number }> {
+    const user = this.users.get(studentId);
+    if (!user) throw new Error("User not found");
+    if (user.role !== "student") throw new Error("Only students can be set on sick leave");
+
+    const updatedUser: User = {
+      ...user,
+      sickUntil,
+      sickNote: sickUntil ? (sickNote ?? null) : null,
+    };
+    this.users.set(studentId, updatedUser);
+
+    let cancelledCount = 0;
+    if (sickUntil) {
+      const fromStr = startDate || localDateStr(new Date());
+      for (const [bid, booking] of Array.from(this.bookings.entries())) {
+        if (booking.studentId !== studentId) continue;
+        if (booking.status === "cancelled") continue;
+        const slot = this.timeSlots.get(booking.timeSlotId);
+        if (!slot) continue;
+        if (slot.date < fromStr || slot.date > sickUntil) continue;
+        const cancelled: Booking = {
+          ...booking,
+          status: "cancelled",
+          cancelledAt: new Date(),
+          attendanceStatus: "excused",
+          attendanceNote: sickNote ? `Болезнь: ${sickNote}` : "Болезнь",
+          attendanceMarkedAt: new Date(),
+        };
+        this.bookings.set(bid, cancelled);
+        cancelledCount++;
+      }
+    }
+    return { user: updatedUser, cancelledCount };
   }
 
   async getNotificationsByUser(userId: string): Promise<Notification[]> {
@@ -805,6 +920,9 @@ export class MemStorage implements IStorage {
           bookedBy: rule.createdBy,
           notes: "Постоянная запись",
           recurringBookingId: rule.id,
+          attendanceStatus: null,
+          attendanceNote: null,
+          attendanceMarkedAt: null,
           createdAt: new Date(),
           confirmedAt: new Date(),
           cancelledAt: null,
