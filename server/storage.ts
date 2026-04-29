@@ -113,6 +113,7 @@ export interface IStorage {
   getMembershipPayments(studentId: string): Promise<MembershipPayment[]>;
   addMembershipPayment(studentId: string, input: MembershipPaymentInput, createdBy: string): Promise<MembershipPayment>;
   deleteMembershipPayment(id: string): Promise<void>;
+  getNextCvAllowedDate(studentId: string): Promise<string | null>;
 
   // Payments — trainer subscription
   getTrainerPayments(studentId: string): Promise<TrainerPaymentWithUsage[]>;
@@ -182,6 +183,13 @@ function resolveCapacity(template: WeeklyTemplate, defaultCapacity: number, date
   return defaultCapacity;
 }
 
+interface SickPeriod {
+  id: string;
+  studentId: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+}
+
 export class MemStorage implements IStorage {
   private users: Map<string, User> = new Map();
   private timeSlots: Map<string, TimeSlot> = new Map();
@@ -193,6 +201,7 @@ export class MemStorage implements IStorage {
   private holidays: Map<string, Holiday> = new Map();
   private membershipPayments: Map<string, MembershipPayment> = new Map();
   private trainerPayments: Map<string, TrainerPayment> = new Map();
+  private sickPeriods: Map<string, SickPeriod> = new Map();
   private settings: TrainerSettings = {
     id: randomUUID(),
     dayStartHour: 8,
@@ -792,6 +801,21 @@ export class MemStorage implements IStorage {
     };
     this.users.set(studentId, updatedUser);
 
+    // Track sick period history for ЧВ date calculation
+    if (sickUntil) {
+      const fromStr = startDate || localDateStr(new Date());
+      // Update existing open period with same startDate, or create new one
+      const existing = Array.from(this.sickPeriods.values()).find(
+        p => p.studentId === studentId && p.startDate === fromStr,
+      );
+      if (existing) {
+        this.sickPeriods.set(existing.id, { ...existing, endDate: sickUntil });
+      } else {
+        const spId = randomUUID();
+        this.sickPeriods.set(spId, { id: spId, studentId, startDate: fromStr, endDate: sickUntil });
+      }
+    }
+
     let cancelledCount = 0;
     if (sickUntil) {
       const fromStr = startDate || localDateStr(new Date());
@@ -846,11 +870,14 @@ export class MemStorage implements IStorage {
     let derivedMonth: string | null = null;
     if (input.type === "monthly_cv") {
       derivedMonth = input.paidDate.slice(0, 7);
-      // Prevent duplicate ЧВ for the same covered month
-      const dup = Array.from(this.membershipPayments.values()).find(
-        p => p.studentId === studentId && p.type === "monthly_cv" && p.month === derivedMonth,
-      );
-      if (dup) throw new Error("DUPLICATE_MONTH");
+      // Check if today is before the next allowed date
+      const nextAllowed = await this.getNextCvAllowedDate(studentId);
+      if (nextAllowed) {
+        const today = localDateStr(new Date());
+        if (today < nextAllowed) {
+          throw new Error(`BEFORE_NEXT_ALLOWED_DATE:${nextAllowed}`);
+        }
+      }
     } else {
       const dup = Array.from(this.membershipPayments.values()).find(
         p => p.studentId === studentId && p.type === "one_time_bv" && p.date === input.date,
@@ -877,6 +904,43 @@ export class MemStorage implements IStorage {
   async deleteMembershipPayment(id: string): Promise<void> {
     if (!this.membershipPayments.has(id)) throw new Error("Payment not found");
     this.membershipPayments.delete(id);
+  }
+
+  async getNextCvAllowedDate(studentId: string): Promise<string | null> {
+    // Find the most recent monthly_cv payment
+    const cvPayments = Array.from(this.membershipPayments.values())
+      .filter(p => p.studentId === studentId && p.type === "monthly_cv" && p.paidDate)
+      .sort((a, b) => (b.paidDate! > a.paidDate! ? 1 : -1));
+
+    const last = cvPayments[0];
+    if (!last?.paidDate) return null;
+
+    // Base: same day next month
+    const paid = new Date(last.paidDate + "T00:00:00");
+    const base = new Date(paid);
+    base.setMonth(base.getMonth() + 1);
+
+    // Collect all unique sick days strictly after paidDate
+    const sickDays = new Set<string>();
+    const studentPeriods = Array.from(this.sickPeriods.values())
+      .filter(p => p.studentId === studentId && p.endDate > last.paidDate!);
+
+    for (const period of studentPeriods) {
+      const start = new Date(Math.max(
+        new Date(period.startDate + "T00:00:00").getTime(),
+        new Date(last.paidDate! + "T00:00:00").getTime() + 86400000, // strictly after paidDate
+      ));
+      const end = new Date(period.endDate + "T00:00:00");
+      const cur = new Date(start);
+      while (cur <= end) {
+        sickDays.add(localDateStr(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+
+    // Shift base date by number of unique sick days
+    base.setDate(base.getDate() + sickDays.size);
+    return localDateStr(base);
   }
 
   // ====== Payments: trainer subscription ======

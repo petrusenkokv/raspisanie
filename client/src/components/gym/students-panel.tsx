@@ -1088,6 +1088,19 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
     enabled: !!studentId,
   });
 
+  const { data: nextCvData } = useQuery<{ nextAllowedDate: string | null }>({
+    queryKey: ["/api/trainer/students", studentId, "next-cv-date"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/trainer/students/${studentId}/next-cv-date`);
+      return r.json();
+    },
+    enabled: !!studentId,
+  });
+
+  const nextAllowedDate = nextCvData?.nextAllowedDate ?? null;
+  const today = todayLocalStr();
+  const cvBlocked = type === "monthly_cv" && nextAllowedDate !== null && today < nextAllowedDate;
+
   const addMutation = useMutation({
     mutationFn: async () => {
       const payload =
@@ -1095,11 +1108,16 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
           ? { type, paidDate, note: note || null }
           : { type, date, note: note || null };
       const r = await apiRequest("POST", `/api/trainer/students/${studentId}/membership-payments`, payload);
+      if (!r.ok) {
+        const body = await r.json();
+        throw new Error(body.message || "Ошибка");
+      }
       return r.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "membership-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "next-cv-date"] });
       queryClient.invalidateQueries({ queryKey: ["payment-status"] });
       setNote("");
       toast({ title: type === "monthly_cv" ? "ЧВ отмечен" : "БВ отмечен" });
@@ -1115,6 +1133,7 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "membership-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "next-cv-date"] });
       queryClient.invalidateQueries({ queryKey: ["payment-status"] });
       toast({ title: "Оплата удалена" });
     },
@@ -1143,6 +1162,19 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
         </span>
       </div>
 
+      {nextAllowedDate && (
+        <p className={`text-[11px] rounded px-2 py-1 border ${
+          cvBlocked
+            ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
+            : "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
+        }`}>
+          {cvBlocked
+            ? `Следующая отметка ЧВ доступна с ${format(new Date(nextAllowedDate + "T00:00:00"), "d MMMM yyyy", { locale: ru })}`
+            : `Отметка ЧВ доступна с ${format(new Date(nextAllowedDate + "T00:00:00"), "d MMMM yyyy", { locale: ru })}`
+          }
+        </p>
+      )}
+
       <div className="flex gap-2 items-end">
         <div className="flex-1">
           <Label className="text-xs">Тип</Label>
@@ -1158,7 +1190,7 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
         </div>
         {type === "monthly_cv" ? (
           <div className="flex-1">
-            <Label className="text-xs">Дата оплаты</Label>
+            <Label className="text-xs">Дата оплаты учеником</Label>
             <Input
               type="date"
               value={paidDate}
@@ -1194,8 +1226,9 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
         size="sm"
         className="w-full"
         onClick={() => addMutation.mutate()}
-        disabled={addMutation.isPending || (type === "monthly_cv" ? !paidDate : !date)}
+        disabled={addMutation.isPending || cvBlocked || (type === "monthly_cv" ? !paidDate : !date)}
         data-testid="button-add-membership"
+        title={cvBlocked && nextAllowedDate ? `Доступно с ${nextAllowedDate}` : undefined}
       >
         {addMutation.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
         Отметить оплату

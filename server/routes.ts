@@ -844,6 +844,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/trainer/students/:id/next-cv-date", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const nextAllowed = await storage.getNextCvAllowedDate(id);
+      res.json({ nextAllowedDate: nextAllowed });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить дату следующей отметки ЧВ" });
+    }
+  });
+
   app.post("/api/trainer/students/:id/membership-payments", async (req, res) => {
     try {
       const { membershipPaymentInputSchema } = await import("@shared/schema");
@@ -858,8 +868,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const payment = await storage.addMembershipPayment(id, parsed.data, createdBy);
       res.json(payment);
     } catch (error: any) {
-      if (error?.message === "DUPLICATE_MONTH") {
-        return res.status(409).json({ message: "ЧВ за этот месяц уже отмечен" });
+      if (error?.message?.startsWith("BEFORE_NEXT_ALLOWED_DATE:")) {
+        const date = error.message.split(":")[1];
+        return res.status(409).json({ message: `Следующая отметка ЧВ доступна с ${date}`, nextAllowedDate: date });
       }
       if (error?.message === "DUPLICATE_DATE") {
         return res.status(409).json({ message: "БВ на эту дату уже отмечен" });
