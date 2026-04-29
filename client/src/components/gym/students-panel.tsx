@@ -142,7 +142,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
       toast({ title: "Ученик удалён" });
       setStudentToDelete(null);
     },
@@ -1231,10 +1231,6 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
           ? { type, paidDate, note: note || null }
           : { type, date, note: note || null };
       const r = await apiRequest("POST", `/api/trainer/students/${studentId}/membership-payments`, payload);
-      if (!r.ok) {
-        const body = await r.json();
-        throw new Error(body.message || "Ошибка");
-      }
       return r.json();
     },
     onSuccess: () => {

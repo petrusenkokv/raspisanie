@@ -89,6 +89,7 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications", userId],
     refetchInterval: 15000,
+    enabled: !!userId,
   });
 
   // Ask for browser-notifications permission once (trainer + students)
