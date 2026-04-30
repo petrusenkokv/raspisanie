@@ -1141,6 +1141,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/notifications/user/:userId/read", async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const count = await storage.deleteReadNotifications(userId);
+      res.json({ success: true, count });
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось очистить уведомления" });
+    }
+  });
+
   app.put("/api/notifications/:id/read", async (req, res) => {
     try {
       const { id } = req.params;

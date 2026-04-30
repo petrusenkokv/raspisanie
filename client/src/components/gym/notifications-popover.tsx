@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { Bell, Check, CheckCheck, X } from "lucide-react";
+import { useEffect, useMemo, useRef } from "react";
+import { Bell, Check, CheckCheck, Trash2, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,6 +80,32 @@ function formatTime(value: Date | string | null): string {
   return d.toLocaleDateString("ru-RU");
 }
 
+function startOfDay(d: Date): number {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x.getTime();
+}
+
+type Group = "today" | "yesterday" | "earlier";
+
+const GROUP_LABEL: Record<Group, string> = {
+  today: "Сегодня",
+  yesterday: "Вчера",
+  earlier: "Раньше",
+};
+
+function groupOf(value: Date | string | null): Group {
+  if (!value) return "earlier";
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return "earlier";
+  const today = startOfDay(new Date());
+  const day = startOfDay(d);
+  const diffDays = Math.round((today - day) / 86400000);
+  if (diffDays <= 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  return "earlier";
+}
+
 export function NotificationsPopover({ userId, isTrainer }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -130,12 +156,29 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
     }
   }, [notifications, isTrainer, toast]);
 
-  const sorted = [...notifications].sort(
-    (a, b) =>
-      new Date(b.createdAt ?? 0).getTime() -
-      new Date(a.createdAt ?? 0).getTime()
+  const sorted = useMemo(
+    () =>
+      [...notifications].sort(
+        (a, b) =>
+          new Date(b.createdAt ?? 0).getTime() -
+          new Date(a.createdAt ?? 0).getTime()
+      ),
+    [notifications]
   );
   const unreadCount = sorted.filter((n) => !n.isRead).length;
+  const readCount = sorted.length - unreadCount;
+
+  const groups = useMemo(() => {
+    const map: Record<Group, Notification[]> = {
+      today: [],
+      yesterday: [],
+      earlier: [],
+    };
+    sorted.forEach((n) => map[groupOf(n.createdAt)].push(n));
+    return (["today", "yesterday", "earlier"] as Group[])
+      .map((g) => ({ key: g, label: GROUP_LABEL[g], items: map[g] }))
+      .filter((g) => g.items.length > 0);
+  }, [sorted]);
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/notifications", userId] });
@@ -157,6 +200,19 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
       const res = await apiRequest(
         "PUT",
         `/api/notifications/user/${userId}/read-all`
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications", userId] });
+    },
+  });
+
+  const clearReadMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(
+        "DELETE",
+        `/api/notifications/user/${userId}/read`
       );
       return res.json();
     },
@@ -239,20 +295,35 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
         className="w-80 p-0"
         data-testid="popover-notifications"
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b">
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b">
           <div className="font-semibold text-sm">Уведомления</div>
-          {unreadCount > 0 && (
-            <button
-              type="button"
-              onClick={() => markAllReadMutation.mutate()}
-              disabled={markAllReadMutation.isPending}
-              className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50"
-              data-testid="button-mark-all-read"
-            >
-              <CheckCheck className="h-3 w-3" />
-              Прочитать все
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => markAllReadMutation.mutate()}
+                disabled={markAllReadMutation.isPending}
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50"
+                data-testid="button-mark-all-read"
+              >
+                <CheckCheck className="h-3 w-3" />
+                Прочитать все
+              </button>
+            )}
+            {readCount > 0 && (
+              <button
+                type="button"
+                onClick={() => clearReadMutation.mutate()}
+                disabled={clearReadMutation.isPending}
+                className="text-xs text-gray-500 hover:text-red-600 hover:underline flex items-center gap-1 disabled:opacity-50"
+                data-testid="button-clear-read"
+                title="Удалить все прочитанные"
+              >
+                <Trash2 className="h-3 w-3" />
+                Очистить
+              </button>
+            )}
+          </div>
         </div>
 
         {sorted.length === 0 ? (
@@ -261,91 +332,98 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
           </div>
         ) : (
           <div className="max-h-96 overflow-y-auto overscroll-contain">
-            <ul className="divide-y">
-              {sorted.map((n) => {
-                const showActions =
-                  isTrainer &&
-                  n.type === "booking_request" &&
-                  !!n.relatedBookingId;
-                return (
-                  <li
-                    key={n.id}
-                    className={cn(
-                      "px-4 py-3 flex gap-3 items-start",
-                      !n.isRead && "bg-blue-50/60 dark:bg-blue-950/30"
-                    )}
-                    data-testid={`notification-${n.id}`}
-                  >
-                    <span
-                      className={cn(
-                        "mt-1 w-2 h-2 rounded-full flex-shrink-0",
-                        TYPE_DOT[n.type] ?? "bg-gray-400"
-                      )}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {n.title}
-                      </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400 break-words">
-                        {n.message}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        {formatTime(n.createdAt)}
-                      </div>
-
-                      {showActions && (
-                        <div className="flex gap-2 mt-2">
-                          <Button
-                            size="sm"
-                            className="h-7 px-2 text-xs"
-                            disabled={isActing}
-                            onClick={() =>
-                              confirmBookingMutation.mutate({
-                                bookingId: n.relatedBookingId!,
-                                notificationId: n.id,
-                              })
-                            }
-                            data-testid={`button-confirm-${n.id}`}
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            Подтвердить
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs"
-                            disabled={isActing}
-                            onClick={() =>
-                              cancelBookingMutation.mutate({
-                                bookingId: n.relatedBookingId!,
-                                notificationId: n.id,
-                              })
-                            }
-                            data-testid={`button-cancel-${n.id}`}
-                          >
-                            <X className="h-3 w-3 mr-1" />
-                            Отменить
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-
-                    {!n.isRead && !showActions && (
-                      <button
-                        type="button"
-                        onClick={() => markReadMutation.mutate(n.id)}
-                        disabled={markReadMutation.isPending}
-                        className="text-gray-400 hover:text-blue-600 flex-shrink-0 mt-1"
-                        title="Отметить прочитанным"
-                        data-testid={`button-mark-read-${n.id}`}
+            {groups.map((group) => (
+              <div key={group.key} data-testid={`group-${group.key}`}>
+                <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/80 backdrop-blur px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b">
+                  {group.label}
+                </div>
+                <ul className="divide-y">
+                  {group.items.map((n) => {
+                    const showActions =
+                      isTrainer &&
+                      n.type === "booking_request" &&
+                      !!n.relatedBookingId;
+                    return (
+                      <li
+                        key={n.id}
+                        className={cn(
+                          "px-4 py-3 flex gap-3 items-start",
+                          !n.isRead && "bg-blue-50/60 dark:bg-blue-950/30"
+                        )}
+                        data-testid={`notification-${n.id}`}
                       >
-                        <Check className="h-4 w-4" />
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                        <span
+                          className={cn(
+                            "mt-1 w-2 h-2 rounded-full flex-shrink-0",
+                            TYPE_DOT[n.type] ?? "bg-gray-400"
+                          )}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {n.title}
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400 break-words">
+                            {n.message}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            {formatTime(n.createdAt)}
+                          </div>
+
+                          {showActions && (
+                            <div className="flex gap-2 mt-2">
+                              <Button
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                disabled={isActing}
+                                onClick={() =>
+                                  confirmBookingMutation.mutate({
+                                    bookingId: n.relatedBookingId!,
+                                    notificationId: n.id,
+                                  })
+                                }
+                                data-testid={`button-confirm-${n.id}`}
+                              >
+                                <Check className="h-3 w-3 mr-1" />
+                                Подтвердить
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                disabled={isActing}
+                                onClick={() =>
+                                  cancelBookingMutation.mutate({
+                                    bookingId: n.relatedBookingId!,
+                                    notificationId: n.id,
+                                  })
+                                }
+                                data-testid={`button-cancel-${n.id}`}
+                              >
+                                <X className="h-3 w-3 mr-1" />
+                                Отменить
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+
+                        {!n.isRead && !showActions && (
+                          <button
+                            type="button"
+                            onClick={() => markReadMutation.mutate(n.id)}
+                            disabled={markReadMutation.isPending}
+                            className="text-gray-400 hover:text-blue-600 flex-shrink-0 mt-1"
+                            title="Отметить прочитанным"
+                            data-testid={`button-mark-read-${n.id}`}
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
           </div>
         )}
       </PopoverContent>
