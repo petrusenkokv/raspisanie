@@ -2,6 +2,9 @@ import { storage } from "./storage";
 
 const sent24h = new Set<string>();
 const sent1h = new Set<string>();
+// Дедупликация напоминаний об окончании ЧВ.
+// Ключ вида `${studentId}:${cvValidUntil}:${bucket}`, где bucket = "3d" | "1d" | "0d".
+const sentCvExpiry = new Set<string>();
 
 const TICK_MS = 60_000;
 
@@ -16,6 +19,19 @@ function moscowDateString(d: Date): string {
   return new Date(d.getTime() + 3 * 60 * 60_000).toISOString().slice(0, 10);
 }
 
+// Разница в календарных днях между двумя датами в формате YYYY-MM-DD.
+// Положительное число — to позже from.
+function daysBetween(fromStr: string, toStr: string): number {
+  const from = new Date(fromStr + "T00:00:00Z");
+  const to = new Date(toStr + "T00:00:00Z");
+  return Math.round((to.getTime() - from.getTime()) / 86400000);
+}
+
+function formatDateHuman(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-");
+  return `${d}.${m}.${y}`;
+}
+
 function dayPrefix(slotDate: string, now: Date): "today" | "tomorrow" | "other" {
   const today = moscowDateString(now);
   const tomorrowMs = now.getTime() + 24 * 60 * 60_000;
@@ -28,6 +44,67 @@ function dayPrefix(slotDate: string, now: Date): "today" | "tomorrow" | "other" 
 function formatHuman(date: string, time: string): string {
   const [y, m, d] = date.split("-");
   return `${d}-${m}-${y} в ${time}`;
+}
+
+// Проверка окончания ЧВ: за 3 дня, за 1 день, в день окончания.
+async function checkCvExpiry(now: Date) {
+  const todayStr = moscowDateString(now);
+  const students = await storage.getStudentsList(false);
+  for (const student of students) {
+    let status;
+    try {
+      status = await storage.getStudentPaymentStatus(student.id, todayStr);
+    } catch {
+      continue;
+    }
+    if (
+      !status ||
+      status.membershipKind !== "monthly_cv" ||
+      !status.cvValidUntil
+    ) {
+      continue;
+    }
+
+    const daysLeft = daysBetween(todayStr, status.cvValidUntil);
+    let bucket: "3d" | "1d" | "0d" | null = null;
+    let title = "";
+    let message = "";
+    const validUntilHuman = formatDateHuman(status.cvValidUntil);
+
+    if (daysLeft === 3) {
+      bucket = "3d";
+      title = "Скоро заканчивается ЧВ";
+      message = `Через 3 дня (${validUntilHuman}) заканчивается срок оплаты членского взноса. Не забудьте оплатить.`;
+    } else if (daysLeft === 1) {
+      bucket = "1d";
+      title = "Завтра заканчивается ЧВ";
+      message = `Завтра (${validUntilHuman}) заканчивается срок оплаты членского взноса. Не забудьте оплатить.`;
+    } else if (daysLeft === 0) {
+      bucket = "0d";
+      title = "Сегодня заканчивается ЧВ";
+      message = `Сегодня последний день действия членского взноса. Пожалуйста, внесите оплату.`;
+    } else {
+      continue;
+    }
+
+    const key = `${student.id}:${status.cvValidUntil}:${bucket}`;
+    if (sentCvExpiry.has(key)) continue;
+    await storage.createNotification({
+      userId: student.id,
+      type: "cv_expiry_reminder",
+      title,
+      message,
+    });
+    sentCvExpiry.add(key);
+  }
+
+  // Очистка устаревших ключей (когда период давно истёк).
+  if (sentCvExpiry.size > 5000) {
+    for (const key of Array.from(sentCvExpiry)) {
+      const validUntil = key.split(":")[1];
+      if (validUntil && validUntil < todayStr) sentCvExpiry.delete(key);
+    }
+  }
 }
 
 async function tick() {
@@ -88,6 +165,8 @@ async function tick() {
       for (const id of Array.from(sent1h))
         if (!activeIds.has(id)) sent1h.delete(id);
     }
+
+    await checkCvExpiry(new Date(now));
   } catch (err) {
     console.error("[reminders] tick failed:", err);
   }
