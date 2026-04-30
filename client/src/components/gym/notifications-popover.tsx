@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Check, CheckCheck, Trash2, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -110,6 +110,15 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const seenIdsRef = useRef<Set<string> | null>(null);
+  const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
+
+  const markProcessed = (id: string) =>
+    setProcessedIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications", userId],
@@ -342,7 +351,9 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
                     const showActions =
                       isTrainer &&
                       n.type === "booking_request" &&
-                      !!n.relatedBookingId;
+                      !!n.relatedBookingId &&
+                      !n.isRead &&
+                      !processedIds.has(n.id);
                     return (
                       <li
                         key={n.id}
@@ -375,12 +386,13 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
                                 size="sm"
                                 className="h-7 px-2 text-xs"
                                 disabled={isActing}
-                                onClick={() =>
+                                onClick={() => {
+                                  markProcessed(n.id);
                                   confirmBookingMutation.mutate({
                                     bookingId: n.relatedBookingId!,
                                     notificationId: n.id,
-                                  })
-                                }
+                                  });
+                                }}
                                 data-testid={`button-confirm-${n.id}`}
                               >
                                 <Check className="h-3 w-3 mr-1" />
@@ -391,12 +403,13 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
                                 variant="outline"
                                 className="h-7 px-2 text-xs"
                                 disabled={isActing}
-                                onClick={() =>
+                                onClick={() => {
+                                  markProcessed(n.id);
                                   cancelBookingMutation.mutate({
                                     bookingId: n.relatedBookingId!,
                                     notificationId: n.id,
-                                  })
-                                }
+                                  });
+                                }}
                                 data-testid={`button-cancel-${n.id}`}
                               >
                                 <X className="h-3 w-3 mr-1" />

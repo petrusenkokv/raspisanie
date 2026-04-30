@@ -328,7 +328,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (trainer) {
         const studentName = (await storage.getUser(studentId))?.firstName ?? "Ученик";
         const slot = await storage.getTimeSlotById(timeSlotId);
-        const when = slot ? `${slot.date} в ${slot.time}` : "выбранное время";
+        const formatDate = (iso: string) => {
+          const [y, m, d] = iso.split("-");
+          return `${d}-${m}-${y}`;
+        };
+        const when = slot
+          ? `${formatDate(slot.date)} в ${slot.time.slice(0, 5)}`
+          : "выбранное время";
         await storage.createNotification({
           userId: trainer.id,
           type: "booking_request",
