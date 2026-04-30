@@ -103,22 +103,32 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 return <div key={`empty-${wi}-${di}`} className="h-20" />;
               }
               const slots = getScheduleForDate(date);
-              const blockedCount = slots.filter((ts) => ts.isBlocked).length;
-              const openSlots = slots.filter((ts) => !ts.isBlocked);
+              // "Настоящие" блокировки — это отпуск/праздник или ручная блокировка тренера.
+              // Шаблонные нерабочие часы ('template') не считаем блокировкой —
+              // это просто нерабочее время по расписанию.
+              const realBlockedSlots = slots.filter(
+                (ts) => ts.isBlocked && (ts.blockReason === "manual" || ts.blockReason === "holiday"),
+              );
+              const workingSlots = slots.filter(
+                (ts) => !ts.isBlocked || ts.blockReason === "manual" || ts.blockReason === "holiday",
+              );
+              const openSlots = workingSlots.filter((ts) => !ts.isBlocked);
               const available = openSlots.filter((ts) => ts.availableSpots > 0).length;
-              const allBlocked = slots.length > 0 && blockedCount === slots.length;
-              const someBlocked = blockedCount > 0 && !allBlocked;
+              const hasAnyWorking = workingSlots.length > 0;
+              const allClosed = hasAnyWorking && realBlockedSlots.length === workingSlots.length;
+              const someClosed = realBlockedSlots.length > 0 && !allClosed;
+              const isHolidayDay = realBlockedSlots.some((ts) => ts.blockReason === "holiday");
               const isToday = isSameDay(date, new Date());
               const isSelected = isSameDay(date, selectedDate);
               return (
                 <Card
                   key={localDateStr(date)}
                   className={`p-2 h-20 cursor-pointer transition-colors ${
-                    allBlocked
+                    allClosed
                       ? "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
                       : "hover:bg-gray-50 dark:hover:bg-gray-800"
                   } ${
-                    isToday && !allBlocked ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200" : ""
+                    isToday && !allClosed ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200" : ""
                   } ${isSelected ? "ring-2 ring-blue-500" : ""}`}
                   onClick={() => {
                     const store = useGymStore.getState();
@@ -129,24 +139,33 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                   <div className="flex flex-col h-full">
                     <div className="flex items-center justify-between gap-1">
                       <span className={`text-sm font-medium ${
-                        allBlocked
+                        allClosed
                           ? "text-gray-500 dark:text-gray-400 line-through"
                           : isToday ? "text-blue-600" : "text-gray-900 dark:text-white"
                       }`}>
                         {format(date, "d")}
                       </span>
-                      {allBlocked && <Lock className="h-3 w-3 text-gray-500 dark:text-gray-400 shrink-0" />}
-                      {someBlocked && <Ban className="h-3 w-3 text-orange-500 shrink-0" title={`Заблокировано: ${blockedCount}`} />}
+                      {allClosed && <Lock className="h-3 w-3 text-gray-500 dark:text-gray-400 shrink-0" />}
+                      {someClosed && (
+                        <Ban
+                          className="h-3 w-3 text-orange-500 shrink-0"
+                          aria-label={`Закрыто слотов: ${realBlockedSlots.length}`}
+                        />
+                      )}
                     </div>
-                    {slots.length > 0 && (
+                    {hasAnyWorking && (
                       <div className="flex-1 flex flex-col justify-end">
-                        {allBlocked ? (
-                          <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">Закрыто</div>
+                        {allClosed ? (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                            {isHolidayDay ? "Отпуск" : "Закрыто"}
+                          </div>
                         ) : (
                           <>
                             <div className="text-xs text-gray-500">
                               {available}/{openSlots.length}
-                              {someBlocked && <span className="text-orange-500"> · −{blockedCount}</span>}
+                              {someClosed && (
+                                <span className="text-orange-500"> · −{realBlockedSlots.length}</span>
+                              )}
                             </div>
                             <div className={`h-1 rounded-full mt-1 ${
                               available === 0 ? "bg-red-300" : available < openSlots.length / 2 ? "bg-yellow-300" : "bg-green-300"
