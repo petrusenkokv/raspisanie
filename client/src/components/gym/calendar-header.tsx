@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Calendar, Users, Bell } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Users, Bell, CalendarDays } from "lucide-react";
 import { useGymStore, type ViewType } from "@/store/gym-store";
 import { Badge } from "@/components/ui/badge";
+import { isSameDay, isSameMonth, isSameWeek } from "date-fns";
 
 const VIEW_LABELS: Record<ViewType, string> = {
   day: "День",
@@ -70,6 +71,24 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
     setCurrentView(view);
   };
 
+  const goToToday = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (currentView === "week") {
+      setSelectedDate(getMondayOf(today));
+    } else {
+      setSelectedDate(today);
+    }
+  };
+
+  const today = new Date();
+  const isOnToday =
+    currentView === "day"
+      ? isSameDay(selectedDate, today)
+      : currentView === "week"
+      ? isSameWeek(selectedDate, today, { weekStartsOn: 1 })
+      : isSameMonth(selectedDate, today);
+
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border-b bg-white dark:bg-gray-900">
       <div className="flex items-center gap-2 mb-4 sm:mb-0">
@@ -109,6 +128,19 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
             data-testid="button-next-date"
           >
             <ChevronRight className="h-4 w-4" />
+          </Button>
+
+          <Button
+            variant={isOnToday ? "secondary" : "outline"}
+            size="sm"
+            onClick={goToToday}
+            disabled={isOnToday}
+            className="ml-1"
+            data-testid="button-today"
+            title="Перейти к сегодняшнему дню"
+          >
+            <CalendarDays className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Сегодня</span>
           </Button>
         </div>
 
