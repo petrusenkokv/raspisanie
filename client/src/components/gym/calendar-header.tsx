@@ -62,11 +62,9 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
   };
 
   const handleViewChange = (view: ViewType) => {
-    if (view === "day" || view === "month") {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      setSelectedDate(today);
-    } else if (view === "week") {
+    // Сохраняем выбранную дату при переключении вида,
+    // чтобы пользователь оставался в том же контексте (месяц/неделя/день).
+    if (view === "week") {
       setSelectedDate(getMondayOf(selectedDate));
     }
     setCurrentView(view);
