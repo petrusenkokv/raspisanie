@@ -201,7 +201,9 @@ async function tick() {
         sent24h.add(booking.id);
       }
 
-      if (minutesUntil > 0 && minutesUntil <= 60 && !sent1h.has(booking.id)) {
+      // Если общая настройка тренера = 60 минут, стандартное напоминание «за час»
+      // дублирует пользовательское — пропускаем его.
+      if (reminderMinutes !== 60 && minutesUntil > 0 && minutesUntil <= 60 && !sent1h.has(booking.id)) {
         await storage.createNotification({
           userId: booking.studentId,
           type: "training_reminder",
