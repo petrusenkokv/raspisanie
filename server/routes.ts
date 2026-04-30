@@ -499,7 +499,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) return res.status(404).json({ message: "Ученик не найден" });
       if (user.role === "trainer") return res.status(400).json({ message: "Нельзя редактировать тренера здесь" });
 
-      const { firstName, lastName, middleName, birthDate, trainerNotes, parentFullName, parentPhone } = req.body;
+      const { firstName, lastName, middleName, birthDate, trainerNotes, parentFullName, parentPhone, reminderMinutes } = req.body;
       const updates: any = {};
       if (firstName !== undefined) updates.firstName = String(firstName).trim();
       if (lastName !== undefined) updates.lastName = lastName ? String(lastName).trim() : null;
@@ -507,6 +507,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (birthDate !== undefined) updates.birthDate = birthDate || null;
       if (trainerNotes !== undefined) updates.trainerNotes = trainerNotes ? String(trainerNotes) : null;
       if (parentFullName !== undefined) updates.parentFullName = parentFullName ? String(parentFullName).trim() : null;
+      if (reminderMinutes !== undefined) {
+        if (reminderMinutes === null || reminderMinutes === "") {
+          updates.reminderMinutes = null;
+        } else {
+          const n = Number(reminderMinutes);
+          if (![15, 30, 60, 120].includes(n)) {
+            return res.status(400).json({ message: "Время напоминания должно быть 15, 30, 60 или 120 минут" });
+          }
+          updates.reminderMinutes = n;
+        }
+      }
       if (parentPhone !== undefined) {
         if (parentPhone) {
           const np = normalizePhone(parentPhone);

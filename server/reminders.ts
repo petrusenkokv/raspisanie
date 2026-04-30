@@ -2,6 +2,9 @@ import { storage } from "./storage";
 
 const sent24h = new Set<string>();
 const sent1h = new Set<string>();
+// Дедупликация индивидуальных напоминаний (настройка тренера для ученика).
+// Ключ: `${bookingId}:custom:${reminderMinutes}`.
+const sentCustom = new Set<string>();
 // Дедупликация напоминаний об окончании ЧВ.
 // Ключ вида `${studentId}:${cvValidUntil}:${bucket}`, где bucket = "3d" | "1d" | "0d".
 const sentCvExpiry = new Set<string>();
@@ -206,14 +209,40 @@ async function tick() {
         });
         sent1h.add(booking.id);
       }
+
+      // Индивидуальное напоминание, настроенное тренером для ученика.
+      const student = await storage.getUser(booking.studentId);
+      const m = student?.reminderMinutes;
+      if (m && m > 0) {
+        const customKey = `${booking.id}:custom:${m}`;
+        // Срабатываем когда minutesUntil попадает в [m-1, m] — небольшой допуск под тик в 60с.
+        if (minutesUntil <= m && minutesUntil >= m - 1 && !sentCustom.has(customKey)) {
+          const minutesText =
+            m % 60 === 0
+              ? `${m / 60} ${m / 60 === 1 ? "час" : "ч."}`
+              : `${m} минут`;
+          await storage.createNotification({
+            userId: booking.studentId,
+            type: "training_reminder",
+            title: `Тренировка через ${minutesText}`,
+            message: `Через ${minutesText} у вас тренировка: ${when}`,
+            relatedBookingId: booking.id,
+          });
+          sentCustom.add(customKey);
+        }
+      }
     }
 
-    if (sent24h.size > 5000 || sent1h.size > 5000) {
+    if (sent24h.size > 5000 || sent1h.size > 5000 || sentCustom.size > 5000) {
       const activeIds = new Set(bookings.map((b) => b.id));
       for (const id of Array.from(sent24h))
         if (!activeIds.has(id)) sent24h.delete(id);
       for (const id of Array.from(sent1h))
         if (!activeIds.has(id)) sent1h.delete(id);
+      for (const key of Array.from(sentCustom)) {
+        const bookingId = key.split(":")[0];
+        if (!activeIds.has(bookingId)) sentCustom.delete(key);
+      }
     }
 
     await checkCvExpiry(new Date(now));

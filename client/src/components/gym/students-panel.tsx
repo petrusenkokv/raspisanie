@@ -671,6 +671,8 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
         trainerNotes: student.trainerNotes || "",
         parentFullName: student.parentFullName || "",
         parentPhone: student.parentPhone || "",
+        reminderMinutes:
+          student.reminderMinutes != null ? String(student.reminderMinutes) : "off",
       });
       setEditing(false);
     }
@@ -714,6 +716,16 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               value={student.birthDate ? `${format(new Date(student.birthDate), "d MMMM yyyy", { locale: ru })}${age !== null ? ` (${age} лет)` : ""}` : "—"}
             />
             <Field label="Заметки тренера" value={student.trainerNotes || "—"} multiline />
+            <Field
+              label="Напоминание о тренировке"
+              value={
+                student.reminderMinutes
+                  ? student.reminderMinutes >= 60
+                    ? `за ${student.reminderMinutes / 60} ${student.reminderMinutes === 60 ? "час" : "ч."} до начала`
+                    : `за ${student.reminderMinutes} минут до начала`
+                  : "выключено"
+              }
+            />
             {(student.parentFullName || student.parentPhone) && (
               <div className="border rounded p-3 bg-amber-50 dark:bg-amber-950/20 space-y-2">
                 <p className="font-medium">Законный представитель</p>
@@ -774,6 +786,26 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                 onChange={(e) => setForm({ ...form, trainerNotes: e.target.value })}
               />
             </div>
+            <div>
+              <Label>Напоминание о тренировке</Label>
+              <select
+                className="w-full border rounded h-9 px-3 text-sm bg-background"
+                value={form.reminderMinutes}
+                onChange={(e) =>
+                  setForm({ ...form, reminderMinutes: e.target.value })
+                }
+                data-testid="select-reminder-minutes"
+              >
+                <option value="off">Не отправлять</option>
+                <option value="15">за 15 минут</option>
+                <option value="30">за 30 минут</option>
+                <option value="60">за 1 час</option>
+                <option value="120">за 2 часа</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Дополнительное напоминание ученику перед началом тренировки.
+              </p>
+            </div>
             <div className={requiresParent ? "border rounded p-3 bg-amber-50 dark:bg-amber-950/20 space-y-2" : "space-y-2"}>
               <p className="font-medium text-sm">Законный представитель {requiresParent ? "(обязательно для младше 14 лет)" : "(необязательно)"}</p>
               <div>
@@ -787,7 +819,18 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditing(false)}>Отмена</Button>
-              <Button onClick={() => updateMutation.mutate(form)} disabled={updateMutation.isPending}>
+              <Button
+                onClick={() =>
+                  updateMutation.mutate({
+                    ...form,
+                    reminderMinutes:
+                      form.reminderMinutes === "off"
+                        ? null
+                        : Number(form.reminderMinutes),
+                  })
+                }
+                disabled={updateMutation.isPending}
+              >
                 {updateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Сохранить
               </Button>
