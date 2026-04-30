@@ -7,7 +7,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -261,7 +260,7 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
             Уведомлений пока нет
           </div>
         ) : (
-          <ScrollArea className="max-h-96">
+          <div className="max-h-96 overflow-y-auto overscroll-contain">
             <ul className="divide-y">
               {sorted.map((n) => {
                 const showActions =
@@ -347,7 +346,7 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
                 );
               })}
             </ul>
-          </ScrollArea>
+          </div>
         )}
       </PopoverContent>
     </Popover>
