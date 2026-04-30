@@ -2,7 +2,7 @@ import { storage } from "./storage";
 
 const sent24h = new Set<string>();
 const sent1h = new Set<string>();
-// Дедупликация индивидуальных напоминаний (настройка тренера для ученика).
+// Дедупликация дополнительных напоминаний (общая настройка тренера для всех учеников).
 // Ключ: `${bookingId}:custom:${reminderMinutes}`.
 const sentCustom = new Set<string>();
 // Дедупликация напоминаний об окончании ЧВ.
@@ -164,6 +164,8 @@ async function tick() {
   try {
     const bookings = await storage.listActiveBookings();
     const now = Date.now();
+    const settings = await storage.getTrainerSettings();
+    const reminderMinutes = settings.reminderMinutes;
 
     for (const booking of bookings) {
       const slot = await storage.getTimeSlotById(booking.timeSlotId);
@@ -210,9 +212,8 @@ async function tick() {
         sent1h.add(booking.id);
       }
 
-      // Индивидуальное напоминание, настроенное тренером для ученика.
-      const student = await storage.getUser(booking.studentId);
-      const m = student?.reminderMinutes;
+      // Дополнительное напоминание (общая настройка тренера для всех учеников).
+      const m = reminderMinutes;
       if (m && m > 0) {
         const customKey = `${booking.id}:custom:${m}`;
         // Срабатываем когда minutesUntil попадает в [m-1, m] — небольшой допуск под тик в 60с.

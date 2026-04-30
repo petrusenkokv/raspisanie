@@ -214,6 +214,7 @@ export class MemStorage implements IStorage {
     cancelDeadlineHours: 3,
     bookingDeadlineHours: 1,
     defaultCapacity: 2,
+    reminderMinutes: null,
     updatedAt: new Date(),
   };
 
@@ -238,7 +239,6 @@ export class MemStorage implements IStorage {
       sickNote: null,
       isActive: true,
       cvRestartDate: null,
-      reminderMinutes: null,
       role: "trainer",
       isVerified: true,
       verificationCode: null,
@@ -329,7 +329,6 @@ export class MemStorage implements IStorage {
       sickNote: insertUser.sickNote ?? null,
       isActive: true,
       cvRestartDate: null,
-      reminderMinutes: null,
       role: insertUser.role || "student",
       isVerified: insertUser.isVerified ?? false,
       verificationCode: null,
@@ -1441,6 +1440,10 @@ export class MemStorage implements IStorage {
         updates.bookingDeadlineHours ?? this.settings.bookingDeadlineHours,
       defaultCapacity:
         updates.defaultCapacity ?? this.settings.defaultCapacity,
+      reminderMinutes:
+        updates.reminderMinutes !== undefined
+          ? updates.reminderMinutes
+          : this.settings.reminderMinutes,
       updatedAt: new Date(),
     };
     if (next.dayEndHour <= next.dayStartHour) {

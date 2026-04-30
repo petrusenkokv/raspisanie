@@ -42,6 +42,7 @@ type SettingsResponse = {
   cancelDeadlineHours: number;
   bookingDeadlineHours: number;
   defaultCapacity: number;
+  reminderMinutes: number | null;
   holidays: Holiday[];
 };
 
@@ -69,6 +70,7 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
   const [cancelDeadline, setCancelDeadline] = useState(3);
   const [bookingDeadline, setBookingDeadline] = useState(1);
   const [defaultCapacity, setDefaultCapacity] = useState(2);
+  const [reminderMinutes, setReminderMinutes] = useState<string>("off");
   const [newHolidayDate, setNewHolidayDate] = useState<string>(todayLocalStr());
   const [newHolidayName, setNewHolidayName] = useState<string>("");
 
@@ -79,6 +81,7 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
       setCancelDeadline(data.cancelDeadlineHours ?? 0);
       setBookingDeadline(data.bookingDeadlineHours ?? 0);
       setDefaultCapacity(data.defaultCapacity ?? 2);
+      setReminderMinutes(data.reminderMinutes != null ? String(data.reminderMinutes) : "off");
       // Fill in any missing weekdays with default working values
       const next: WeeklyTemplate = { ...data.weeklyTemplate };
       for (let i = 1; i <= 7; i++) {
@@ -483,11 +486,32 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
                   </p>
                 </div>
               </div>
+              <div className="border-t pt-4 mt-2 space-y-2">
+                <Label>Дополнительное напоминание о тренировке</Label>
+                <select
+                  className="w-full border rounded px-3 py-2 bg-white dark:bg-gray-900"
+                  value={reminderMinutes}
+                  onChange={(e) => setReminderMinutes(e.target.value)}
+                  data-testid="select-reminder-minutes"
+                >
+                  <option value="off">Не отправлять</option>
+                  <option value="15">за 15 минут до начала</option>
+                  <option value="30">за 30 минут до начала</option>
+                  <option value="60">за 1 час до начала</option>
+                  <option value="120">за 2 часа до начала</option>
+                </select>
+                <p className="text-xs text-gray-500">
+                  Применяется ко всем ученикам. Это дополнительное напоминание —
+                  стандартные оповещения за сутки и за час продолжают работать.
+                </p>
+              </div>
               <Button
                 onClick={() =>
                   saveSettings.mutate({
                     bookingDeadlineHours: bookingDeadline,
                     cancelDeadlineHours: cancelDeadline,
+                    reminderMinutes:
+                      reminderMinutes === "off" ? null : Number(reminderMinutes),
                   })
                 }
                 disabled={saveSettings.isPending}

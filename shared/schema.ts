@@ -18,7 +18,6 @@ export const users = pgTable("users", {
   sickNote: text("sick_note"),
   isActive: boolean("is_active").notNull().default(true), // false = student paused/archived
   cvRestartDate: text("cv_restart_date"), // YYYY-MM-DD; when set, ignore ЧВ payments before this date
-  reminderMinutes: integer("reminder_minutes"), // null = no extra reminder; 15|30|60|120 minutes before training
   role: text("role").notNull().default("student"), // "student" or "trainer"
   isVerified: boolean("is_verified").notNull().default(false),
   verificationCode: text("verification_code"),
@@ -65,6 +64,9 @@ export const trainerSettings = pgTable("trainer_settings", {
   dayStartHour: integer("day_start_hour").notNull().default(8),
   dayEndHour: integer("day_end_hour").notNull().default(20),
   weeklyTemplate: text("weekly_template").notNull().default("{}"), // JSON string
+  // Дополнительное напоминание ученикам перед тренировкой (общая настройка для всех).
+  // null = выключено; 15|30|60|120 — минут до начала.
+  reminderMinutes: integer("reminder_minutes"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -284,6 +286,8 @@ export const trainerSettingsUpdateSchema = z.object({
   bookingDeadlineHours: z.number().int().min(0).max(168).optional(),
   // Default number of student spots per hour (used when weekday template doesn't override)
   defaultCapacity: z.number().int().min(1).max(50).optional(),
+  // Дополнительное напоминание о тренировке (общая настройка). null = выключено.
+  reminderMinutes: z.union([z.literal(15), z.literal(30), z.literal(60), z.literal(120)]).nullable().optional(),
 }).refine(
   (d) => d.dayStartHour === undefined || d.dayEndHour === undefined || d.dayEndHour > d.dayStartHour,
   { message: "Час окончания дня должен быть позже часа начала дня" },
@@ -373,6 +377,7 @@ export type TrainerSettings = {
   cancelDeadlineHours: number;
   bookingDeadlineHours: number;
   defaultCapacity: number;
+  reminderMinutes: number | null;
   updatedAt: Date | null;
 };
 export type TrainerSettingsUpdate = z.infer<typeof trainerSettingsUpdateSchema>;
