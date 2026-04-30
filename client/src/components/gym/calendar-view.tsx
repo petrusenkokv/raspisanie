@@ -4,9 +4,10 @@ import { TimeSlot } from "./time-slot";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { type TimeSlotWithBookings } from "@shared/schema";
-import { format, isSameDay } from "date-fns";
+import { type TimeSlotWithBookings, type Holiday } from "@shared/schema";
+import { format, isSameDay, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Clock, Users, UserCheck, LogIn, Lock, Unlock, Ban } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -30,6 +31,11 @@ interface CalendarViewProps {
 
 export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: CalendarViewProps) {
   const { currentView, selectedDate, schedule, getWeekDates, getMonthDates } = useGymStore();
+  const { data: scheduleSettingsData } = useQuery<{ holidays?: Holiday[] }>({
+    queryKey: ["/api/schedule/settings"],
+    staleTime: 60_000,
+  });
+  const holidays: Holiday[] = scheduleSettingsData?.holidays ?? [];
 
   // Format date using LOCAL timezone (toISOString gives UTC which can shift the date)
   const localDateStr = (d: Date) => {
@@ -72,6 +78,42 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
   // ─── Month view ─────────────────────────────────────────────────────────────
   if (currentView === "month") {
     const dates = getMonthDates(selectedDate);
+
+    // Build a sorted list of holiday dates for fast period lookup.
+    const holidayMap = new Map(holidays.map((h) => [h.date, h]));
+    const holidayDates = Array.from(holidayMap.keys()).sort();
+
+    // For a given date string, find the contiguous holiday period that
+    // includes it (sequential days with the same name treated as one period).
+    const getHolidayPeriod = (dateStr: string): { start: string; end: string; name: string | null } | null => {
+      const h = holidayMap.get(dateStr);
+      if (!h) return null;
+      const idx = holidayDates.indexOf(dateStr);
+      const addDays = (s: string, n: number) => {
+        const d = parseISO(s);
+        d.setDate(d.getDate() + n);
+        return localDateStr(d);
+      };
+      let start = dateStr;
+      let end = dateStr;
+      // Walk backwards
+      for (let i = idx - 1; i >= 0; i--) {
+        const prev = holidayDates[i];
+        if (prev !== addDays(start, -1)) break;
+        const prevH = holidayMap.get(prev)!;
+        if ((prevH.name ?? null) !== (h.name ?? null)) break;
+        start = prev;
+      }
+      // Walk forwards
+      for (let i = idx + 1; i < holidayDates.length; i++) {
+        const nxt = holidayDates[i];
+        if (nxt !== addDays(end, 1)) break;
+        const nxtH = holidayMap.get(nxt)!;
+        if ((nxtH.name ?? null) !== (h.name ?? null)) break;
+        end = nxt;
+      }
+      return { start, end, name: h.name ?? null };
+    };
 
     // Align first day to Monday-based grid (Mon=0 … Sun=6)
     const firstDay = dates[0].getDay(); // 0=Sun,1=Mon,...,6=Sat
@@ -117,12 +159,42 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
               const hasAnyWorking = workingSlots.length > 0;
               const allClosed = hasAnyWorking && realBlockedSlots.length === workingSlots.length;
               const someClosed = realBlockedSlots.length > 0 && !allClosed;
-              const isHolidayDay = realBlockedSlots.some((ts) => ts.blockReason === "holiday");
+              const hasAnyManualBlock = realBlockedSlots.some((ts) => ts.blockReason === "manual");
               const isToday = isSameDay(date, new Date());
               const isSelected = isSameDay(date, selectedDate);
-              return (
+              const dateStr = localDateStr(date);
+              const period = getHolidayPeriod(dateStr);
+
+              // Build tooltip text describing the block reason / period.
+              let tooltipNode: React.ReactNode = null;
+              if (allClosed || someClosed) {
+                const rangeLabel = period
+                  ? period.start === period.end
+                    ? format(parseISO(period.start), "d MMMM yyyy", { locale: ru })
+                    : `${format(parseISO(period.start), "d MMM", { locale: ru })} — ${format(parseISO(period.end), "d MMM yyyy", { locale: ru })}`
+                  : null;
+                const reasonText = period
+                  ? period.name?.trim() || "Отпуск / выходной"
+                  : hasAnyManualBlock
+                  ? "Ручная блокировка тренером"
+                  : "Закрыто";
+                tooltipNode = (
+                  <div className="space-y-1 text-xs">
+                    <div className="font-semibold">{reasonText}</div>
+                    {rangeLabel && (
+                      <div className="text-gray-300 dark:text-gray-400">Период: {rangeLabel}</div>
+                    )}
+                    {someClosed && (
+                      <div className="text-gray-300 dark:text-gray-400">
+                        Закрыто слотов: {realBlockedSlots.length} из {workingSlots.length}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              const cardContent = (
                 <Card
-                  key={localDateStr(date)}
                   className={`p-2 h-20 cursor-pointer transition-colors ${
                     allClosed
                       ? "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
@@ -156,8 +228,8 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                     {hasAnyWorking && (
                       <div className="flex-1 flex flex-col justify-end">
                         {allClosed ? (
-                          <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                            {isHolidayDay ? "Отпуск" : "Закрыто"}
+                          <div className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate">
+                            {period?.name?.trim() || (hasAnyManualBlock ? "Закрыто" : "Отпуск")}
                           </div>
                         ) : (
                           <>
@@ -177,6 +249,18 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                   </div>
                 </Card>
               );
+
+              if (tooltipNode) {
+                return (
+                  <Tooltip key={dateStr}>
+                    <TooltipTrigger asChild>
+                      <div>{cardContent}</div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs">{tooltipNode}</TooltipContent>
+                  </Tooltip>
+                );
+              }
+              return <div key={dateStr}>{cardContent}</div>;
             })}
           </div>
         ))}
