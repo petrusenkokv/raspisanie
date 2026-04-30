@@ -623,18 +623,24 @@ function BookingPaymentBadges({ studentId, dateStr }: { studentId: string; dateS
 
   // Подробное содержимое подсказки для значка ЧВ/БВ.
   let cvTooltipNode: React.ReactNode;
+  // Сколько дней осталось до окончания ЧВ (для подсветки "скоро истекает").
+  let cvDaysLeft: number | null = null;
   if (cvOk && data.membershipKind === "monthly_cv" && data.cvPaidDate && data.cvValidUntil) {
     const paid = parseISO(data.cvPaidDate);
     const validUntil = parseISO(data.cvValidUntil);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const daysLeft = Math.max(0, differenceInCalendarDays(validUntil, today));
+    cvDaysLeft = daysLeft;
     cvTooltipNode = (
       <div className="space-y-1 text-xs">
         <div className="font-semibold">ЧВ оплачен</div>
         <div>Оплата: {format(paid, "d MMMM yyyy", { locale: ru })}</div>
         <div>Действует до: {format(validUntil, "d MMMM yyyy", { locale: ru })} вкл.</div>
-        <div className="text-gray-300 dark:text-gray-400">Осталось дней: {daysLeft}</div>
+        <div className={daysLeft <= 3 ? "text-orange-300 font-medium" : "text-gray-300 dark:text-gray-400"}>
+          Осталось дней: {daysLeft}
+          {daysLeft <= 3 && " — скоро нужна оплата"}
+        </div>
       </div>
     );
   } else if (cvOk && data.membershipKind === "one_time_bv" && data.cvPaidDate) {
@@ -655,14 +661,25 @@ function BookingPaymentBadges({ studentId, dateStr }: { studentId: string; dateS
         <TooltipTrigger asChild>
           <span
             className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border cursor-help ${
-              cvOk
-                ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
-                : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+              !cvOk
+                ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+                : cvDaysLeft !== null && cvDaysLeft <= 3
+                ? "bg-orange-100 text-orange-700 border-orange-400 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700"
+                : "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
             }`}
             data-testid={`badge-payment-cv-${studentId}`}
           >
             <Wallet className="h-2.5 w-2.5" />
-            {cvOk ? cvLabel : "ЧВ ✗"}
+            {cvOk ? (
+              <>
+                {cvLabel}
+                {cvDaysLeft !== null && cvDaysLeft <= 3 && (
+                  <span className="ml-0.5">·{cvDaysLeft}д</span>
+                )}
+              </>
+            ) : (
+              "ЧВ ✗"
+            )}
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">{cvTooltipNode}</TooltipContent>
