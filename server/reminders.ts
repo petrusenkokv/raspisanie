@@ -5,6 +5,9 @@ const sent1h = new Set<string>();
 // Дедупликация напоминаний об окончании ЧВ.
 // Ключ вида `${studentId}:${cvValidUntil}:${bucket}`, где bucket = "3d" | "1d" | "0d".
 const sentCvExpiry = new Set<string>();
+// Дедупликация напоминаний об абонементе к тренеру.
+// Ключи: `${subscriptionId}:1left` и `${subscriptionId}:done`.
+const sentTrainerSub = new Set<string>();
 
 const TICK_MS = 60_000;
 
@@ -107,6 +110,53 @@ async function checkCvExpiry(now: Date) {
   }
 }
 
+// Проверка абонементов к тренеру: остался последний сеанс или абонемент израсходован.
+async function checkTrainerSubscriptions() {
+  const students = await storage.getStudentsList(false);
+  for (const student of students) {
+    let subs;
+    try {
+      subs = await storage.getTrainerPayments(student.id);
+    } catch {
+      continue;
+    }
+    if (!subs || subs.length === 0) continue;
+
+    for (const sub of subs) {
+      const remaining = Math.max(0, sub.totalSessions - sub.usedSessions);
+
+      // Абонемент закончился (израсходованы все сеансы).
+      if (sub.status === "completed" || (sub.status === "active" && remaining === 0)) {
+        const key = `${sub.id}:done`;
+        if (!sentTrainerSub.has(key)) {
+          await storage.createNotification({
+            userId: student.id,
+            type: "trainer_subscription_reminder",
+            title: "Абонемент к тренеру закончился",
+            message: `Все сеансы из абонемента (${sub.totalSessions}) использованы. Не забудьте оплатить новый абонемент.`,
+          });
+          sentTrainerSub.add(key);
+        }
+        continue;
+      }
+
+      // Остался последний сеанс — предупреждение.
+      if (sub.status === "active" && remaining === 1) {
+        const key = `${sub.id}:1left`;
+        if (!sentTrainerSub.has(key)) {
+          await storage.createNotification({
+            userId: student.id,
+            type: "trainer_subscription_reminder",
+            title: "Остался последний сеанс",
+            message: `В абонементе к тренеру остался 1 сеанс из ${sub.totalSessions}. Не забудьте оплатить новый абонемент.`,
+          });
+          sentTrainerSub.add(key);
+        }
+      }
+    }
+  }
+}
+
 async function tick() {
   try {
     const bookings = await storage.listActiveBookings();
@@ -167,6 +217,7 @@ async function tick() {
     }
 
     await checkCvExpiry(new Date(now));
+    await checkTrainerSubscriptions();
   } catch (err) {
     console.error("[reminders] tick failed:", err);
   }
