@@ -1021,19 +1021,68 @@ export class MemStorage implements IStorage {
   }
 
   async getStudentPaymentStatus(studentId: string, dateStr: string): Promise<StudentPaymentStatus> {
-    const month = dateStr.slice(0, 7);
+    const student = this.users.get(studentId);
+    const cvRestartDate = student?.cvRestartDate ?? null;
+
+    // ЧВ оплачивается на месяц от даты оплаты (paidDate + 1 месяц + дни больничных
+    // строго после paidDate). Та же семантика, что и в getNextCvAllowedDate.
+    const cvPayments = Array.from(this.membershipPayments.values()).filter(
+      (p) =>
+        p.studentId === studentId &&
+        p.type === "monthly_cv" &&
+        !!p.paidDate &&
+        (!cvRestartDate || p.paidDate! >= cvRestartDate),
+    );
+
+    const isCvCovering = (paidDateStr: string): boolean => {
+      if (dateStr < paidDateStr) return false;
+      const paid = new Date(paidDateStr + "T00:00:00");
+      const end = new Date(paid);
+      end.setMonth(end.getMonth() + 1);
+
+      // Больничные дни строго после paidDate сдвигают окончание периода.
+      const sickDays = new Set<string>();
+      const periods = Array.from(this.sickPeriods.values()).filter(
+        (sp) => sp.studentId === studentId && sp.endDate > paidDateStr,
+      );
+      for (const period of periods) {
+        const start = new Date(
+          Math.max(
+            new Date(period.startDate + "T00:00:00").getTime(),
+            new Date(paidDateStr + "T00:00:00").getTime() + 86400000,
+          ),
+        );
+        const stop = new Date(period.endDate + "T00:00:00");
+        const cur = new Date(start);
+        while (cur <= stop) {
+          sickDays.add(localDateStr(cur));
+          cur.setDate(cur.getDate() + 1);
+        }
+      }
+      end.setDate(end.getDate() + sickDays.size);
+      // Период действия: [paidDate, end) — следующая оплата нужна с end.
+      return dateStr < localDateStr(end);
+    };
+
     let membershipKind: "monthly_cv" | "one_time_bv" | null = null;
-    for (const p of Array.from(this.membershipPayments.values())) {
-      if (p.studentId !== studentId) continue;
-      if (p.type === "monthly_cv" && p.month === month) {
+    for (const p of cvPayments) {
+      if (isCvCovering(p.paidDate!)) {
         membershipKind = "monthly_cv";
         break;
       }
-      if (p.type === "one_time_bv" && p.date === dateStr) {
-        membershipKind = "one_time_bv";
-        // keep looking for a monthly which takes priority
+    }
+
+    if (membershipKind === null) {
+      // Разовая оплата БВ — действует только в свою дату.
+      for (const p of Array.from(this.membershipPayments.values())) {
+        if (p.studentId !== studentId) continue;
+        if (p.type === "one_time_bv" && p.date === dateStr) {
+          membershipKind = "one_time_bv";
+          break;
+        }
       }
     }
+
     const sub = this.findActiveTrainerSubscriptionFor(studentId, dateStr);
     return {
       hasMembership: membershipKind !== null,
