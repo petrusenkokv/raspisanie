@@ -1034,8 +1034,10 @@ export class MemStorage implements IStorage {
         (!cvRestartDate || p.paidDate! >= cvRestartDate),
     );
 
-    const isCvCovering = (paidDateStr: string): boolean => {
-      if (dateStr < paidDateStr) return false;
+    // Возвращает дату окончания действия ЧВ (включительно) для платежа,
+    // если он покрывает dateStr. Иначе — null.
+    const cvCoveringEndDate = (paidDateStr: string): string | null => {
+      if (dateStr < paidDateStr) return null;
       const paid = new Date(paidDateStr + "T00:00:00");
       const end = new Date(paid);
       end.setMonth(end.getMonth() + 1);
@@ -1061,13 +1063,22 @@ export class MemStorage implements IStorage {
       }
       end.setDate(end.getDate() + sickDays.size);
       // Период действия: [paidDate, end) — следующая оплата нужна с end.
-      return dateStr < localDateStr(end);
+      if (dateStr >= localDateStr(end)) return null;
+      // Последний день действия (включительно) — день перед end.
+      const lastDay = new Date(end);
+      lastDay.setDate(lastDay.getDate() - 1);
+      return localDateStr(lastDay);
     };
 
     let membershipKind: "monthly_cv" | "one_time_bv" | null = null;
+    let cvPaidDate: string | null = null;
+    let cvValidUntil: string | null = null;
     for (const p of cvPayments) {
-      if (isCvCovering(p.paidDate!)) {
+      const validUntil = cvCoveringEndDate(p.paidDate!);
+      if (validUntil) {
         membershipKind = "monthly_cv";
+        cvPaidDate = p.paidDate!;
+        cvValidUntil = validUntil;
         break;
       }
     }
@@ -1078,6 +1089,8 @@ export class MemStorage implements IStorage {
         if (p.studentId !== studentId) continue;
         if (p.type === "one_time_bv" && p.date === dateStr) {
           membershipKind = "one_time_bv";
+          cvPaidDate = p.date;
+          cvValidUntil = p.date;
           break;
         }
       }
@@ -1087,6 +1100,8 @@ export class MemStorage implements IStorage {
     return {
       hasMembership: membershipKind !== null,
       membershipKind,
+      cvPaidDate,
+      cvValidUntil,
       hasTrainerPayment: sub !== null,
       activeTrainerPayment: sub ? this.withUsage(sub) : null,
     };

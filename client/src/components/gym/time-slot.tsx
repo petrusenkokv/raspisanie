@@ -12,6 +12,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { format, parseISO, differenceInCalendarDays } from "date-fns";
+import { ru } from "date-fns/locale";
 
 function minutesUntilSlotMoscow(date: string, time: string): number {
   const t = time.length >= 5 ? time.slice(0, 5) : time;
@@ -618,20 +621,52 @@ function BookingPaymentBadges({ studentId, dateStr }: { studentId: string; dateS
     ? `${Math.max(0, data.activeTrainerPayment.totalSessions - data.activeTrainerPayment.usedSessions)}/${data.activeTrainerPayment.totalSessions}`
     : "—";
 
+  // Подробное содержимое подсказки для значка ЧВ/БВ.
+  let cvTooltipNode: React.ReactNode;
+  if (cvOk && data.membershipKind === "monthly_cv" && data.cvPaidDate && data.cvValidUntil) {
+    const paid = parseISO(data.cvPaidDate);
+    const validUntil = parseISO(data.cvValidUntil);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const daysLeft = Math.max(0, differenceInCalendarDays(validUntil, today));
+    cvTooltipNode = (
+      <div className="space-y-1 text-xs">
+        <div className="font-semibold">ЧВ оплачен</div>
+        <div>Оплата: {format(paid, "d MMMM yyyy", { locale: ru })}</div>
+        <div>Действует до: {format(validUntil, "d MMMM yyyy", { locale: ru })} вкл.</div>
+        <div className="text-gray-300 dark:text-gray-400">Осталось дней: {daysLeft}</div>
+      </div>
+    );
+  } else if (cvOk && data.membershipKind === "one_time_bv" && data.cvPaidDate) {
+    cvTooltipNode = (
+      <div className="space-y-1 text-xs">
+        <div className="font-semibold">БВ оплачен</div>
+        <div>Дата: {format(parseISO(data.cvPaidDate), "d MMMM yyyy", { locale: ru })}</div>
+        <div className="text-gray-300 dark:text-gray-400">Разовая оплата на этот день</div>
+      </div>
+    );
+  } else {
+    cvTooltipNode = <span className="text-xs">ЧВ/БВ не оплачены</span>;
+  }
+
   return (
     <span className="inline-flex items-center gap-1 shrink-0">
-      <span
-        className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border ${
-          cvOk
-            ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
-            : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
-        }`}
-        title={cvOk ? `${cvLabel} оплачен` : "ЧВ/БВ не оплачены"}
-        data-testid={`badge-payment-cv-${studentId}`}
-      >
-        <Wallet className="h-2.5 w-2.5" />
-        {cvOk ? cvLabel : "ЧВ ✗"}
-      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border cursor-help ${
+              cvOk
+                ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+                : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+            }`}
+            data-testid={`badge-payment-cv-${studentId}`}
+          >
+            <Wallet className="h-2.5 w-2.5" />
+            {cvOk ? cvLabel : "ЧВ ✗"}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs">{cvTooltipNode}</TooltipContent>
+      </Tooltip>
       <span
         className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border ${
           trainerOk

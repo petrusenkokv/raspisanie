@@ -357,6 +357,8 @@ export type TrainerPaymentWithUsage = TrainerPayment & { usedSessions: number };
 export type StudentPaymentStatus = {
   hasMembership: boolean; // ЧВ за текущий месяц или БВ на дату
   membershipKind: "monthly_cv" | "one_time_bv" | null;
+  cvPaidDate: string | null; // YYYY-MM-DD — дата оплаты текущего ЧВ
+  cvValidUntil: string | null; // YYYY-MM-DD — последний день действия текущего ЧВ (включительно)
   hasTrainerPayment: boolean; // есть активный абонемент с остатком
   activeTrainerPayment: TrainerPaymentWithUsage | null;
 };
