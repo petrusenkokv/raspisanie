@@ -11,6 +11,9 @@ const sentCvExpiry = new Set<string>();
 // Дедупликация напоминаний об абонементе к тренеру.
 // Ключи: `${subscriptionId}:1left` и `${subscriptionId}:done`.
 const sentTrainerSub = new Set<string>();
+// Дедупликация напоминаний о ДР ученика.
+// Ключ вида `${studentId}:${YYYY}:${bucket}` — bucket = "7d" | "1d" | "0d".
+const sentBirthday = new Set<string>();
 
 const TICK_MS = 60_000;
 
@@ -160,6 +163,87 @@ async function checkTrainerSubscriptions() {
   }
 }
 
+// Дни до ближайшей годовщины ДР относительно текущей даты по Москве.
+// Возвращает целое число дней (≥ 0). Для 29 февраля в невисокосный год — 28 февраля.
+function daysUntilBirthday(birthDateStr: string, todayStr: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDateStr);
+  if (!m) return null;
+  const bMonth = parseInt(m[2], 10);
+  const bDay = parseInt(m[3], 10);
+  if (!bMonth || !bDay) return null;
+
+  const [ty, tm, td] = todayStr.split("-").map((s) => parseInt(s, 10));
+  const todayUtc = Date.UTC(ty, tm - 1, td);
+
+  function bdInYear(year: number): number {
+    let day = bDay;
+    let month = bMonth;
+    // Високосный 29 февраля → переносим на 28 февраля в обычные годы.
+    if (month === 2 && day === 29) {
+      const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+      if (!isLeap) day = 28;
+    }
+    return Date.UTC(year, month - 1, day);
+  }
+
+  let bd = bdInYear(ty);
+  if (bd < todayUtc) bd = bdInYear(ty + 1);
+  return Math.round((bd - todayUtc) / 86400000);
+}
+
+async function checkStudentBirthdays(now: Date) {
+  const trainer = await storage.getTrainer();
+  if (!trainer) return;
+  const todayStr = moscowDateString(now);
+  const todayYear = todayStr.slice(0, 4);
+  const students = await storage.getStudentsList(false);
+
+  for (const student of students) {
+    if (!student.birthDate) continue;
+    const daysLeft = daysUntilBirthday(student.birthDate, todayStr);
+    if (daysLeft == null) continue;
+
+    let bucket: "7d" | "1d" | "0d" | null = null;
+    let title = "";
+    let message = "";
+    const fio = [student.lastName, student.firstName].filter(Boolean).join(" ").trim() || student.firstName || "ученика";
+
+    if (daysLeft === 7) {
+      bucket = "7d";
+      title = "Через неделю день рождения";
+      message = `Через 7 дней день рождения у ${fio}.`;
+    } else if (daysLeft === 1) {
+      bucket = "1d";
+      title = "Завтра день рождения";
+      message = `Завтра день рождения у ${fio}.`;
+    } else if (daysLeft === 0) {
+      bucket = "0d";
+      title = "Сегодня день рождения";
+      message = `Сегодня день рождения у ${fio}. Не забудьте поздравить!`;
+    } else {
+      continue;
+    }
+
+    const key = `${student.id}:${todayYear}:${bucket}`;
+    if (sentBirthday.has(key)) continue;
+    await storage.createNotification({
+      userId: trainer.id,
+      type: "birthday_reminder",
+      title,
+      message,
+    });
+    sentBirthday.add(key);
+  }
+
+  // Очистка устаревших ключей за прошлые годы.
+  if (sentBirthday.size > 5000) {
+    for (const key of Array.from(sentBirthday)) {
+      const year = key.split(":")[1];
+      if (year && year < todayYear) sentBirthday.delete(key);
+    }
+  }
+}
+
 async function tick() {
   try {
     const bookings = await storage.listActiveBookings();
@@ -250,6 +334,7 @@ async function tick() {
 
     await checkCvExpiry(new Date(now));
     await checkTrainerSubscriptions();
+    await checkStudentBirthdays(new Date(now));
   } catch (err) {
     console.error("[reminders] tick failed:", err);
   }
