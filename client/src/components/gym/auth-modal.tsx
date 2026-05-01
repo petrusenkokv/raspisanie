@@ -46,7 +46,10 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   const [parentConfirmed, setParentConfirmed] = useState(false);
   const [acceptedDocs, setAcceptedDocs] = useState<Record<string, boolean>>({});
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
-  const [studentMode, setStudentMode] = useState<"login" | "register">("login");
+  const [studentMode, setStudentMode] = useState<"login" | "register" | "consent">("login");
+  const [pendingLoginUser, setPendingLoginUser] = useState<any>(null);
+  const [pendingConsentDocs, setPendingConsentDocs] = useState<Document[]>([]);
+  const [loginConsentAccepted, setLoginConsentAccepted] = useState<Record<string, boolean>>({});
 
   // Trainer state
   const [trainerPhone, setTrainerPhone] = useState("");
@@ -80,6 +83,9 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     setParentConfirmed(false);
     setAcceptedDocs({});
     setStudentMode("login");
+    setPendingLoginUser(null);
+    setPendingConsentDocs([]);
+    setLoginConsentAccepted({});
   };
 
   const resetTrainerForm = () => {
@@ -99,15 +105,53 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
         password: studentPassword,
       });
       const data = await response.json();
-      setUser(data.user);
-      toast({ title: "Добро пожаловать!", description: `Вы вошли как ${data.user.firstName}` });
-      onOpenChange(false);
-      resetStudentForm();
+      if (data.pendingDocuments && data.pendingDocuments.length > 0) {
+        setPendingLoginUser(data.user);
+        setPendingConsentDocs(data.pendingDocuments);
+        setLoginConsentAccepted({});
+        setStudentMode("consent");
+      } else {
+        setUser(data.user);
+        toast({ title: "Добро пожаловать!", description: `Вы вошли как ${data.user.firstName}` });
+        onOpenChange(false);
+        resetStudentForm();
+      }
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Не удалось войти",
         description: error?.message || "Проверьте телефон и пароль",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignConsents = async () => {
+    const missing = pendingConsentDocs.filter(d => !loginConsentAccepted[d.id]);
+    if (missing.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Примите все документы",
+        description: missing.map(d => d.title).join(", "),
+      });
+      return;
+    }
+    setLoading(true);
+    try {
+      await apiRequest("POST", "/api/auth/sign-consents", {
+        userId: pendingLoginUser.id,
+        documentIds: pendingConsentDocs.map(d => d.id),
+      });
+      setUser(pendingLoginUser);
+      toast({ title: "Добро пожаловать!", description: `Вы вошли как ${pendingLoginUser.firstName}` });
+      onOpenChange(false);
+      resetStudentForm();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: error?.message || "Не удалось сохранить согласия",
       });
     } finally {
       setLoading(false);
@@ -221,7 +265,46 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
 
           {/* Student Tab */}
           <TabsContent value="student" className="space-y-4 mt-4">
-            {studentMode === "login" ? (
+            {studentMode === "consent" ? (
+              <>
+                <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3 space-y-1">
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                    Для входа необходимо ознакомиться и принять документы
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Без согласия доступ к расписанию будет ограничен.
+                  </p>
+                </div>
+                <div className="border rounded-lg p-3 space-y-2">
+                  {pendingConsentDocs.map(doc => (
+                    <label key={doc.id} className="flex items-start gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={!!loginConsentAccepted[doc.id]}
+                        onCheckedChange={(v) => setLoginConsentAccepted(prev => ({ ...prev, [doc.id]: !!v }))}
+                      />
+                      <span className="flex-1">
+                        Согласен(на) с{" "}
+                        <button
+                          type="button"
+                          className="text-blue-600 underline"
+                          onClick={() => setViewingDoc(doc)}
+                        >
+                          «{doc.title}»
+                        </button>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <Button
+                  onClick={handleSignConsents}
+                  disabled={loading}
+                  className="w-full"
+                >
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Принять и войти
+                </Button>
+              </>
+            ) : studentMode === "login" ? (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="student-phone">Номер телефона</Label>

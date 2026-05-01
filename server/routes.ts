@@ -161,6 +161,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.updateUser(user.id, { lastLogin: new Date() });
 
+      const allDocs = await storage.getDocuments(true);
+      const userConsents = await storage.getConsentsByUser(user.id);
+      const signedDocIds = new Set(userConsents.map(c => c.documentId));
+      const pendingDocuments = allDocs.filter(d => !signedDocIds.has(d.id));
+
       res.json({
         user: {
           id: user.id,
@@ -169,10 +174,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastName: user.lastName,
           role: user.role,
           mustChangePassword: user.mustChangePassword,
-        }
+        },
+        pendingDocuments,
       });
     } catch (error) {
       res.status(500).json({ message: "Ошибка входа" });
+    }
+  });
+
+  app.post("/api/auth/sign-consents", async (req, res) => {
+    try {
+      const { userId, documentIds } = req.body;
+      if (!userId || !Array.isArray(documentIds)) {
+        return res.status(400).json({ message: "Неверный запрос" });
+      }
+      await recordConsents(userId, documentIds);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка записи согласий" });
     }
   });
 
