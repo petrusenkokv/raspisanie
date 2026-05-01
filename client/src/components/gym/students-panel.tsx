@@ -124,9 +124,18 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       setNewStudent(emptyNewStudent);
     },
     onError: (error: any) => {
+      let description = "Попробуйте ещё раз";
+      try {
+        const raw = error?.message || "";
+        const jsonPart = raw.replace(/^\d+:\s*/, "");
+        const parsed = JSON.parse(jsonPart);
+        if (parsed?.message) description = parsed.message;
+      } catch {
+        description = error?.message || description;
+      }
       toast({
         title: "Не удалось добавить ученика",
-        description: error?.message || "Попробуйте ещё раз",
+        description,
         variant: "destructive",
       });
     },
