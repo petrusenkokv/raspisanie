@@ -446,6 +446,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/bookings/:id/reschedule", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { newTimeSlotId, rescheduledBy } = req.body ?? {};
+      if (!newTimeSlotId) return res.status(400).json({ message: "Укажите новый слот" });
+
+      const booking = await storage.getRawBooking(id);
+      if (!booking) return res.status(404).json({ message: "Запись не найдена" });
+      if (booking.status === "cancelled") return res.status(400).json({ message: "Нельзя перенести отменённую запись" });
+
+      // Determine role of the person rescheduling
+      const rescheduler = rescheduledBy ? await storage.getUser(rescheduledBy) : null;
+      const byRole: "trainer" | "student" = rescheduler?.role === "trainer" ? "trainer" : "student";
+
+      // Students can only reschedule their own bookings
+      if (byRole === "student" && booking.studentId !== rescheduler?.id) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
+
+      // Enforce cancel deadline for students
+      if (byRole === "student") {
+        const settings = await storage.getTrainerSettings();
+        const oldSlotRaw = await storage.getTimeSlotById(booking.timeSlotId);
+        if (oldSlotRaw && settings.cancelDeadlineHours > 0) {
+          const slotMs = new Date(`${oldSlotRaw.date}T${oldSlotRaw.time.slice(0,5)}:00+03:00`).getTime();
+          const minutesUntil = Math.round((slotMs - Date.now()) / 60_000);
+          if (minutesUntil <= settings.cancelDeadlineHours * 60) {
+            return res.status(400).json({ message: `Перенос недоступен менее чем за ${settings.cancelDeadlineHours} ч. до тренировки` });
+          }
+        }
+      }
+
+      const oldSlot = await storage.getTimeSlotById(booking.timeSlotId);
+      const rescheduled = await storage.rescheduleBooking(id, newTimeSlotId, byRole);
+      const newSlot = await storage.getTimeSlotById(newTimeSlotId);
+
+      const fmtSlot = (s: { date: string; time: string } | undefined) =>
+        s ? `${s.date.split("-").reverse().join(".")} в ${s.time.slice(0, 5)}` : "—";
+
+      if (byRole === "trainer") {
+        // Notify student about reschedule
+        await storage.createNotification({
+          userId: booking.studentId,
+          type: "booking_confirmed",
+          title: "Тренировка перенесена",
+          message: `Тренер перенёс вашу тренировку: ${fmtSlot(oldSlot)} → ${fmtSlot(newSlot)}`,
+          relatedBookingId: rescheduled.id,
+        });
+      } else {
+        // Notify trainer about student-initiated reschedule
+        const trainer = await storage.getTrainer();
+        const student = await storage.getUser(booking.studentId);
+        if (trainer) {
+          const name = student ? `${student.firstName} ${student.lastName ?? ""}`.trim() : "Ученик";
+          await storage.createNotification({
+            userId: trainer.id,
+            type: "booking_request",
+            title: "Ученик перенёс запись",
+            message: `${name} перенёс запись: ${fmtSlot(oldSlot)} → ${fmtSlot(newSlot)}${rescheduled.status === "pending" ? ". Требуется подтверждение." : ""}`,
+            relatedBookingId: rescheduled.id,
+          });
+        }
+      }
+
+      const bookingWithDetails = await storage.getBooking(rescheduled.id);
+      res.json(bookingWithDetails);
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || "Не удалось перенести запись" });
+    }
+  });
+
   app.get("/api/bookings/student/:studentId", async (req, res) => {
     try {
       const { studentId } = req.params;

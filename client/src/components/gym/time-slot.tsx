@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, CircleSlash, Heart, AlarmClock } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, CircleSlash, Heart, AlarmClock, ArrowLeftRight } from "lucide-react";
+import { RescheduleDialog } from "./reschedule-dialog";
 import { Input } from "@/components/ui/input";
 import { type TimeSlotWithBookings, type AttendanceStatus, type StudentPaymentStatus } from "@shared/schema";
 import { Wallet, Dumbbell } from "lucide-react";
@@ -36,6 +37,9 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const { currentUser, isTrainer } = useGymStore();
   const { toast } = useToast();
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [rescheduleBooking, setRescheduleBooking] = useState<{
+    id: string; studentId: string;
+  } | null>(null);
 
   const { data: scheduleSettings } = useQuery<{
     bookingDeadlineHours?: number;
@@ -319,6 +323,18 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => setRescheduleBooking({ id: booking.id, studentId: booking.studentId })}
+                            className="h-6 w-6 p-0 text-blue-400 hover:text-blue-600 hover:bg-blue-50"
+                            title="Перенести запись"
+                            data-testid={`button-trainer-reschedule-${booking.id}`}
+                          >
+                            <ArrowLeftRight className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {!showAttendance && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => onCancel(booking.id)}
                             className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                             title="Удалить запись"
@@ -465,6 +481,17 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setRescheduleBooking({ id: userBooking.id, studentId: userBooking.studentId })}
+                disabled={tooLateToCancel}
+                title={tooLateToCancel ? `Перенос закрыт менее чем за ${cancelDeadlineH} ч.` : "Перенести запись"}
+                data-testid={`button-reschedule-${timeSlot.id}`}
+              >
+                <ArrowLeftRight className="h-3 w-3 mr-1" />
+                Перенести
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => onCancel(userBooking.id)}
                 className="text-red-600 hover:text-red-700"
                 disabled={tooLateToCancel}
@@ -535,7 +562,21 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     );
   }
 
-  return cardContent;
+  return (
+    <>
+      {cardContent}
+      {rescheduleBooking && (
+        <RescheduleDialog
+          open={!!rescheduleBooking}
+          onOpenChange={(open) => { if (!open) setRescheduleBooking(null); }}
+          bookingId={rescheduleBooking.id}
+          studentId={rescheduleBooking.studentId}
+          currentDate={timeSlot.date}
+          currentTime={timeSlot.time}
+        />
+      )}
+    </>
+  );
 }
 
 const ATTENDANCE_BADGE: Record<AttendanceStatus, { label: string; className: string }> = {

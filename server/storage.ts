@@ -62,6 +62,8 @@ export interface IStorage {
   getBookingsByStudent(studentId: string): Promise<BookingWithDetails[]>;
   getBookingsByTimeSlot(timeSlotId: string): Promise<BookingWithDetails[]>;
   listActiveBookings(): Promise<Booking[]>;
+  getRawBooking(id: string): Promise<Booking | undefined>;
+  rescheduleBooking(bookingId: string, newTimeSlotId: string, byRole: "trainer" | "student"): Promise<Booking>;
   createBooking(booking: InsertBooking): Promise<Booking>;
   updateBooking(id: string, updates: Partial<Booking>): Promise<Booking>;
   confirmBooking(id: string): Promise<Booking>;
@@ -645,6 +647,52 @@ export class MemStorage implements IStorage {
     };
     this.bookings.set(id, confirmedBooking);
     return confirmedBooking;
+  }
+
+  async getRawBooking(id: string): Promise<Booking | undefined> {
+    return this.bookings.get(id);
+  }
+
+  async rescheduleBooking(bookingId: string, newTimeSlotId: string, byRole: "trainer" | "student"): Promise<Booking> {
+    const booking = this.bookings.get(bookingId);
+    if (!booking) throw new Error("Запись не найдена");
+    if (booking.status === "cancelled") throw new Error("Нельзя перенести отменённую запись");
+
+    const newSlot = this.timeSlots.get(newTimeSlotId);
+    if (!newSlot) throw new Error("Слот не найден");
+    if (newSlot.isBlocked) throw new Error("Выбранный слот заблокирован");
+
+    // Check new slot is in the future
+    const slotStartMs = new Date(`${newSlot.date}T${newSlot.time.slice(0,5)}:00+03:00`).getTime();
+    if (slotStartMs <= Date.now()) throw new Error("Нельзя перенести на прошедшее время");
+
+    // Check capacity in new slot
+    const occupiedInNewSlot = Array.from(this.bookings.values()).filter(
+      b => b.id !== bookingId && b.timeSlotId === newTimeSlotId && b.status !== "cancelled"
+    ).length;
+    if (occupiedInNewSlot >= newSlot.maxCapacity) throw new Error("В выбранном слоте нет свободных мест");
+
+    // Check student doesn't already have a booking on the new date
+    const existingOnNewDate = Array.from(this.bookings.values()).find(b => {
+      if (b.id === bookingId || b.studentId !== booking.studentId || b.status === "cancelled") return false;
+      const slot = this.timeSlots.get(b.timeSlotId);
+      return slot && slot.date === newSlot.date;
+    });
+    if (existingOnNewDate) throw new Error("У ученика уже есть запись на эту дату");
+
+    // If student-initiated reschedule of a confirmed booking → back to pending
+    const newStatus =
+      byRole === "student" && booking.status === "confirmed" ? "pending" : booking.status;
+    const newConfirmedAt = newStatus === "pending" ? null : booking.confirmedAt;
+
+    const updated: Booking = {
+      ...booking,
+      timeSlotId: newTimeSlotId,
+      status: newStatus as Booking["status"],
+      confirmedAt: newConfirmedAt,
+    };
+    this.bookings.set(bookingId, updated);
+    return updated;
   }
 
   async cancelBooking(id: string): Promise<Booking> {
