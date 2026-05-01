@@ -27,6 +27,7 @@ import {
   type TrainerPaymentInput,
   type TrainerPaymentWithUsage,
   type StudentPaymentStatus,
+  type BroadcastLog,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -136,6 +137,10 @@ export interface IStorage {
   getScheduleForDate(date: string): Promise<DaySchedule>;
   getScheduleForWeek(startDate: string): Promise<DaySchedule[]>;
   getScheduleForMonth(year: number, month: number): Promise<DaySchedule[]>;
+
+  // Broadcast logs
+  createBroadcastLog(log: Omit<BroadcastLog, "id" | "sentAt">): Promise<BroadcastLog>;
+  getBroadcastLogs(): Promise<BroadcastLog[]>;
 }
 
 function localDateStr(d: Date): string {
@@ -208,6 +213,7 @@ export class MemStorage implements IStorage {
   private membershipPayments: Map<string, MembershipPayment> = new Map();
   private trainerPayments: Map<string, TrainerPayment> = new Map();
   private sickPeriods: Map<string, SickPeriod> = new Map();
+  private broadcastLogs: Map<string, BroadcastLog> = new Map();
   private settings: TrainerSettings = {
     id: randomUUID(),
     dayStartHour: 8,
@@ -1660,6 +1666,22 @@ export class MemStorage implements IStorage {
         this.timeSlots.set(s.id, { ...s, isBlocked: true, blockReason: "template" });
       }
     }
+  }
+
+  async createBroadcastLog(log: Omit<BroadcastLog, "id" | "sentAt">): Promise<BroadcastLog> {
+    const entry: BroadcastLog = {
+      id: randomUUID(),
+      sentAt: new Date(),
+      ...log,
+    };
+    this.broadcastLogs.set(entry.id, entry);
+    return entry;
+  }
+
+  async getBroadcastLogs(): Promise<BroadcastLog[]> {
+    return Array.from(this.broadcastLogs.values()).sort(
+      (a, b) => b.sentAt.getTime() - a.sentAt.getTime()
+    );
   }
 }
 

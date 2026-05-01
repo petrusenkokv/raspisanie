@@ -403,4 +403,15 @@ export type DaySchedule = {
 export type PhoneVerification = z.infer<typeof phoneVerificationSchema>;
 export type StudentRegistration = z.infer<typeof studentRegistrationSchema>;
 export type TrainerLogin = z.infer<typeof trainerLoginSchema>;
+
+// Broadcast log (in-memory only)
+export type BroadcastLog = {
+  id: string;
+  title: string;
+  message: string;
+  recipientType: "all" | "date" | "specific";
+  recipientCount: number;
+  date: string | null;
+  sentAt: Date;
+};
 export type BookingRequest = z.infer<typeof bookingRequestSchema>;

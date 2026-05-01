@@ -1237,9 +1237,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         )
       );
 
+      await storage.createBroadcastLog({
+        title: title || "Сообщение от тренера",
+        message,
+        recipientType,
+        recipientCount: targetStudentIds.length,
+        date: recipientType === "date" ? date : null,
+      });
+
       res.json({ sent: targetStudentIds.length });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Не удалось отправить рассылку" });
+    }
+  });
+
+  app.get("/api/trainer/broadcast-logs", async (_req, res) => {
+    try {
+      const logs = await storage.getBroadcastLogs();
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить историю рассылок" });
     }
   });
 
