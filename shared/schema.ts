@@ -64,6 +64,9 @@ export const trainerSettings = pgTable("trainer_settings", {
   dayStartHour: integer("day_start_hour").notNull().default(8),
   dayEndHour: integer("day_end_hour").notNull().default(20),
   weeklyTemplate: text("weekly_template").notNull().default("{}"), // JSON string
+  cancelDeadlineHours: integer("cancel_deadline_hours").notNull().default(3),
+  bookingDeadlineHours: integer("booking_deadline_hours").notNull().default(1),
+  defaultCapacity: integer("default_capacity").notNull().default(2),
   // Дополнительное напоминание ученикам перед тренировкой (общая настройка для всех).
   // null = выключено; 15|30|60|120 — минут до начала.
   reminderMinutes: integer("reminder_minutes"),

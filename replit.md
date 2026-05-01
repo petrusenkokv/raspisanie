@@ -21,8 +21,11 @@ Preferred communication style: Simple, everyday language (Russian).
 ### Backend
 - Express.js + TypeScript
 - REST API в `server/routes.ts`
-- In-memory хранилище в `server/storage.ts` (интерфейс `IStorage` + `MemStorage`)
+- PostgreSQL через Drizzle ORM: `server/db.ts` (подключение пула pg), `server/storage-db.ts` (класс `DbStorage`)
+- Экземпляр хранилища экспортируется из `server/storage-instance.ts` (импортируется в `routes.ts` и `reminders.ts`)
+- Интерфейс `IStorage` + заглушка `MemStorage` по-прежнему в `server/storage.ts` (для совместимости типов)
 - Валидация запросов через Zod-схемы из `@shared/schema`
+- При запуске вызывается `DbStorage.seed()`: создаёт тренера (телефон `79991234567`, пароль `12345`), 2 документа по умолчанию, слоты на 30 дней вперёд
 
 ### Структура клиента
 - `client/src/pages/` — `gym-schedule.tsx`, `not-found.tsx`
@@ -33,7 +36,9 @@ Preferred communication style: Simple, everyday language (Russian).
 
 ### Данные
 - `shared/schema.ts` — таблицы `users`, `bookings`, `timeSlots`, `documents`, `userConsents`, `scheduleSettings` и Zod-схемы к ним
-- Drizzle ORM (типы), но рантайм использует in-memory `MemStorage`
+- Drizzle ORM + PostgreSQL (Replit built-in); миграция через `npm run db:push`
+- `sick_periods` — таблица периодов больничного, определена прямо в `server/storage-db.ts`
+- Данные сохраняются между перезапусками (PostgreSQL)
 
 ### Ключевые фичи
 - День / неделя / месяц в расписании

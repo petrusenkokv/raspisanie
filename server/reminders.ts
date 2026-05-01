@@ -1,4 +1,4 @@
-import { storage } from "./storage";
+import { storage } from "./storage-instance";
 
 const sent24h = new Set<string>();
 const sent1h = new Set<string>();
