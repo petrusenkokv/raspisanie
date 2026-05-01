@@ -551,7 +551,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const includeInactive = req.query.includeInactive === "true";
       const students = await storage.getStudentsList(includeInactive);
-      res.json(students);
+      const activeDocs = await storage.getDocuments(true);
+      const studentsWithConsents = await Promise.all(
+        students.map(async (student) => {
+          const consents = await storage.getConsentsByUser(student.id);
+          const acceptedIds = new Set(consents.map((c) => c.documentId));
+          const pendingDocumentCount = activeDocs.filter((d) => !acceptedIds.has(d.id)).length;
+          return { ...student, pendingDocumentCount };
+        })
+      );
+      res.json(studentsWithConsents);
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить список учеников" });
     }

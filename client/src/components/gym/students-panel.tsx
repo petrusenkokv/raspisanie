@@ -37,7 +37,7 @@ import {
 import { BookStudentDialog } from "./book-student-dialog";
 import { DocumentViewDialog } from "./document-view-dialog";
 import { DocumentsManagerDialog } from "./documents-manager-dialog";
-import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X } from "lucide-react";
+import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -83,9 +83,10 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [docsManagerOpen, setDocsManagerOpen] = useState(false);
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [newStudent, setNewStudent] = useState(emptyNewStudent);
+  const [consentWarningStudent, setConsentWarningStudent] = useState<(User & { pendingDocumentCount: number }) | null>(null);
   const { toast } = useToast();
 
-  const { data: students = [], isLoading } = useQuery<User[]>({
+  const { data: students = [], isLoading } = useQuery<(User & { pendingDocumentCount: number })[]>({
     queryKey: ["/api/trainer/students", showInactive],
     queryFn: async () => {
       const url = showInactive ? "/api/trainer/students?includeInactive=true" : "/api/trainer/students";
@@ -189,9 +190,21 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     );
   });
 
-  const handleBookStudent = (student: User) => {
-    setSelectedStudent(student);
-    setBookingDialogOpen(true);
+  const handleBookStudent = (student: User & { pendingDocumentCount?: number }) => {
+    if ((student.pendingDocumentCount ?? 0) > 0) {
+      setConsentWarningStudent(student as User & { pendingDocumentCount: number });
+    } else {
+      setSelectedStudent(student);
+      setBookingDialogOpen(true);
+    }
+  };
+
+  const handleBookStudentForce = () => {
+    if (consentWarningStudent) {
+      setSelectedStudent(consentWarningStudent);
+      setConsentWarningStudent(null);
+      setBookingDialogOpen(true);
+    }
   };
 
   const handleAddSubmit = () => {
@@ -287,8 +300,15 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
               {filteredStudents.map((student) => {
                 const age = calculateAge((student as any).birthDate);
                 const isInactive = (student as any).isActive === false;
+                const hasPendingDocs = (student.pendingDocumentCount ?? 0) > 0;
                 return (
-                  <div key={student.id} className={`border rounded-lg p-4 transition-shadow ${isInactive ? "bg-gray-50 dark:bg-gray-900 opacity-70 border-dashed" : "bg-white dark:bg-gray-800 hover:shadow-sm"}`}>
+                  <div key={student.id} className={`border rounded-lg p-4 transition-shadow ${
+                    isInactive
+                      ? "bg-gray-50 dark:bg-gray-900 opacity-70 border-dashed"
+                      : hasPendingDocs
+                        ? "bg-orange-50 dark:bg-orange-950/20 border-orange-300 dark:border-orange-700 hover:shadow-sm"
+                        : "bg-white dark:bg-gray-800 hover:shadow-sm"
+                  }`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1 min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -303,6 +323,12 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                           {isInactive && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded border bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-400">
                               архив
+                            </span>
+                          )}
+                          {hasPendingDocs && !isInactive && (
+                            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-700">
+                              <AlertTriangle className="h-2.5 w-2.5" />
+                              Документы не приняты
                             </span>
                           )}
                           {age !== null && (
@@ -523,6 +549,37 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Consent warning before booking */}
+      <AlertDialog open={!!consentWarningStudent} onOpenChange={(open) => !open && setConsentWarningStudent(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-orange-600">
+              <AlertTriangle className="h-5 w-5" />
+              Документы не приняты
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {consentWarningStudent && (
+                <>
+                  <strong>{consentWarningStudent.firstName} {consentWarningStudent.lastName}</strong> не согласился с документами.
+                  {" "}Ученику необходимо войти в приложение и принять все документы.
+                  <br /><br />
+                  Всё равно записать на занятие?
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-orange-500 hover:bg-orange-600"
+              onClick={handleBookStudentForce}
+            >
+              Всё равно записать
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete confirmation */}
       <AlertDialog open={!!studentToDelete} onOpenChange={(open) => !open && setStudentToDelete(null)}>
