@@ -63,6 +63,7 @@ const TYPE_DOT: Record<string, string> = {
   booking_cancelled: "bg-red-500",
   training_reminder: "bg-amber-500",
   birthday_reminder: "bg-pink-500",
+  broadcast: "bg-purple-500",
 };
 
 function formatTime(value: Date | string | null): string {
@@ -146,7 +147,7 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
     const seen = seenIdsRef.current;
     const alertTypes = isTrainer
       ? new Set(["booking_request", "booking_cancelled", "birthday_reminder"])
-      : new Set(["training_reminder", "booking_confirmed", "booking_cancelled"]);
+      : new Set(["training_reminder", "booking_confirmed", "booking_cancelled", "broadcast"]);
 
     const fresh = notifications.filter(
       (n) => !seen.has(n.id) && alertTypes.has(n.type) && !n.isRead

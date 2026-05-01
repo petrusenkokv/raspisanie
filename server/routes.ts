@@ -1193,6 +1193,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Broadcast notification to students
+  app.post("/api/trainer/broadcast", async (req, res) => {
+    try {
+      const { title, message, recipientType, date, studentIds } = req.body;
+      if (!message || !recipientType) {
+        return res.status(400).json({ message: "Необходимо указать сообщение и получателей" });
+      }
+
+      let targetStudentIds: string[] = [];
+
+      if (recipientType === "all") {
+        const students = await storage.getStudentsList(false);
+        targetStudentIds = students.map((s) => s.id);
+      } else if (recipientType === "date" && date) {
+        const slots = await storage.getTimeSlotsByDate(date);
+        const studentIdSet = new Set<string>();
+        for (const slot of slots) {
+          for (const booking of slot.bookings) {
+            if (booking.status !== "cancelled" && booking.studentId) {
+              studentIdSet.add(booking.studentId);
+            }
+          }
+        }
+        targetStudentIds = Array.from(studentIdSet);
+      } else if (recipientType === "specific" && Array.isArray(studentIds)) {
+        targetStudentIds = studentIds;
+      }
+
+      if (targetStudentIds.length === 0) {
+        return res.status(400).json({ message: "Нет подходящих получателей" });
+      }
+
+      await Promise.all(
+        targetStudentIds.map((userId) =>
+          storage.createNotification({
+            userId,
+            type: "broadcast",
+            title: title || "Сообщение от тренера",
+            message,
+            relatedBookingId: null,
+          })
+        )
+      );
+
+      res.json({ sent: targetStudentIds.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось отправить рассылку" });
+    }
+  });
+
   // Notifications
   app.get("/api/notifications/:userId", async (req, res) => {
     try {
