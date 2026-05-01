@@ -352,7 +352,7 @@ export class MemStorage implements IStorage {
 
   async updateUser(id: string, updates: Partial<User>): Promise<User> {
     const user = this.users.get(id);
-    if (!user) throw new Error("User not found");
+    if (!user) throw new Error("Пользователь не найден");
     
     const updatedUser = { ...user, ...updates };
     this.users.set(id, updatedUser);
@@ -361,7 +361,7 @@ export class MemStorage implements IStorage {
 
   async verifyUser(id: string): Promise<User> {
     const user = this.users.get(id);
-    if (!user) throw new Error("User not found");
+    if (!user) throw new Error("Пользователь не найден");
     
     const verifiedUser = { ...user, isVerified: true, verificationCode: null };
     this.users.set(id, verifiedUser);
@@ -370,8 +370,8 @@ export class MemStorage implements IStorage {
 
   async deleteUser(id: string): Promise<void> {
     const user = this.users.get(id);
-    if (!user) throw new Error("User not found");
-    if (user.role === "trainer") throw new Error("Cannot delete trainer");
+    if (!user) throw new Error("Пользователь не найден");
+    if (user.role === "trainer") throw new Error("Нельзя удалить тренера");
 
     // Remove all bookings made by this student
     for (const [bookingId, booking] of Array.from(this.bookings.entries())) {
@@ -426,14 +426,14 @@ export class MemStorage implements IStorage {
 
   async updateDocument(id: string, updates: Partial<Document>): Promise<Document> {
     const doc = this.documents.get(id);
-    if (!doc) throw new Error("Document not found");
+    if (!doc) throw new Error("Документ не найден");
     const updated = { ...doc, ...updates };
     this.documents.set(id, updated);
     return updated;
   }
 
   async deleteDocument(id: string): Promise<void> {
-    if (!this.documents.has(id)) throw new Error("Document not found");
+    if (!this.documents.has(id)) throw new Error("Документ не найден");
     // Remove related consents
     for (const [cid, c] of Array.from(this.consents.entries())) {
       if (c.documentId === id) this.consents.delete(cid);
@@ -527,7 +527,7 @@ export class MemStorage implements IStorage {
 
   async updateTimeSlot(id: string, updates: Partial<TimeSlot>): Promise<TimeSlot> {
     const timeSlot = this.timeSlots.get(id);
-    if (!timeSlot) throw new Error("Time slot not found");
+    if (!timeSlot) throw new Error("Временной слот не найден");
     
     const updatedTimeSlot = { ...timeSlot, ...updates };
     this.timeSlots.set(id, updatedTimeSlot);
@@ -636,7 +636,7 @@ export class MemStorage implements IStorage {
 
   async updateBooking(id: string, updates: Partial<Booking>): Promise<Booking> {
     const booking = this.bookings.get(id);
-    if (!booking) throw new Error("Booking not found");
+    if (!booking) throw new Error("Запись не найдена");
     
     const updatedBooking = { ...booking, ...updates };
     this.bookings.set(id, updatedBooking);
@@ -645,7 +645,7 @@ export class MemStorage implements IStorage {
 
   async confirmBooking(id: string): Promise<Booking> {
     const booking = this.bookings.get(id);
-    if (!booking) throw new Error("Booking not found");
+    if (!booking) throw new Error("Запись не найдена");
     
     const confirmedBooking = { 
       ...booking, 
@@ -703,7 +703,7 @@ export class MemStorage implements IStorage {
 
   async cancelBooking(id: string): Promise<Booking> {
     const booking = this.bookings.get(id);
-    if (!booking) throw new Error("Booking not found");
+    if (!booking) throw new Error("Запись не найдена");
 
     // If this booking had consumed a trainer session, refund it
     let consumedId = booking.consumedTrainerPaymentId ?? null;
@@ -728,7 +728,7 @@ export class MemStorage implements IStorage {
     note: string | null,
   ): Promise<Booking> {
     const booking = this.bookings.get(bookingId);
-    if (!booking) throw new Error("Booking not found");
+    if (!booking) throw new Error("Запись не найдена");
 
     const wasConsuming = booking.attendanceStatus === "attended" || booking.attendanceStatus === "late";
     const willConsume = status === "attended" || status === "late";
@@ -854,8 +854,8 @@ export class MemStorage implements IStorage {
     startDate?: string,
   ): Promise<{ user: User; cancelledCount: number }> {
     const user = this.users.get(studentId);
-    if (!user) throw new Error("User not found");
-    if (user.role !== "student") throw new Error("Only students can be set on sick leave");
+    if (!user) throw new Error("Пользователь не найден");
+    if (user.role !== "student") throw new Error("Только ученики могут уходить на больничный");
 
     const updatedUser: User = {
       ...user,
@@ -927,8 +927,8 @@ export class MemStorage implements IStorage {
     createdBy: string,
   ): Promise<MembershipPayment> {
     const user = this.users.get(studentId);
-    if (!user) throw new Error("User not found");
-    if (user.role !== "student") throw new Error("Only students have memberships");
+    if (!user) throw new Error("Пользователь не найден");
+    if (user.role !== "student") throw new Error("Абонементы доступны только ученикам");
 
     let derivedMonth: string | null = null;
     if (input.type === "monthly_cv") {
@@ -1032,8 +1032,8 @@ export class MemStorage implements IStorage {
     createdBy: string,
   ): Promise<TrainerPaymentWithUsage> {
     const user = this.users.get(studentId);
-    if (!user) throw new Error("User not found");
-    if (user.role !== "student") throw new Error("Only students have subscriptions");
+    if (!user) throw new Error("Пользователь не найден");
+    if (user.role !== "student") throw new Error("Подписки доступны только ученикам");
 
     const id = randomUUID();
     const payment: TrainerPayment = {
@@ -1219,7 +1219,7 @@ export class MemStorage implements IStorage {
 
   async setUserActiveStatus(id: string, isActive: boolean, resetCv = false): Promise<User> {
     const user = this.users.get(id);
-    if (!user) throw new Error("User not found");
+    if (!user) throw new Error("Пользователь не найден");
     if (user.role === "trainer") throw new Error("Нельзя изменить статус тренера");
     const today = localDateStr(new Date());
     const updated: User = {
@@ -1413,7 +1413,7 @@ export class MemStorage implements IStorage {
   // ----- Slot blocking -----
   async blockSlot(timeSlotId: string, blocked: boolean): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }> {
     const slot = this.timeSlots.get(timeSlotId);
-    if (!slot) throw new Error("Time slot not found");
+    if (!slot) throw new Error("Временной слот не найден");
     const updated: TimeSlot = {
       ...slot,
       isBlocked: blocked,
