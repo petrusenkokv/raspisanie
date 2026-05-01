@@ -22,7 +22,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -84,7 +83,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [docsManagerOpen, setDocsManagerOpen] = useState(false);
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [newStudent, setNewStudent] = useState(emptyNewStudent);
-  const [newStudentConsents, setNewStudentConsents] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   const { data: students = [], isLoading } = useQuery<User[]>({
@@ -124,7 +122,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       });
       setAddDialogOpen(false);
       setNewStudent(emptyNewStudent);
-      setNewStudentConsents({});
     },
     onError: (error: any) => {
       toast({
@@ -203,18 +200,9 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
         return;
       }
     }
-    const missingDocs = documents.filter(d => !newStudentConsents[d.id]);
-    if (missingDocs.length > 0) {
-      toast({
-        title: "Примите все документы",
-        description: missingDocs.map(d => d.title).join(", "),
-        variant: "destructive",
-      });
-      return;
-    }
     addMutation.mutate({
       ...newStudent,
-      consentDocumentIds: Object.keys(newStudentConsents).filter(id => newStudentConsents[id]),
+      consentDocumentIds: [],
     });
   };
 
@@ -489,26 +477,25 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
             )}
 
             {documents.length > 0 && (
-              <div className="border rounded-lg p-3 space-y-2">
-                <p className="text-sm font-medium">Согласия с документами</p>
-                {documents.map(doc => (
-                  <label key={doc.id} className="flex items-start gap-2 text-sm cursor-pointer">
-                    <Checkbox
-                      checked={!!newStudentConsents[doc.id]}
-                      onCheckedChange={(v) => setNewStudentConsents(prev => ({ ...prev, [doc.id]: !!v }))}
-                    />
-                    <span className="flex-1">
-                      Согласен(на) с{" "}
+              <div className="border rounded-lg p-3 space-y-1.5 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-300">Документы для подписи</p>
+                <p className="text-xs text-blue-700 dark:text-blue-400">
+                  Ученик самостоятельно ознакомится и подпишет следующие документы при первом входе в приложение:
+                </p>
+                <ul className="space-y-1">
+                  {documents.map(doc => (
+                    <li key={doc.id} className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
                       <button
                         type="button"
-                        className="text-blue-600 underline"
+                        className="underline hover:text-blue-900 dark:hover:text-blue-200"
                         onClick={() => setViewingDoc(doc)}
                       >
-                        «{doc.title}»
+                        {doc.title}
                       </button>
-                    </span>
-                  </label>
-                ))}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
