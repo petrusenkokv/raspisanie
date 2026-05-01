@@ -411,6 +411,7 @@ export type BroadcastLog = {
   message: string;
   recipientType: "all" | "date" | "specific";
   recipientCount: number;
+  recipientIds: string[];
   date: string | null;
   sentAt: Date;
 };

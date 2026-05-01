@@ -141,6 +141,7 @@ export interface IStorage {
   // Broadcast logs
   createBroadcastLog(log: Omit<BroadcastLog, "id" | "sentAt">): Promise<BroadcastLog>;
   getBroadcastLogs(): Promise<BroadcastLog[]>;
+  deleteBroadcastLog(id: string): Promise<{ deletedNotifications: number }>;
 }
 
 function localDateStr(d: Date): string {
@@ -1682,6 +1683,28 @@ export class MemStorage implements IStorage {
     return Array.from(this.broadcastLogs.values()).sort(
       (a, b) => b.sentAt.getTime() - a.sentAt.getTime()
     );
+  }
+
+  async deleteBroadcastLog(id: string): Promise<{ deletedNotifications: number }> {
+    const log = this.broadcastLogs.get(id);
+    if (!log) throw new Error("Рассылка не найдена");
+
+    const recipientSet = new Set(log.recipientIds);
+    let deletedNotifications = 0;
+
+    for (const [notifId, notif] of Array.from(this.notifications.entries())) {
+      if (notif.type === "broadcast" && recipientSet.has(notif.userId)) {
+        const sentAt = log.sentAt.getTime();
+        const createdAt = notif.createdAt ? new Date(notif.createdAt).getTime() : 0;
+        if (Math.abs(createdAt - sentAt) < 60_000) {
+          this.notifications.delete(notifId);
+          deletedNotifications++;
+        }
+      }
+    }
+
+    this.broadcastLogs.delete(id);
+    return { deletedNotifications };
   }
 }
 

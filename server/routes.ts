@@ -1242,6 +1242,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message,
         recipientType,
         recipientCount: targetStudentIds.length,
+        recipientIds: targetStudentIds,
         date: recipientType === "date" ? date : null,
       });
 
@@ -1257,6 +1258,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(logs);
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Не удалось получить историю рассылок" });
+    }
+  });
+
+  app.delete("/api/trainer/broadcast-logs/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await storage.deleteBroadcastLog(id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось удалить рассылку" });
     }
   });
 

@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Send, History, Users, Calendar, User } from "lucide-react";
+import { Loader2, Send, History, Users, Calendar, User, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import type { User as UserType, BroadcastLog } from "@shared/schema";
@@ -58,6 +58,23 @@ export function BroadcastDialog({ open, onOpenChange }: Props) {
   const { data: logs = [], isLoading: logsLoading } = useQuery<BroadcastLog[]>({
     queryKey: ["/api/trainer/broadcast-logs"],
     enabled: open,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (logId: string) => {
+      const r = await apiRequest("DELETE", `/api/trainer/broadcast-logs/${logId}`);
+      return r.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/broadcast-logs"] });
+      toast({
+        title: "Рассылка удалена",
+        description: `Удалено уведомлений у учеников: ${data.deletedNotifications}`,
+      });
+    },
+    onError: (e: any) => {
+      toast({ title: "Ошибка", description: e?.message, variant: "destructive" });
+    },
   });
 
   const activeStudents = students.filter((s) => s.isActive !== false);
@@ -276,16 +293,33 @@ export function BroadcastDialog({ open, onOpenChange }: Props) {
                       <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
                         {log.message}
                       </p>
-                      <div className="flex items-center gap-3 pt-0.5">
-                        <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                          <Icon className="h-3 w-3" />
-                          {RECIPIENT_LABEL[log.recipientType]}
-                          {log.recipientType === "date" && log.date && ` · ${log.date}`}
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-purple-600 dark:text-purple-400">
-                          <Users className="h-3 w-3" />
-                          {log.recipientCount} получ.
-                        </span>
+                      <div className="flex items-center justify-between pt-0.5">
+                        <div className="flex items-center gap-3">
+                          <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                            <Icon className="h-3 w-3" />
+                            {RECIPIENT_LABEL[log.recipientType]}
+                            {log.recipientType === "date" && log.date && ` · ${log.date}`}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-purple-600 dark:text-purple-400">
+                            <Users className="h-3 w-3" />
+                            {log.recipientCount} получ.
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                          onClick={() => deleteMutation.mutate(log.id)}
+                          disabled={deleteMutation.isPending}
+                          title="Удалить рассылку у всех учеников"
+                        >
+                          {deleteMutation.isPending ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                          <span className="ml-1 text-xs">Удалить</span>
+                        </Button>
                       </div>
                     </div>
                   );
