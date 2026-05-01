@@ -666,15 +666,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Check that all active documents are accepted
-      const activeDocs = await storage.getDocuments(true);
       const accepted = new Set<string>(Array.isArray(consentDocumentIds) ? consentDocumentIds : []);
-      const missing = activeDocs.filter(d => !accepted.has(d.id));
-      if (missing.length > 0) {
-        return res.status(400).json({
-          message: `Необходимо принять документы: ${missing.map(d => d.title).join(", ")}`
-        });
-      }
 
       const user = await storage.createUser({
         phone: normalizedPhone,
