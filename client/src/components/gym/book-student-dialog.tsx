@@ -9,9 +9,11 @@ import { apiRequest } from "@/lib/queryClient";
 import { useGymStore } from "@/store/gym-store";
 import { useToast } from "@/hooks/use-toast";
 import { type User, type TimeSlotWithBookings } from "@shared/schema";
-import { Calendar, UserCheck, Loader2, Search } from "lucide-react";
+import { Calendar, UserCheck, Loader2, Search, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+
+type StudentWithConsent = User & { pendingDocumentCount?: number };
 
 function todayLocalStr(): string {
   const d = new Date();
@@ -49,7 +51,7 @@ export function BookStudentDialog({
     }
   }, [open, preselectedTimeSlotId]);
 
-  const { data: students = [] } = useQuery<User[]>({
+  const { data: students = [] } = useQuery<StudentWithConsent[]>({
     queryKey: ["/api/trainer/students"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/trainer/students");
@@ -58,6 +60,9 @@ export function BookStudentDialog({
     enabled: open && !preselectedStudent,
     staleTime: 0
   });
+
+  const selectedStudentObj = students.find(s => s.id === selectedStudentId);
+  const selectedHasPendingDocs = (selectedStudentObj?.pendingDocumentCount ?? 0) > 0;
 
   const bookMutation = useMutation({
     mutationFn: async ({ studentId, timeSlotId }: { studentId: string; timeSlotId: string }) => {
@@ -185,11 +190,20 @@ export function BookStudentDialog({
                     filteredStudents.map(s => (
                       <SelectItem key={s.id} value={s.id}>
                         {s.firstName} {s.lastName} — {s.phone}
+                        {(s.pendingDocumentCount ?? 0) > 0 ? " ⚠" : ""}
                       </SelectItem>
                     ))
                   )}
                 </SelectContent>
               </Select>
+              {selectedHasPendingDocs && selectedStudentObj && (
+                <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-950/20 border border-orange-300 dark:border-orange-700 rounded-lg">
+                  <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0 mt-0.5" />
+                  <p className="text-sm text-orange-700 dark:text-orange-400">
+                    <strong>{selectedStudentObj.firstName} {selectedStudentObj.lastName}</strong> не согласился с документами. Ученику необходимо принять документы при входе в приложение.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
