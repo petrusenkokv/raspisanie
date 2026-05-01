@@ -672,13 +672,12 @@ export class MemStorage implements IStorage {
     ).length;
     if (occupiedInNewSlot >= newSlot.maxCapacity) throw new Error("В выбранном слоте нет свободных мест");
 
-    // Check student doesn't already have a booking on the new date
-    const existingOnNewDate = Array.from(this.bookings.values()).find(b => {
+    // Check student doesn't already have a booking at this exact new slot
+    const existingInNewSlot = Array.from(this.bookings.values()).find(b => {
       if (b.id === bookingId || b.studentId !== booking.studentId || b.status === "cancelled") return false;
-      const slot = this.timeSlots.get(b.timeSlotId);
-      return slot && slot.date === newSlot.date;
+      return b.timeSlotId === newTimeSlotId;
     });
-    if (existingOnNewDate) throw new Error("У ученика уже есть запись на эту дату");
+    if (existingInNewSlot) throw new Error("У ученика уже есть запись на этот час");
 
     // If student-initiated reschedule of a confirmed booking → back to pending
     const newStatus =
