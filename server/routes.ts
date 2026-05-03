@@ -7,7 +7,8 @@ import {
   phoneVerificationSchema,
   studentRegistrationSchema,
   trainerLoginSchema,
-  bookingRequestSchema
+  bookingRequestSchema,
+  updateStudentProfileSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -239,6 +240,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Не удалось сменить пароль" });
+    }
+  });
+
+  app.patch("/api/users/me", async (req, res) => {
+    try {
+      const { userId, ...payload } = req.body ?? {};
+      if (!userId) {
+        return res.status(400).json({ message: "Не указан пользователь" });
+      }
+      const parsed = updateStudentProfileSchema.safeParse(payload);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Некорректные данные" });
+      }
+      const user = await storage.updateUser(userId, parsed.data as any);
+      res.json({ user });
+    } catch {
+      res.status(500).json({ message: "Не удалось обновить профиль" });
     }
   });
 

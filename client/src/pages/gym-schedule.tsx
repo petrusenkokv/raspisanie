@@ -8,13 +8,15 @@ import { ChangePasswordDialog } from "@/components/gym/change-password-dialog";
 import { BlockPeriodDialog } from "@/components/gym/block-period-dialog";
 import { ScheduleSettingsDialog } from "@/components/gym/schedule-settings-dialog";
 import { BroadcastDialog } from "@/components/gym/broadcast-dialog";
+import { ProfileDialog } from "@/components/gym/profile-dialog";
 import { NotificationsPopover } from "@/components/gym/notifications-popover";
 import { Button } from "@/components/ui/button";
 import { useGymStore } from "@/store/gym-store";
+import { type User } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, UserPlus, KeyRound, Lock, Unlock, CalendarOff, Settings, Send } from "lucide-react";
+import { Loader2, LogOut, UserPlus, UserCircle2, KeyRound, Lock, Unlock, CalendarOff, Settings, Send } from "lucide-react";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -25,6 +27,7 @@ export function GymSchedulePage() {
   const [blockPeriodOpen, setBlockPeriodOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const { 
     currentUser, 
     isAuthenticated, 
@@ -296,6 +299,17 @@ export function GymSchedulePage() {
             )}
             {isAuthenticated ? (
               <>
+                {currentUser?.role !== "trainer" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setProfileOpen(true)}
+                    data-testid="button-my-profile"
+                  >
+                    <UserCircle2 className="h-4 w-4 mr-2" />
+                    Мой профиль
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -390,6 +404,11 @@ export function GymSchedulePage() {
       <BroadcastDialog
         open={broadcastOpen}
         onOpenChange={setBroadcastOpen}
+      />
+
+      <ProfileDialog
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
       />
     </div>
   );

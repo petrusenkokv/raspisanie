@@ -193,6 +193,8 @@ export const updateStudentProfileSchema = z.object({
   middleName: z.string().trim().nullable().optional(),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата должна быть в формате YYYY-MM-DD"),
   phone: z.string().trim().min(10, "Укажите корректный телефон"),
+  parentFullName: z.string().trim().nullable().optional(),
+  parentPhone: z.string().trim().nullable().optional(),
 });
 
 export const insertRecurringBookingSchema = createInsertSchema(recurringBookings).omit({
