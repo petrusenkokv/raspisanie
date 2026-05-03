@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useEffect, useMemo, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { User, Pencil, Save, X, Phone, CalendarDays, Users, UserCircle2 } from "lucide-react";
@@ -15,6 +15,17 @@ import { useGymStore } from "@/store/gym-store";
 import { updateStudentProfileSchema, type User as UserType } from "@shared/schema";
 
 type FormValues = typeof updateStudentProfileSchema._type;
+
+function calculateAge(birthDate: string | null | undefined): number | null {
+  if (!birthDate) return null;
+  const b = new Date(birthDate);
+  if (isNaN(b.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - b.getFullYear();
+  const m = today.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+  return age;
+}
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
@@ -68,6 +79,14 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     if (!open) setEditing(false);
   }, [currentUser, open, form]);
 
+  const watchedBirthDate = useWatch({ control: form.control, name: "birthDate" });
+  const editAge = useMemo(() => calculateAge(watchedBirthDate), [watchedBirthDate]);
+  const editRequiresParent = editAge !== null && editAge < 14;
+
+  const viewAge = useMemo(() => calculateAge(currentUser?.birthDate), [currentUser?.birthDate]);
+  const viewRequiresParent = viewAge !== null && viewAge < 14;
+  const viewHasParentData = !!(currentUser?.parentFullName || currentUser?.parentPhone);
+
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       const response = await apiRequest("PATCH", "/api/users/me", { userId: currentUser?.id, ...values });
@@ -84,6 +103,20 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     },
   });
 
+  const handleSubmit = (values: FormValues) => {
+    if (editRequiresParent) {
+      if (!values.parentFullName?.trim() || !values.parentPhone?.trim()) {
+        toast({
+          title: "Заполните данные законного представителя",
+          description: "Для учеников младше 14 лет необходимо указать ФИО и телефон представителя",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    mutation.mutate(values);
+  };
+
   if (!currentUser || currentUser.role === "trainer") return null;
 
   const initials = `${currentUser.firstName?.[0] ?? ""}${currentUser.lastName?.[0] ?? ""}`.trim() || "У";
@@ -91,7 +124,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserCircle2 className="h-5 w-5 text-blue-600" />
@@ -107,21 +140,42 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           <div>
             <div className="font-semibold text-base leading-tight">{fullName || currentUser.firstName}</div>
             <div className="text-sm text-muted-foreground">{currentUser.phone}</div>
+            {viewAge !== null && (
+              <div className="text-xs text-muted-foreground mt-0.5">{viewAge} лет</div>
+            )}
           </div>
         </div>
 
-        {/* VIEW MODE */}
+        {/* ── VIEW MODE ── */}
         {!editing && (
           <div className="space-y-1">
             <InfoRow icon={<User className="h-4 w-4" />} label="Имя" value={currentUser.firstName} />
             <InfoRow icon={<User className="h-4 w-4" />} label="Фамилия" value={currentUser.lastName} />
             <InfoRow icon={<User className="h-4 w-4" />} label="Отчество" value={currentUser.middleName} />
             <Separator />
-            <InfoRow icon={<CalendarDays className="h-4 w-4" />} label="Дата рождения" value={formatDate(currentUser.birthDate)} />
+            <InfoRow
+              icon={<CalendarDays className="h-4 w-4" />}
+              label="Дата рождения"
+              value={currentUser.birthDate
+                ? `${formatDate(currentUser.birthDate)}${viewAge !== null ? ` (${viewAge} лет)` : ""}`
+                : undefined}
+            />
             <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={currentUser.phone} />
-            <Separator />
-            <InfoRow icon={<Users className="h-4 w-4" />} label="ФИО родителя" value={currentUser.parentFullName} />
-            <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон родителя" value={currentUser.parentPhone} />
+
+            {/* Parent block — show if under 14 or has data */}
+            {(viewRequiresParent || viewHasParentData) && (
+              <>
+                <Separator />
+                <div className="rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3 space-y-1">
+                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">
+                    Законный представитель
+                    {viewRequiresParent && <span className="ml-1">(обязательно, возраст &lt; 14 лет)</span>}
+                  </p>
+                  <InfoRow icon={<Users className="h-4 w-4" />} label="ФИО" value={currentUser.parentFullName} />
+                  <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={currentUser.parentPhone} />
+                </div>
+              </>
+            )}
 
             <div className="flex justify-end pt-2">
               <Button onClick={() => setEditing(true)}>
@@ -131,10 +185,10 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           </div>
         )}
 
-        {/* EDIT MODE */}
+        {/* ── EDIT MODE ── */}
         {editing && (
           <Form {...form}>
-            <form className="grid gap-3" onSubmit={form.handleSubmit((values) => mutation.mutate(values))}>
+            <form className="grid gap-3" onSubmit={form.handleSubmit(handleSubmit)}>
               <div className="grid grid-cols-2 gap-3">
                 <FormField control={form.control} name="firstName" render={({ field }) => (
                   <FormItem><FormLabel>Имя *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
@@ -153,12 +207,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                   <FormItem>
                     <FormLabel>Дата рождения *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="date"
-                        {...field}
-                        value={field.value ?? ""}
-                        className="block"
-                      />
+                      <Input type="date" {...field} value={field.value ?? ""} className="block" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -168,14 +217,33 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                 )} />
               </div>
 
-              <Separator />
-
-              <FormField control={form.control} name="parentFullName" render={({ field }) => (
-                <FormItem><FormLabel>ФИО родителя</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField control={form.control} name="parentPhone" render={({ field }) => (
-                <FormItem><FormLabel>Телефон родителя</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
-              )} />
+              {/* Parent block — conditional on age < 14 */}
+              <div className={editRequiresParent
+                ? "rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3 space-y-3"
+                : "space-y-3"}>
+                <p className="text-sm font-medium">
+                  Законный представитель{" "}
+                  <span className="text-muted-foreground font-normal text-xs">
+                    {editRequiresParent
+                      ? "(обязательно — возраст менее 14 лет)"
+                      : "(необязательно)"}
+                  </span>
+                </p>
+                <FormField control={form.control} name="parentFullName" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ФИО{editRequiresParent ? " *" : ""}</FormLabel>
+                    <FormControl><Input {...field} value={field.value ?? ""} placeholder="Иванов Иван Иванович" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="parentPhone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Телефон{editRequiresParent ? " *" : ""}</FormLabel>
+                    <FormControl><Input {...field} value={field.value ?? ""} placeholder="79991234567" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
 
               <div className="flex justify-end gap-2 pt-1">
                 <Button type="button" variant="outline" onClick={() => { setEditing(false); form.reset(); }} disabled={mutation.isPending}>
