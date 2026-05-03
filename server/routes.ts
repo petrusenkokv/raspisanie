@@ -649,23 +649,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) return res.status(404).json({ message: "Ученик не найден" });
       if (user.role === "trainer") return res.status(400).json({ message: "Нельзя редактировать тренера здесь" });
 
-      const { firstName, lastName, middleName, birthDate, trainerNotes, parentFullName, parentPhone } = req.body;
+      const { firstName, lastName, middleName, birthDate, trainerNotes } = req.body;
       const updates: any = {};
       if (firstName !== undefined) updates.firstName = String(firstName).trim();
       if (lastName !== undefined) updates.lastName = lastName ? String(lastName).trim() : null;
       if (middleName !== undefined) updates.middleName = middleName ? String(middleName).trim() : null;
       if (birthDate !== undefined) updates.birthDate = birthDate || null;
       if (trainerNotes !== undefined) updates.trainerNotes = trainerNotes ? String(trainerNotes) : null;
-      if (parentFullName !== undefined) updates.parentFullName = parentFullName ? String(parentFullName).trim() : null;
-      if (parentPhone !== undefined) {
-        if (parentPhone) {
-          const np = normalizePhone(parentPhone);
-          if (!np) return res.status(400).json({ message: "Некорректный телефон представителя" });
-          updates.parentPhone = np;
-        } else {
-          updates.parentPhone = null;
-        }
-      }
       const updated = await storage.updateUser(id, updates);
       res.json(updated);
     } catch (error) {
@@ -682,8 +672,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         middleName,
         birthDate,
         password,
-        parentFullName,
-        parentPhone,
         trainerNotes,
         consentDocumentIds,
       } = req.body;
@@ -703,29 +691,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Ученик с таким телефоном уже существует" });
       }
 
-      // Parent info if under 14
-      const age = calculateAgeYears(birthDate);
-      let normalizedParentPhone: string | null = null;
-      let parentName: string | null = null;
-      if (age !== null && age < 14) {
-        if (!parentFullName || !String(parentFullName).trim()) {
-          return res.status(400).json({ message: "Для ученика младше 14 лет укажите ФИО законного представителя" });
-        }
-        const np = normalizePhone(parentPhone);
-        if (!np) {
-          return res.status(400).json({ message: "Укажите корректный телефон законного представителя" });
-        }
-        normalizedParentPhone = np;
-        parentName = String(parentFullName).trim();
-      } else if (parentFullName || parentPhone) {
-        // Allow optional parent info even for older students
-        if (parentFullName) parentName = String(parentFullName).trim();
-        if (parentPhone) {
-          const np = normalizePhone(parentPhone);
-          if (np) normalizedParentPhone = np;
-        }
-      }
-
       const accepted = new Set<string>(Array.isArray(consentDocumentIds) ? consentDocumentIds : []);
 
       const user = await storage.createUser({
@@ -735,8 +700,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         middleName: middleName ? String(middleName).trim() : null,
         birthDate: birthDate || null,
         trainerNotes: trainerNotes ? String(trainerNotes) : null,
-        parentFullName: parentName,
-        parentPhone: normalizedParentPhone,
+        parentFullName: null,
+        parentPhone: null,
         role: "student",
         isVerified: true,
         password: initialPassword,

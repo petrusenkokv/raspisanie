@@ -66,8 +66,6 @@ const emptyNewStudent = {
   password: "12345",
   birthDate: "",
   trainerNotes: "",
-  parentFullName: "",
-  parentPhone: "",
 };
 
 export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
@@ -107,9 +105,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     },
     enabled: open,
   });
-
-  const newStudentAge = useMemo(() => calculateAge(newStudent.birthDate), [newStudent.birthDate]);
-  const newStudentRequiresParent = newStudentAge !== null && newStudentAge < 14;
 
   const addMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -216,12 +211,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     if (newStudent.phone.replace(/\D/g, "").length < 10) {
       toast({ title: "Укажите корректный телефон", variant: "destructive" });
       return;
-    }
-    if (newStudentRequiresParent) {
-      if (!newStudent.parentFullName.trim() || !newStudent.parentPhone.trim()) {
-        toast({ title: "Заполните данные законного представителя", variant: "destructive" });
-        return;
-      }
     }
     addMutation.mutate({
       ...newStudent,
@@ -490,29 +479,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
               />
             </div>
 
-            {newStudentRequiresParent && (
-              <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20 space-y-3">
-                <p className="text-sm font-medium">
-                  Ученику меньше 14 лет — заполните данные законного представителя
-                </p>
-                <div>
-                  <Label>ФИО законного представителя</Label>
-                  <Input
-                    value={newStudent.parentFullName}
-                    onChange={(e) => setNewStudent({ ...newStudent, parentFullName: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Телефон законного представителя</Label>
-                  <Input
-                    value={newStudent.parentPhone}
-                    onChange={(e) => setNewStudent({ ...newStudent, parentPhone: e.target.value })}
-                    placeholder="79991234567"
-                  />
-                </div>
-              </div>
-            )}
-
             {documents.length > 0 && (
               <div className="border rounded-lg p-3 space-y-1.5 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
                 <p className="text-sm font-medium text-blue-800 dark:text-blue-300">Документы для подписи</p>
@@ -724,8 +690,6 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
         middleName: student.middleName || "",
         birthDate: student.birthDate || "",
         trainerNotes: student.trainerNotes || "",
-        parentFullName: student.parentFullName || "",
-        parentPhone: student.parentPhone || "",
       });
       setEditing(false);
     }
@@ -748,7 +712,6 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
   });
 
   const age = calculateAge(student?.birthDate);
-  const requiresParent = age !== null && age < 14;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -770,13 +733,18 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               value={student.birthDate ? `${format(new Date(student.birthDate), "d MMMM yyyy", { locale: ru })}${age !== null ? ` (${age} лет)` : ""}` : "—"}
             />
             <Field label="Заметки тренера" value={student.trainerNotes || "—"} multiline />
-            {(student.parentFullName || student.parentPhone) && (
+            {(student.parentFullName || student.parentPhone) ? (
               <div className="border rounded p-3 bg-amber-50 dark:bg-amber-950/20 space-y-2">
                 <p className="font-medium">Законный представитель</p>
                 <Field label="ФИО" value={student.parentFullName || "—"} />
                 <Field label="Телефон" value={student.parentPhone || "—"} />
               </div>
-            )}
+            ) : age !== null && age < 14 ? (
+              <div className="border rounded p-3 bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-300">
+                <p className="font-semibold mb-1">Законный представитель не указан</p>
+                <p>Ученику меньше 14 лет. Родитель может заполнить свои данные самостоятельно в разделе «Мой профиль» в приложении.</p>
+              </div>
+            ) : null}
             <div className="border rounded p-3 space-y-2">
               <p className="font-medium">Принятые документы</p>
               {student.consents.length === 0 ? (
@@ -829,17 +797,6 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                 value={form.trainerNotes}
                 onChange={(e) => setForm({ ...form, trainerNotes: e.target.value })}
               />
-            </div>
-            <div className={requiresParent ? "border rounded p-3 bg-amber-50 dark:bg-amber-950/20 space-y-2" : "space-y-2"}>
-              <p className="font-medium text-sm">Законный представитель {requiresParent ? "(обязательно для младше 14 лет)" : "(необязательно)"}</p>
-              <div>
-                <Label>ФИО</Label>
-                <Input value={form.parentFullName} onChange={(e) => setForm({ ...form, parentFullName: e.target.value })} />
-              </div>
-              <div>
-                <Label>Телефон</Label>
-                <Input value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
-              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditing(false)}>Отмена</Button>
