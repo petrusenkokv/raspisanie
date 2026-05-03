@@ -267,6 +267,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const user = await storage.updateUser(userId, parsed.data as any);
       res.json({ user });
+      // Notify trainer about profile change (fire-and-forget)
+      storage.getTrainer().then(async (trainer) => {
+        if (!trainer) return;
+        const name = [parsed.data.lastName, parsed.data.firstName].filter(Boolean).join(" ") || parsed.data.firstName;
+        await storage.createNotification({
+          userId: trainer.id,
+          type: "profile_updated",
+          title: "Ученик обновил профиль",
+          message: `${name} внёс изменения в свой профиль`,
+          isRead: false,
+        });
+        broadcast({ type: "notification_update" });
+      }).catch(() => {});
     } catch {
       res.status(500).json({ message: "Не удалось обновить профиль" });
     }

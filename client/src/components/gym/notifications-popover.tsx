@@ -65,6 +65,7 @@ const TYPE_DOT: Record<string, string> = {
   training_reminder: "bg-amber-500",
   birthday_reminder: "bg-pink-500",
   broadcast: "bg-purple-500",
+  profile_updated: "bg-teal-500",
 };
 
 function formatTime(value: Date | string | null): string {
