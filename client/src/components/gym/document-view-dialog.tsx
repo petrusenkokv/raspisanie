@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { type Document } from "@shared/schema";
 
 interface Props {
@@ -13,6 +13,7 @@ export function DocumentViewDialog({ document, open, onOpenChange }: Props) {
       <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{document?.title}</DialogTitle>
+          <DialogDescription>Просмотр текста документа.</DialogDescription>
         </DialogHeader>
         <div className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
           {document?.content}

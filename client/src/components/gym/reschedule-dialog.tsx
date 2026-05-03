@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -118,6 +119,7 @@ export function RescheduleDialog({
             <CalendarDays className="h-5 w-5 text-blue-500" />
             Перенести тренировку
           </DialogTitle>
+          <DialogDescription>Выберите новое время для записи.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

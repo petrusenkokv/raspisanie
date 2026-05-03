@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,6 +52,7 @@ export function BlockPeriodDialog({ open, onOpenChange }: Props) {
             <CalIcon className="h-5 w-5" />
             Закрыть/открыть период
           </DialogTitle>
+          <DialogDescription>Управление периодом блокировки расписания.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <p className="text-sm text-gray-600 dark:text-gray-400">

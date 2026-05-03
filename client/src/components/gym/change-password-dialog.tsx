@@ -85,11 +85,11 @@ export function ChangePasswordDialog({ open, onOpenChange, forced }: ChangePassw
             <KeyRound className="h-5 w-5 text-blue-600" />
             Сменить пароль
           </DialogTitle>
-          {forced && (
-            <DialogDescription>
-              Тренер задал вам временный пароль. Пожалуйста, придумайте свой.
-            </DialogDescription>
-          )}
+          <DialogDescription>
+            {forced
+              ? "Тренер задал вам временный пароль. Пожалуйста, придумайте свой."
+              : "Введите текущий и новый пароль."}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div>

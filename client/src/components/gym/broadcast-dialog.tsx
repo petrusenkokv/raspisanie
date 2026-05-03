@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -133,6 +133,7 @@ export function BroadcastDialog({ open, onOpenChange }: Props) {
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Рассылка ученикам</DialogTitle>
+          <DialogDescription>Отправка сообщения выбранным ученикам.</DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="new">

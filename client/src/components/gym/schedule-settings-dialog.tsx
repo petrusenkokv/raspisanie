@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -197,6 +198,7 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Настройки расписания</DialogTitle>
+          <DialogDescription>Изменение рабочих часов, ограничений и праздников.</DialogDescription>
         </DialogHeader>
 
         {isLoading || !data ? (
