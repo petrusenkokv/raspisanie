@@ -146,9 +146,11 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const watchedBirthDate = useWatch({ control: form.control, name: "birthDate" });
   const editAge = useMemo(() => calculateAge(watchedBirthDate), [watchedBirthDate]);
   const editRequiresParent = editAge !== null && editAge < 14;
+  const editShowRepresentative = editAge === null || editAge < 18;
 
   const viewAge = useMemo(() => calculateAge(user?.birthDate), [user?.birthDate]);
   const viewRequiresParent = viewAge !== null && viewAge < 14;
+  const viewShowRepresentative = viewAge === null || viewAge < 18;
 
   const hasAnyRepresentative = !!(
     user?.parentFullName || user?.parentPhone ||
@@ -229,7 +231,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                 />
                 <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={user?.phone} />
 
-                {(viewRequiresParent || hasAnyRepresentative) && (
+                {viewShowRepresentative && (
                   <>
                     <Separator />
                     <div className="rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3 space-y-1">
@@ -299,8 +301,8 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                     )} />
                   </div>
 
-                  {/* Representatives section — always show for under-14, optional for others */}
-                  <div className={editRequiresParent
+                  {/* Representatives section — visible only under 18 */}
+                  {editShowRepresentative && <div className={editRequiresParent
                     ? "rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3 space-y-4"
                     : "border rounded-lg p-3 space-y-4"}>
                     <p className="text-sm font-semibold flex items-center gap-1.5">
@@ -323,7 +325,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                       phoneField="fatherPhone"
                       form={form}
                     />
-                  </div>
+                  </div>}
 
                   <div className="flex justify-end gap-2 pt-1">
                     <Button type="button" variant="outline" onClick={() => { setEditing(false); form.reset(); }} disabled={mutation.isPending}>

@@ -739,7 +739,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               const hasFather = s.fatherFullName || s.fatherPhone;
               const hasLegacyParent = student.parentFullName || student.parentPhone;
               const hasAny = hasMother || hasFather || hasLegacyParent;
-              const isMinor = age !== null && age < 14;
+              const isMinor = age !== null && age < 18;
               if (!hasAny && !isMinor) return null;
               return (
                 <div className="border rounded p-3 bg-amber-50 dark:bg-amber-950/20 space-y-3">
