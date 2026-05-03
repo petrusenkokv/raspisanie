@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { User, Pencil, Save, X, Phone, CalendarDays, Users, UserCircle2, Loader2 } from "lucide-react";
+import { User, Pencil, Save, X, Phone, CalendarDays, Users, UserCircle2, Loader2, Baby } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,12 +46,45 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
+function RepresentativeEditBlock({
+  title,
+  nameField,
+  phoneField,
+  form,
+}: {
+  title: string;
+  nameField: keyof FormValues;
+  phoneField: keyof FormValues;
+  form: any;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wide">{title}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <FormField control={form.control} name={nameField as string} render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs">ФИО</FormLabel>
+            <FormControl><Input {...field} value={field.value ?? ""} placeholder="Иванова Мария Петровна" className="text-sm" /></FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name={phoneField as string} render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs">Телефон</FormLabel>
+            <FormControl><Input {...field} value={field.value ?? ""} placeholder="79991234567" className="text-sm" /></FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+      </div>
+    </div>
+  );
+}
+
 export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { currentUser, setUser } = useGymStore();
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
 
-  // Fetch fresh user data from server every time dialog opens
   const { data: freshData, isLoading: isFetching } = useQuery({
     queryKey: ["/api/users", currentUser?.id],
     queryFn: async () => {
@@ -62,7 +95,6 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     staleTime: 0,
   });
 
-  // Merge fresh data into store when loaded
   useEffect(() => {
     if (freshData?.user) {
       setUser(freshData.user);
@@ -81,6 +113,12 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
       phone: "",
       parentFullName: "",
       parentPhone: "",
+      motherFullName: "",
+      motherPhone: "",
+      fatherFullName: "",
+      fatherPhone: "",
+      guardianFullName: "",
+      guardianPhone: "",
     },
   });
 
@@ -94,6 +132,12 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         phone: user.phone ?? "",
         parentFullName: user.parentFullName ?? "",
         parentPhone: user.parentPhone ?? "",
+        motherFullName: (user as any).motherFullName ?? "",
+        motherPhone: (user as any).motherPhone ?? "",
+        fatherFullName: (user as any).fatherFullName ?? "",
+        fatherPhone: (user as any).fatherPhone ?? "",
+        guardianFullName: (user as any).guardianFullName ?? "",
+        guardianPhone: (user as any).guardianPhone ?? "",
       });
     }
     if (!open) setEditing(false);
@@ -105,7 +149,13 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   const viewAge = useMemo(() => calculateAge(user?.birthDate), [user?.birthDate]);
   const viewRequiresParent = viewAge !== null && viewAge < 14;
-  const viewHasParentData = !!(user?.parentFullName || user?.parentPhone);
+
+  const hasAnyRepresentative = !!(
+    user?.parentFullName || user?.parentPhone ||
+    (user as any)?.motherFullName || (user as any)?.motherPhone ||
+    (user as any)?.fatherFullName || (user as any)?.fatherPhone ||
+    (user as any)?.guardianFullName || (user as any)?.guardianPhone
+  );
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -125,16 +175,6 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   });
 
   const handleSubmit = (values: FormValues) => {
-    if (editRequiresParent) {
-      if (!values.parentFullName?.trim() || !values.parentPhone?.trim()) {
-        toast({
-          title: "Заполните данные законного представителя",
-          description: "Для учеников младше 14 лет необходимо указать ФИО и телефон представителя",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
     mutation.mutate(values);
   };
 
@@ -190,16 +230,39 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                 />
                 <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={user?.phone} />
 
-                {(viewRequiresParent || viewHasParentData) && (
+                {(viewRequiresParent || hasAnyRepresentative) && (
                   <>
                     <Separator />
                     <div className="rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3 space-y-1">
-                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">
-                        Законный представитель
-                        {viewRequiresParent && <span className="ml-1">(обязательно, возраст &lt; 14 лет)</span>}
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1.5">
+                        <Baby className="h-3.5 w-3.5" />
+                        Законные представители
+                        {viewRequiresParent && <span className="font-normal">(возраст менее 14 лет)</span>}
                       </p>
-                      <InfoRow icon={<Users className="h-4 w-4" />} label="ФИО" value={user?.parentFullName} />
-                      <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={user?.parentPhone} />
+                      {((user as any)?.motherFullName || (user as any)?.motherPhone) && (
+                        <div className="space-y-0.5">
+                          <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Мать</p>
+                          <InfoRow icon={<Users className="h-4 w-4" />} label="ФИО" value={(user as any)?.motherFullName} />
+                          <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={(user as any)?.motherPhone} />
+                        </div>
+                      )}
+                      {((user as any)?.fatherFullName || (user as any)?.fatherPhone) && (
+                        <div className="space-y-0.5">
+                          <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Отец</p>
+                          <InfoRow icon={<Users className="h-4 w-4" />} label="ФИО" value={(user as any)?.fatherFullName} />
+                          <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={(user as any)?.fatherPhone} />
+                        </div>
+                      )}
+                      {((user as any)?.guardianFullName || (user as any)?.guardianPhone) && (
+                        <div className="space-y-0.5">
+                          <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Опека / иной представитель</p>
+                          <InfoRow icon={<Users className="h-4 w-4" />} label="ФИО" value={(user as any)?.guardianFullName} />
+                          <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={(user as any)?.guardianPhone} />
+                        </div>
+                      )}
+                      {!hasAnyRepresentative && viewRequiresParent && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400">Данные не заполнены. Нажмите «Редактировать», чтобы добавить.</p>
+                      )}
                     </div>
                   </>
                 )}
@@ -244,31 +307,36 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                     )} />
                   </div>
 
+                  {/* Representatives section — always show for under-14, optional for others */}
                   <div className={editRequiresParent
-                    ? "rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3 space-y-3"
-                    : "space-y-3"}>
-                    <p className="text-sm font-medium">
-                      Законный представитель{" "}
-                      <span className="text-muted-foreground font-normal text-xs">
-                        {editRequiresParent
-                          ? "(обязательно — возраст менее 14 лет)"
-                          : "(необязательно)"}
+                    ? "rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3 space-y-4"
+                    : "border rounded-lg p-3 space-y-4"}>
+                    <p className="text-sm font-semibold flex items-center gap-1.5">
+                      <Baby className="h-4 w-4 text-amber-600" />
+                      Законные представители
+                      <span className="font-normal text-xs text-muted-foreground">
+                        {editRequiresParent ? "(возраст менее 14 лет)" : "(необязательно)"}
                       </span>
                     </p>
-                    <FormField control={form.control} name="parentFullName" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>ФИО{editRequiresParent ? " *" : ""}</FormLabel>
-                        <FormControl><Input {...field} value={field.value ?? ""} placeholder="Иванов Иван Иванович" /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="parentPhone" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Телефон{editRequiresParent ? " *" : ""}</FormLabel>
-                        <FormControl><Input {...field} value={field.value ?? ""} placeholder="79991234567" /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
+
+                    <RepresentativeEditBlock
+                      title="Мать"
+                      nameField="motherFullName"
+                      phoneField="motherPhone"
+                      form={form}
+                    />
+                    <RepresentativeEditBlock
+                      title="Отец"
+                      nameField="fatherFullName"
+                      phoneField="fatherPhone"
+                      form={form}
+                    />
+                    <RepresentativeEditBlock
+                      title="Опека / иной представитель"
+                      nameField="guardianFullName"
+                      phoneField="guardianPhone"
+                      form={form}
+                    />
                   </div>
 
                   <div className="flex justify-end gap-2 pt-1">

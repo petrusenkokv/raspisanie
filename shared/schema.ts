@@ -14,6 +14,12 @@ export const users = pgTable("users", {
   trainerNotes: text("trainer_notes"),
   parentFullName: text("parent_full_name"),
   parentPhone: text("parent_phone"),
+  motherFullName: text("mother_full_name"),
+  motherPhone: text("mother_phone"),
+  fatherFullName: text("father_full_name"),
+  fatherPhone: text("father_phone"),
+  guardianFullName: text("guardian_full_name"),
+  guardianPhone: text("guardian_phone"),
   sickUntil: text("sick_until"), // YYYY-MM-DD; while set, student is on sick leave
   sickNote: text("sick_note"),
   isActive: boolean("is_active").notNull().default(true), // false = student paused/archived
@@ -193,8 +199,16 @@ export const updateStudentProfileSchema = z.object({
   middleName: z.string().trim().nullable().optional(),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата должна быть в формате YYYY-MM-DD"),
   phone: z.string().trim().min(10, "Укажите корректный телефон"),
+  // Legacy single-representative field (used by self-registration)
   parentFullName: z.string().trim().nullable().optional(),
   parentPhone: z.string().trim().nullable().optional(),
+  // Detailed representative fields (filled by parent in profile)
+  motherFullName: z.string().trim().nullable().optional(),
+  motherPhone: z.string().trim().nullable().optional(),
+  fatherFullName: z.string().trim().nullable().optional(),
+  fatherPhone: z.string().trim().nullable().optional(),
+  guardianFullName: z.string().trim().nullable().optional(),
+  guardianPhone: z.string().trim().nullable().optional(),
 });
 
 export const insertRecurringBookingSchema = createInsertSchema(recurringBookings).omit({

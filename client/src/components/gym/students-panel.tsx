@@ -733,18 +733,57 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               value={student.birthDate ? `${format(new Date(student.birthDate), "d MMMM yyyy", { locale: ru })}${age !== null ? ` (${age} лет)` : ""}` : "—"}
             />
             <Field label="Заметки тренера" value={student.trainerNotes || "—"} multiline />
-            {(student.parentFullName || student.parentPhone) ? (
-              <div className="border rounded p-3 bg-amber-50 dark:bg-amber-950/20 space-y-2">
-                <p className="font-medium">Законный представитель</p>
-                <Field label="ФИО" value={student.parentFullName || "—"} />
-                <Field label="Телефон" value={student.parentPhone || "—"} />
-              </div>
-            ) : age !== null && age < 14 ? (
-              <div className="border rounded p-3 bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-300">
-                <p className="font-semibold mb-1">Законный представитель не указан</p>
-                <p>Ученику меньше 14 лет. Родитель может заполнить свои данные самостоятельно в разделе «Мой профиль» в приложении.</p>
-              </div>
-            ) : null}
+            {(() => {
+              const s = student as any;
+              const hasMother = s.motherFullName || s.motherPhone;
+              const hasFather = s.fatherFullName || s.fatherPhone;
+              const hasGuardian = s.guardianFullName || s.guardianPhone;
+              const hasLegacyParent = student.parentFullName || student.parentPhone;
+              const hasAny = hasMother || hasFather || hasGuardian || hasLegacyParent;
+              const isMinor = age !== null && age < 14;
+              if (!hasAny && !isMinor) return null;
+              return (
+                <div className="border rounded p-3 bg-amber-50 dark:bg-amber-950/20 space-y-3">
+                  <p className="font-medium text-sm flex items-center gap-1.5">
+                    Законные представители
+                    {isMinor && <span className="text-xs font-normal text-amber-700 dark:text-amber-400">(ученик до 14 лет)</span>}
+                  </p>
+                  {hasMother && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Мать</p>
+                      <Field label="ФИО" value={s.motherFullName || "—"} />
+                      <Field label="Телефон" value={s.motherPhone || "—"} />
+                    </div>
+                  )}
+                  {hasFather && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Отец</p>
+                      <Field label="ФИО" value={s.fatherFullName || "—"} />
+                      <Field label="Телефон" value={s.fatherPhone || "—"} />
+                    </div>
+                  )}
+                  {hasGuardian && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Опека / иной представитель</p>
+                      <Field label="ФИО" value={s.guardianFullName || "—"} />
+                      <Field label="Телефон" value={s.guardianPhone || "—"} />
+                    </div>
+                  )}
+                  {hasLegacyParent && !hasMother && !hasFather && !hasGuardian && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Представитель</p>
+                      <Field label="ФИО" value={student.parentFullName || "—"} />
+                      <Field label="Телефон" value={student.parentPhone || "—"} />
+                    </div>
+                  )}
+                  {!hasAny && isMinor && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Данные не заполнены. Родитель может добавить их в разделе «Мой профиль» в приложении.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
             <div className="border rounded p-3 space-y-2">
               <p className="font-medium">Принятые документы</p>
               {student.consents.length === 0 ? (
