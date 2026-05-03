@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useWebSocket } from "@/hooks/use-websocket";
 import { Bell, Check, CheckCheck, Trash2, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -111,6 +112,7 @@ function groupOf(value: Date | string | null): Group {
 export function NotificationsPopover({ userId, isTrainer }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  useWebSocket();
   const seenIdsRef = useRef<Set<string> | null>(null);
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
 
@@ -124,7 +126,6 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications", userId],
-    refetchInterval: 15000,
     enabled: !!userId,
   });
 

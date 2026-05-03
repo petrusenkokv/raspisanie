@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useWebSocket } from "@/hooks/use-websocket";
 import { CalendarHeader } from "@/components/gym/calendar-header";
 import { CalendarView } from "@/components/gym/calendar-view";
 import { AuthModal } from "@/components/gym/auth-modal";
@@ -41,6 +42,7 @@ export function GymSchedulePage() {
   } = useGymStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  useWebSocket();
 
   const localDate = (d: Date) => {
     const y = d.getFullYear();
@@ -77,7 +79,6 @@ export function GymSchedulePage() {
   const { data: scheduleData, isLoading } = useQuery({
     queryKey: ["schedule", currentView, selectedDate.toISOString()],
     staleTime: 0,
-    refetchInterval: 15000,
     queryFn: async () => {
       // Format date in local timezone (avoids UTC offset shifting the date)
       const localDate = (d: Date) => {

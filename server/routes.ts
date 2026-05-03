@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage-instance";
+import { setupWebSocket, broadcast } from "./ws";
 import { 
   insertUserSchema, 
   insertBookingSchema, 
@@ -382,6 +383,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const bookingWithDetails = await storage.getBooking(booking.id);
+      broadcast({ type: "schedule_update" });
+      broadcast({ type: "notification_update" });
       res.status(201).json(bookingWithDetails);
     } catch (error) {
       res.status(500).json({ message: "Не удалось создать запись" });
@@ -403,6 +406,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const bookingWithDetails = await storage.getBooking(booking.id);
+      broadcast({ type: "schedule_update" });
+      broadcast({ type: "notification_update" });
       res.json(bookingWithDetails);
     } catch (error) {
       res.status(500).json({ message: "Не удалось подтвердить запись" });
@@ -477,6 +482,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const bookingWithDetails = await storage.getBooking(booking.id);
+      broadcast({ type: "schedule_update" });
+      broadcast({ type: "notification_update" });
       res.json(bookingWithDetails);
     } catch (error) {
       res.status(500).json({ message: "Не удалось отменить запись" });
@@ -548,6 +555,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const bookingWithDetails = await storage.getBooking(rescheduled.id);
+      broadcast({ type: "schedule_update" });
+      broadcast({ type: "notification_update" });
       res.json(bookingWithDetails);
     } catch (error: any) {
       res.status(400).json({ message: error?.message || "Не удалось перенести запись" });
@@ -818,6 +827,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const bookingWithDetails = await storage.getBooking(booking.id);
+      broadcast({ type: "schedule_update" });
+      broadcast({ type: "notification_update" });
       res.status(201).json(bookingWithDetails);
     } catch (error) {
       res.status(500).json({ message: "Не удалось записать ученика" });
@@ -871,6 +882,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (blocked) {
         await notifyCancelled(result.cancelledBookings, "Тренер заблокировал это время. Запишитесь на другое.");
       }
+      broadcast({ type: "schedule_update" });
+      broadcast({ type: "notification_update" });
       res.json({ slot: result.slot, cancelledCount: result.cancelledBookings.length });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Не удалось изменить слот" });
@@ -885,6 +898,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (blocked) {
         await notifyCancelled(result.cancelledBookings, "Тренер закрыл этот день. Запишитесь на другой.");
       }
+      broadcast({ type: "schedule_update" });
+      broadcast({ type: "notification_update" });
       res.json({ slotsCount: result.slots.length, cancelledCount: result.cancelledBookings.length });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Не удалось изменить день" });
@@ -902,6 +917,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (blocked) {
         await notifyCancelled(result.cancelledBookings, "Тренер закрыл этот период. Запишитесь на другие даты.");
       }
+      broadcast({ type: "schedule_update" });
+      broadcast({ type: "notification_update" });
       res.json({ slotsCount: result.slots.length, cancelledCount: result.cancelledBookings.length });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Не удалось изменить период" });
@@ -918,6 +935,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { id } = req.params;
       const updated = await storage.markAttendance(id, parsed.data.status, parsed.data.note ?? null);
+      broadcast({ type: "schedule_update" });
       res.json(updated);
     } catch (error: any) {
       res.status(400).json({ message: error?.message || "Не удалось сохранить отметку" });
@@ -957,6 +975,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           relatedBookingId: null as any,
         });
       }
+      broadcast({ type: "schedule_update" });
+      broadcast({ type: "notification_update" });
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error?.message || "Не удалось сохранить" });
@@ -1355,5 +1375,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+  setupWebSocket(httpServer);
   return httpServer;
 }
