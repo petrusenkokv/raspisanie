@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -414,6 +415,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Новый ученик</DialogTitle>
+            <DialogDescription>Добавление нового ученика в список.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="grid grid-cols-2 gap-2">
@@ -753,6 +755,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Карточка ученика</DialogTitle>
+          <DialogDescription>Просмотр и редактирование данных ученика.</DialogDescription>
         </DialogHeader>
         {isLoading || !student ? (
           <div className="flex items-center justify-center h-32">
