@@ -1,0 +1,25 @@
+{
+  "name": "Расписание тренировок",
+  "short_name": "Тренировки",
+  "description": "Запись и управление тренировками",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0f4fc",
+  "theme_color": "#2563EB",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["health", "fitness", "sports"]
+}
