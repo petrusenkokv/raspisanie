@@ -737,9 +737,8 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               const s = student as any;
               const hasMother = s.motherFullName || s.motherPhone;
               const hasFather = s.fatherFullName || s.fatherPhone;
-              const hasGuardian = s.guardianFullName || s.guardianPhone;
               const hasLegacyParent = student.parentFullName || student.parentPhone;
-              const hasAny = hasMother || hasFather || hasGuardian || hasLegacyParent;
+              const hasAny = hasMother || hasFather || hasLegacyParent;
               const isMinor = age !== null && age < 14;
               if (!hasAny && !isMinor) return null;
               return (
@@ -762,14 +761,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                       <Field label="Телефон" value={s.fatherPhone || "—"} />
                     </div>
                   )}
-                  {hasGuardian && (
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Опека / иной представитель</p>
-                      <Field label="ФИО" value={s.guardianFullName || "—"} />
-                      <Field label="Телефон" value={s.guardianPhone || "—"} />
-                    </div>
-                  )}
-                  {hasLegacyParent && !hasMother && !hasFather && !hasGuardian && (
+                  {hasLegacyParent && !hasMother && !hasFather && (
                     <div className="space-y-1">
                       <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Представитель</p>
                       <Field label="ФИО" value={student.parentFullName || "—"} />

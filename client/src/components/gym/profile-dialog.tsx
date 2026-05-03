@@ -153,8 +153,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const hasAnyRepresentative = !!(
     user?.parentFullName || user?.parentPhone ||
     (user as any)?.motherFullName || (user as any)?.motherPhone ||
-    (user as any)?.fatherFullName || (user as any)?.fatherPhone ||
-    (user as any)?.guardianFullName || (user as any)?.guardianPhone
+    (user as any)?.fatherFullName || (user as any)?.fatherPhone
   );
 
   const mutation = useMutation({
@@ -253,13 +252,6 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                           <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={(user as any)?.fatherPhone} />
                         </div>
                       )}
-                      {((user as any)?.guardianFullName || (user as any)?.guardianPhone) && (
-                        <div className="space-y-0.5">
-                          <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Опека / иной представитель</p>
-                          <InfoRow icon={<Users className="h-4 w-4" />} label="ФИО" value={(user as any)?.guardianFullName} />
-                          <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={(user as any)?.guardianPhone} />
-                        </div>
-                      )}
                       {!hasAnyRepresentative && viewRequiresParent && (
                         <p className="text-xs text-amber-700 dark:text-amber-400">Данные не заполнены. Нажмите «Редактировать», чтобы добавить.</p>
                       )}
@@ -329,12 +321,6 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                       title="Отец"
                       nameField="fatherFullName"
                       phoneField="fatherPhone"
-                      form={form}
-                    />
-                    <RepresentativeEditBlock
-                      title="Опека / иной представитель"
-                      nameField="guardianFullName"
-                      phoneField="guardianPhone"
                       form={form}
                     />
                   </div>
