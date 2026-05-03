@@ -244,6 +244,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/users/:id", async (req, res) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) return res.status(404).json({ message: "Пользователь не найден" });
+      const { password: _pw, ...safeUser } = user as any;
+      res.json({ user: safeUser });
+    } catch {
+      res.status(500).json({ message: "Не удалось получить данные пользователя" });
+    }
+  });
+
   app.patch("/api/users/me", async (req, res) => {
     try {
       const { userId, ...payload } = req.body ?? {};
