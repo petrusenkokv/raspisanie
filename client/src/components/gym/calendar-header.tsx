@@ -1,13 +1,19 @@
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Calendar, Users, Bell, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Users, CalendarDays } from "lucide-react";
 import { useGymStore, type ViewType } from "@/store/gym-store";
 import { Badge } from "@/components/ui/badge";
 import { isSameDay, isSameMonth, isSameWeek } from "date-fns";
 
 const VIEW_LABELS: Record<ViewType, string> = {
   day: "День",
-  week: "Неделя", 
+  week: "Неделя",
   month: "Месяц"
+};
+
+const VIEW_LABELS_SHORT: Record<ViewType, string> = {
+  day: "Д",
+  week: "Н",
+  month: "М"
 };
 
 interface CalendarHeaderProps {
@@ -15,16 +21,16 @@ interface CalendarHeaderProps {
 }
 
 export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
-  const { 
-    currentView, 
-    selectedDate, 
-    setCurrentView, 
+  const {
+    currentView,
+    selectedDate,
+    setCurrentView,
     setSelectedDate,
     isTrainer,
     unreadCount
   } = useGymStore();
 
-  const formatDate = (date: Date) => {
+  const formatDateDesktop = (date: Date) => {
     if (currentView === "week") {
       const weekDates = useGymStore.getState().getWeekDates(date);
       const start = weekDates[0];
@@ -35,6 +41,19 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
       return date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
     }
     return date.toLocaleDateString("ru-RU", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  };
+
+  const formatDateMobile = (date: Date) => {
+    if (currentView === "week") {
+      const weekDates = useGymStore.getState().getWeekDates(date);
+      const start = weekDates[0];
+      const end = weekDates[6];
+      return `${start.getDate()}–${end.getDate()} ${start.toLocaleDateString("ru-RU", { month: "short" })}`;
+    }
+    if (currentView === "month") {
+      return date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+    }
+    return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
   };
 
   const getMondayOf = (date: Date) => {
@@ -63,8 +82,6 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
   };
 
   const handleViewChange = (view: ViewType) => {
-    // Сохраняем выбранную дату при переключении вида,
-    // чтобы пользователь оставался в том же контексте (месяц/неделя/день).
     if (view === "week") {
       setSelectedDate(getMondayOf(selectedDate));
     }
@@ -90,43 +107,36 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
       : isSameMonth(selectedDate, today);
 
   return (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border-b bg-white dark:bg-gray-900">
-      <div className="flex items-center gap-2 mb-4 sm:mb-0">
-        <Calendar className="h-6 w-6 text-blue-600" />
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-          Расписание тренировок
-        </h1>
-        {isTrainer() && (
-          <Badge variant="secondary" className="ml-2">
-            Тренер
-          </Badge>
-        )}
-      </div>
+    <div className="border-b bg-white dark:bg-gray-900">
+      <div className="flex items-center justify-between px-4 py-3 gap-2">
+        {/* Title */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Calendar className="h-5 w-5 text-blue-600 flex-shrink-0" />
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-none">
+            <span className="hidden sm:inline">Расписание тренировок</span>
+            <span className="sm:hidden">Расписание</span>
+          </h1>
+          {isTrainer() && (
+            <Badge variant="secondary" className="hidden sm:inline-flex ml-1">Тренер</Badge>
+          )}
+        </div>
 
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
-        {/* Date Navigation */}
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigateDate(-1)}
-            data-testid="button-prev-date"
-          >
+        {/* Date navigation */}
+        <div className="flex items-center gap-1 flex-1 justify-center min-w-0">
+          <Button variant="outline" size="sm" onClick={() => navigateDate(-1)} data-testid="button-prev-date"
+            className="flex-shrink-0 h-8 w-8 p-0">
             <ChevronLeft className="h-4 w-4" />
           </Button>
 
-          <div className="text-center min-w-[200px]">
-            <h2 className="font-semibold text-gray-900 dark:text-white">
-              {formatDate(selectedDate)}
+          <div className="text-center px-1 min-w-0">
+            <h2 className="font-semibold text-gray-900 dark:text-white text-sm leading-tight truncate">
+              <span className="hidden sm:inline">{formatDateDesktop(selectedDate)}</span>
+              <span className="sm:hidden">{formatDateMobile(selectedDate)}</span>
             </h2>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigateDate(1)}
-            data-testid="button-next-date"
-          >
+          <Button variant="outline" size="sm" onClick={() => navigateDate(1)} data-testid="button-next-date"
+            className="flex-shrink-0 h-8 w-8 p-0">
             <ChevronRight className="h-4 w-4" />
           </Button>
 
@@ -135,7 +145,7 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
             size="sm"
             onClick={goToToday}
             disabled={isOnToday}
-            className="ml-1"
+            className="flex-shrink-0 h-8"
             data-testid="button-today"
             title="Перейти к сегодняшнему дню"
           >
@@ -144,54 +154,39 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
           </Button>
         </div>
 
-        {/* View Toggle */}
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-          {(Object.keys(VIEW_LABELS) as ViewType[]).map((view) => (
-            <Button
-              key={view}
-              variant={currentView === view ? "default" : "ghost"}
-              size="sm"
-              onClick={() => handleViewChange(view)}
-              className="text-xs px-3"
-              data-testid={`button-view-${view}`}
-            >
-              {VIEW_LABELS[view]}
-            </Button>
-          ))}
-        </div>
-
-        {/* Notifications */}
-        {isTrainer() && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="relative"
-            data-testid="button-notifications"
-          >
-            <Bell className="h-4 w-4" />
-            {unreadCount > 0 && (
-              <Badge 
-                variant="destructive" 
-                className="absolute -top-2 -right-2 h-5 w-5 p-0 text-xs flex items-center justify-center"
+        {/* Right: view toggle + students */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* View toggle */}
+          <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+            {(Object.keys(VIEW_LABELS) as ViewType[]).map((view) => (
+              <Button
+                key={view}
+                variant={currentView === view ? "default" : "ghost"}
+                size="sm"
+                onClick={() => handleViewChange(view)}
+                className="h-7 text-xs px-2 sm:px-3"
+                data-testid={`button-view-${view}`}
               >
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </Badge>
-            )}
-          </Button>
-        )}
+                <span className="hidden sm:inline">{VIEW_LABELS[view]}</span>
+                <span className="sm:hidden">{VIEW_LABELS_SHORT[view]}</span>
+              </Button>
+            ))}
+          </div>
 
-        {/* Students List (Trainer only) */}
-        {isTrainer() && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onStudentsOpen}
-            data-testid="button-students"
-          >
-            <Users className="h-4 w-4 mr-2" />
-            Ученики
-          </Button>
-        )}
+          {/* Students button — desktop only (mobile uses the MoreHorizontal dropdown in action bar) */}
+          {isTrainer() && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onStudentsOpen}
+              className="hidden sm:flex h-8"
+              data-testid="button-students"
+            >
+              <Users className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Ученики</span>
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

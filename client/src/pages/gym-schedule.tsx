@@ -12,12 +12,23 @@ import { BroadcastDialog } from "@/components/gym/broadcast-dialog";
 import { ProfileDialog } from "@/components/gym/profile-dialog";
 import { NotificationsPopover } from "@/components/gym/notifications-popover";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useGymStore } from "@/store/gym-store";
 import { type User } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, UserPlus, UserCircle2, KeyRound, Lock, Unlock, CalendarOff, Settings, Send } from "lucide-react";
+import {
+  Loader2, LogOut, UserPlus, UserCircle2, KeyRound, Lock, Unlock,
+  CalendarOff, Settings, Send, MoreHorizontal, Users,
+} from "lucide-react";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -29,13 +40,13 @@ export function GymSchedulePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const { 
-    currentUser, 
-    isAuthenticated, 
-    currentView, 
-    selectedDate, 
+  const {
+    currentUser,
+    isAuthenticated,
+    currentView,
+    selectedDate,
     schedule,
-    setSchedule, 
+    setSchedule,
     setLoading,
     isTrainer,
     logout
@@ -75,20 +86,16 @@ export function GymSchedulePage() {
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
   });
 
-  // Fetch schedule based on current view and selected date
   const { data: scheduleData, isLoading } = useQuery({
     queryKey: ["schedule", currentView, selectedDate.toISOString()],
     staleTime: 0,
     queryFn: async () => {
-      // Format date in local timezone (avoids UTC offset shifting the date)
       const localDate = (d: Date) => {
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, "0");
         const day = String(d.getDate()).padStart(2, "0");
         return `${y}-${m}-${day}`;
       };
-
-      // Returns Monday of the week containing `d`, formatted as local date string
       const mondayOf = (d: Date) => {
         const copy = new Date(d);
         const day = copy.getDay();
@@ -96,7 +103,6 @@ export function GymSchedulePage() {
         copy.setDate(copy.getDate() + diff);
         return localDate(copy);
       };
-
       let url = "";
       if (currentView === "day") {
         url = `/api/schedule/day/${localDate(selectedDate)}`;
@@ -107,13 +113,11 @@ export function GymSchedulePage() {
         const month = selectedDate.getMonth() + 1;
         url = `/api/schedule/month/${year}/${month}`;
       }
-      
       const response = await apiRequest("GET", url);
       return response.json();
     }
   });
 
-  // Booking mutations
   const bookMutation = useMutation({
     mutationFn: async (timeSlotId: string) => {
       const response = await apiRequest("POST", "/api/bookings", {
@@ -124,43 +128,25 @@ export function GymSchedulePage() {
       return response.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Заявка отправлена",
-        description: "Ваша заявка на бронирование отправлена тренеру на подтверждение"
-      });
+      toast({ title: "Заявка отправлена", description: "Ваша заявка на бронирование отправлена тренеру на подтверждение" });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
     onError: (error: any) => {
-      toast({
-        variant: "destructive",
-        title: "Ошибка бронирования",
-        description: error.message || "Не удалось создать бронирование"
-      });
+      toast({ variant: "destructive", title: "Ошибка бронирования", description: error.message || "Не удалось создать бронирование" });
     }
   });
 
   const cancelMutation = useMutation({
     mutationFn: async (bookingId: string) => {
-      const response = await apiRequest(
-        "PUT",
-        `/api/bookings/${bookingId}/cancel`,
-        { cancelledBy: currentUser?.id ?? null }
-      );
+      const response = await apiRequest("PUT", `/api/bookings/${bookingId}/cancel`, { cancelledBy: currentUser?.id ?? null });
       return response.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Бронирование отменено",
-        description: "Запись успешно отменена"
-      });
+      toast({ title: "Бронирование отменено", description: "Запись успешно отменена" });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
     onError: (error: any) => {
-      toast({
-        variant: "destructive",
-        title: "Ошибка отмены",
-        description: error.message || "Не удалось отменить бронирование"
-      });
+      toast({ variant: "destructive", title: "Ошибка отмены", description: error.message || "Не удалось отменить бронирование" });
     }
   });
 
@@ -170,22 +156,14 @@ export function GymSchedulePage() {
       return response.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Запись подтверждена",
-        description: "Ученик уведомлён о подтверждении"
-      });
+      toast({ title: "Запись подтверждена", description: "Ученик уведомлён о подтверждении" });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
     onError: () => {
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Не удалось подтвердить запись"
-      });
+      toast({ variant: "destructive", title: "Ошибка", description: "Не удалось подтвердить запись" });
     }
   });
 
-  // Update schedule when data changes
   useEffect(() => {
     if (scheduleData) {
       if (Array.isArray(scheduleData)) {
@@ -198,149 +176,167 @@ export function GymSchedulePage() {
   }, [scheduleData, isLoading, setSchedule, setLoading]);
 
   const handleBook = (timeSlotId: string) => {
-    if (!currentUser) {
-      setAuthModalOpen(true);
-      return;
-    }
+    if (!currentUser) { setAuthModalOpen(true); return; }
     bookMutation.mutate(timeSlotId);
   };
 
-  const handleCancel = (bookingId: string) => {
-    cancelMutation.mutate(bookingId);
-  };
+  const handleCancel = (bookingId: string) => cancelMutation.mutate(bookingId);
 
   const handleLogout = () => {
     logout();
-    toast({
-      title: "Выход выполнен",
-      description: "Вы успешно вышли из системы"
-    });
+    toast({ title: "Выход выполнен", description: "Вы успешно вышли из системы" });
   };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <CalendarHeader onStudentsOpen={() => setStudentsPanelOpen(true)} />
-      
-      {/* User info and actions */}
-      <div className="p-4 border-b bg-white dark:bg-gray-900">
-        <div className="flex items-center justify-between">
-          <div>
-            {isAuthenticated && currentUser ? (
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  Добро пожаловать, {currentUser.firstName}!
+
+      {/* Action bar */}
+      <div className="px-4 py-2 border-b bg-white dark:bg-gray-900 flex items-center justify-between gap-2">
+        {/* Greeting */}
+        <div className="min-w-0">
+          {isAuthenticated && currentUser ? (
+            <span className="text-sm text-gray-600 dark:text-gray-400 truncate block">
+              Привет, <span className="font-medium">{currentUser.firstName}</span>!
+              {currentUser.role === "trainer" && (
+                <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded">
+                  Тренер
                 </span>
-                {currentUser.role === "trainer" && (
-                  <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
-                    Тренер
-                  </span>
-                )}
-              </div>
-            ) : (
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                Войдите, чтобы записаться на тренировки
-              </span>
+              )}
+            </span>
+          ) : (
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              Войдите, чтобы записаться
+            </span>
+          )}
+        </div>
+
+        {/* Right side buttons */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+
+          {/* ── DESKTOP: full buttons row ── */}
+          <div className="hidden sm:flex items-center gap-2">
+            {isAuthenticated && isTrainer() && currentView === "day" && dayBlockedState && (
+              <Button variant="outline" size="sm"
+                onClick={() => blockDayMutation.mutate({ date: dayBlockedState.dateStr, blocked: !dayBlockedState.allBlocked })}
+                disabled={blockDayMutation.isPending} data-testid="button-block-day">
+                {dayBlockedState.allBlocked
+                  ? <><Unlock className="h-4 w-4 mr-2" />Открыть день</>
+                  : <><Lock className="h-4 w-4 mr-2" />Закрыть день</>}
+              </Button>
+            )}
+            {isAuthenticated && isTrainer() && (
+              <Button variant="outline" size="sm" onClick={() => setBlockPeriodOpen(true)} data-testid="button-vacation">
+                <CalendarOff className="h-4 w-4 mr-2" />Отпуск / период
+              </Button>
+            )}
+            {isAuthenticated && isTrainer() && (
+              <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} data-testid="button-schedule-settings">
+                <Settings className="h-4 w-4 mr-2" />Настройки расписания
+              </Button>
+            )}
+            {isAuthenticated && isTrainer() && (
+              <Button variant="outline" size="sm" onClick={() => setBroadcastOpen(true)} data-testid="button-broadcast">
+                <Send className="h-4 w-4 mr-2" />Рассылка
+              </Button>
             )}
           </div>
-          
-          <div className="flex items-center gap-2 flex-wrap">
-            {isAuthenticated && isTrainer() && currentView === "day" && dayBlockedState && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => blockDayMutation.mutate({ date: dayBlockedState.dateStr, blocked: !dayBlockedState.allBlocked })}
-                disabled={blockDayMutation.isPending}
-                data-testid="button-block-day"
-              >
-                {dayBlockedState.allBlocked ? (
-                  <><Unlock className="h-4 w-4 mr-2" />Открыть день</>
-                ) : (
-                  <><Lock className="h-4 w-4 mr-2" />Закрыть день</>
-                )}
-              </Button>
-            )}
-            {isAuthenticated && isTrainer() && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setBlockPeriodOpen(true)}
-                data-testid="button-vacation"
-              >
-                <CalendarOff className="h-4 w-4 mr-2" />
-                Отпуск / период
-              </Button>
-            )}
-            {isAuthenticated && isTrainer() && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSettingsOpen(true)}
-                data-testid="button-schedule-settings"
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                Настройки расписания
-              </Button>
-            )}
-            {isAuthenticated && isTrainer() && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setBroadcastOpen(true)}
-                data-testid="button-broadcast"
-              >
-                <Send className="h-4 w-4 mr-2" />
-                Рассылка
-              </Button>
-            )}
-            {isAuthenticated && currentUser && (
-              <NotificationsPopover
-                userId={currentUser.id}
-                isTrainer={isTrainer()}
-              />
-            )}
-            {isAuthenticated ? (
-              <>
+
+          {/* Notifications — always visible when logged in */}
+          {isAuthenticated && currentUser && (
+            <NotificationsPopover userId={currentUser.id} isTrainer={isTrainer()} />
+          )}
+
+          {/* ── MOBILE: trainer actions dropdown ── */}
+          {isAuthenticated && isTrainer() && (
+            <div className="flex sm:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" aria-label="Действия тренера">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuLabel>Управление</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setStudentsPanelOpen(true)}>
+                    <Users className="h-4 w-4 mr-2" />Ученики
+                  </DropdownMenuItem>
+                  {currentView === "day" && dayBlockedState && (
+                    <DropdownMenuItem
+                      onClick={() => blockDayMutation.mutate({ date: dayBlockedState.dateStr, blocked: !dayBlockedState.allBlocked })}
+                      disabled={blockDayMutation.isPending}>
+                      {dayBlockedState.allBlocked
+                        ? <><Unlock className="h-4 w-4 mr-2" />Открыть день</>
+                        : <><Lock className="h-4 w-4 mr-2" />Закрыть день</>}
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => setBlockPeriodOpen(true)}>
+                    <CalendarOff className="h-4 w-4 mr-2" />Отпуск / период
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                    <Settings className="h-4 w-4 mr-2" />Настройки расписания
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setBroadcastOpen(true)}>
+                    <Send className="h-4 w-4 mr-2" />Рассылка
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+
+          {/* User account menu */}
+          {isAuthenticated ? (
+            <>
+              {/* Desktop: separate buttons */}
+              <div className="hidden sm:flex items-center gap-2">
                 {currentUser?.role !== "trainer" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setProfileOpen(true)}
-                    data-testid="button-my-profile"
-                  >
-                    <UserCircle2 className="h-4 w-4 mr-2" />
-                    Мой профиль
+                  <Button variant="outline" size="sm" onClick={() => setProfileOpen(true)} data-testid="button-my-profile">
+                    <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setChangePasswordOpen(true)}
-                  data-testid="button-change-password"
-                >
-                  <KeyRound className="h-4 w-4 mr-2" />
-                  Сменить пароль
+                <Button variant="outline" size="sm" onClick={() => setChangePasswordOpen(true)} data-testid="button-change-password">
+                  <KeyRound className="h-4 w-4 mr-2" />Сменить пароль
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleLogout}
-                  data-testid="button-logout"
-                >
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Выйти
+                <Button variant="outline" size="sm" onClick={handleLogout} data-testid="button-logout">
+                  <LogOut className="h-4 w-4 mr-2" />Выйти
                 </Button>
-              </>
-            ) : (
-              <Button
-                size="sm"
-                onClick={() => setAuthModalOpen(true)}
-                data-testid="button-login"
-              >
-                <UserPlus className="h-4 w-4 mr-2" />
-                Войти
-              </Button>
-            )}
-          </div>
+              </div>
+
+              {/* Mobile: user dropdown */}
+              <div className="flex sm:hidden">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" aria-label="Меню пользователя">
+                      <UserCircle2 className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuLabel className="truncate max-w-[11rem]">
+                      {currentUser?.firstName} {currentUser?.lastName ?? ""}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {currentUser?.role !== "trainer" && (
+                      <DropdownMenuItem onClick={() => setProfileOpen(true)}>
+                        <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => setChangePasswordOpen(true)}>
+                      <KeyRound className="h-4 w-4 mr-2" />Сменить пароль
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout} className="text-red-600 dark:text-red-400">
+                      <LogOut className="h-4 w-4 mr-2" />Выйти
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </>
+          ) : (
+            <Button size="sm" onClick={() => setAuthModalOpen(true)} data-testid="button-login">
+              <UserPlus className="h-4 w-4 mr-2" />Войти
+            </Button>
+          )}
         </div>
       </div>
 
@@ -349,9 +345,7 @@ export function GymSchedulePage() {
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            <span className="ml-2 text-gray-600 dark:text-gray-400">
-              Загрузка расписания...
-            </span>
+            <span className="ml-2 text-gray-600 dark:text-gray-400">Загрузка расписания...</span>
           </div>
         ) : (
           <CalendarView
@@ -367,50 +361,22 @@ export function GymSchedulePage() {
         )}
       </div>
 
-      <AuthModal 
-        open={authModalOpen} 
-        onOpenChange={setAuthModalOpen} 
-      />
-
-      <StudentsPanel
-        open={studentsPanelOpen}
-        onOpenChange={setStudentsPanelOpen}
-      />
-
+      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} />
+      <StudentsPanel open={studentsPanelOpen} onOpenChange={setStudentsPanelOpen} />
       <BookStudentDialog
         open={trainerBookDialogOpen}
-        onOpenChange={(open) => {
-          setTrainerBookDialogOpen(open);
-          if (!open) setSelectedTimeSlotId(null);
-        }}
+        onOpenChange={(open) => { setTrainerBookDialogOpen(open); if (!open) setSelectedTimeSlotId(null); }}
         preselectedTimeSlotId={selectedTimeSlotId}
       />
-
       <ChangePasswordDialog
         open={changePasswordOpen || !!(currentUser as any)?.mustChangePassword}
         onOpenChange={setChangePasswordOpen}
         forced={!!(currentUser as any)?.mustChangePassword}
       />
-
-      <BlockPeriodDialog
-        open={blockPeriodOpen}
-        onOpenChange={setBlockPeriodOpen}
-      />
-
-      <ScheduleSettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-      />
-
-      <BroadcastDialog
-        open={broadcastOpen}
-        onOpenChange={setBroadcastOpen}
-      />
-
-      <ProfileDialog
-        open={profileOpen}
-        onOpenChange={setProfileOpen}
-      />
+      <BlockPeriodDialog open={blockPeriodOpen} onOpenChange={setBlockPeriodOpen} />
+      <ScheduleSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <BroadcastDialog open={broadcastOpen} onOpenChange={setBroadcastOpen} />
+      <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
     </div>
   );
 }
