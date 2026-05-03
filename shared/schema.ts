@@ -187,6 +187,14 @@ export const insertUserConsentSchema = createInsertSchema(userConsents).omit({
   acceptedAt: true,
 });
 
+export const updateStudentProfileSchema = z.object({
+  firstName: z.string().trim().min(1, "Укажите имя"),
+  lastName: z.string().trim().min(1, "Укажите фамилию"),
+  middleName: z.string().trim().nullable().optional(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата должна быть в формате YYYY-MM-DD"),
+  phone: z.string().trim().min(10, "Укажите корректный телефон"),
+});
+
 export const insertRecurringBookingSchema = createInsertSchema(recurringBookings).omit({
   id: true,
   createdAt: true,
