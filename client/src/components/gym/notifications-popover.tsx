@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Bell, Check, CheckCheck, Trash2, X } from "lucide-react";
+import { Bell, Check, CheckCheck, Trash2, X, UserCheck } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +66,7 @@ const TYPE_DOT: Record<string, string> = {
   birthday_reminder: "bg-pink-500",
   broadcast: "bg-purple-500",
   profile_updated: "bg-teal-500",
+  new_student: "bg-violet-500",
 };
 
 function formatTime(value: Date | string | null): string {
@@ -279,8 +280,24 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
       }),
   });
 
+  const approveStudentMutation = useMutation({
+    mutationFn: async (vars: { studentId: string; notificationId: string }) => {
+      const res = await apiRequest("PATCH", `/api/trainer/students/${vars.studentId}/approve`);
+      const data = await res.json();
+      await apiRequest("PUT", `/api/notifications/${vars.notificationId}/read`);
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: "Ученик одобрен" });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications", userId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+    },
+    onError: (e: any) =>
+      toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
   const isActing =
-    confirmBookingMutation.isPending || cancelBookingMutation.isPending;
+    confirmBookingMutation.isPending || cancelBookingMutation.isPending || approveStudentMutation.isPending;
 
   return (
     <Popover>
@@ -358,6 +375,13 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
                       !!n.relatedBookingId &&
                       !n.isRead &&
                       !processedIds.has(n.id);
+
+                    const showApprove =
+                      isTrainer &&
+                      n.type === "new_student" &&
+                      !!n.relatedUserId &&
+                      !n.isRead &&
+                      !processedIds.has(n.id);
                     return (
                       <li
                         key={n.id}
@@ -421,9 +445,30 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
                               </Button>
                             </div>
                           )}
+
+                          {showApprove && (
+                            <div className="mt-2">
+                              <Button
+                                size="sm"
+                                className="h-7 px-2 text-xs bg-violet-600 hover:bg-violet-700 text-white"
+                                disabled={isActing}
+                                onClick={() => {
+                                  markProcessed(n.id);
+                                  approveStudentMutation.mutate({
+                                    studentId: n.relatedUserId!,
+                                    notificationId: n.id,
+                                  });
+                                }}
+                                data-testid={`button-approve-student-${n.id}`}
+                              >
+                                <UserCheck className="h-3 w-3 mr-1" />
+                                Одобрить регистрацию
+                              </Button>
+                            </div>
+                          )}
                         </div>
 
-                        {!n.isRead && !showActions && (
+                        {!n.isRead && !showActions && !showApprove && (
                           <button
                             type="button"
                             onClick={() => markReadMutation.mutate(n.id)}

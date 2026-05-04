@@ -154,11 +154,12 @@ export const trainerPayments = pgTable("trainer_payments", {
 export const notifications = pgTable("notifications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
-  type: text("type").notNull(), // "booking_request", "booking_confirmed", "booking_cancelled"
+  type: text("type").notNull(), // "booking_request", "booking_confirmed", "booking_cancelled", "new_student"
   title: text("title").notNull(),
   message: text("message").notNull(),
   isRead: boolean("is_read").notNull().default(false),
   relatedBookingId: varchar("related_booking_id").references(() => bookings.id),
+  relatedUserId: varchar("related_user_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

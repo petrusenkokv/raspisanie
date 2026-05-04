@@ -154,7 +154,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: msg,
           isRead: false,
           relatedBookingId: null,
-        });
+          relatedUserId: user.id,
+        } as any);
         broadcast({ type: "notification_update" });
         pushNotifyUser(trainer.id, "Новый ученик", msg);
       }).catch(() => {});

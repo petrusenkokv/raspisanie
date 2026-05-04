@@ -634,6 +634,7 @@ export class DbStorage implements IStorage {
       message: insertNotification.message,
       isRead: false,
       relatedBookingId: insertNotification.relatedBookingId ?? null,
+      relatedUserId: (insertNotification as any).relatedUserId ?? null,
     }).returning();
     return rows[0];
   }
