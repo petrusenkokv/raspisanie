@@ -454,6 +454,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const booking = await storage.confirmBooking(id);
+
+      // Mark any pending booking_request notifications for this booking as read
+      await storage.markBookingNotificationsAsRead(booking.id);
       
       // Create notification for student
       await storage.createNotification({
@@ -507,6 +510,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const booking = await storage.cancelBooking(id);
+
+      // Mark any pending booking_request notifications for this booking as read
+      await storage.markBookingNotificationsAsRead(booking.id);
 
       const slot = await storage.getTimeSlotById(booking.timeSlotId);
       const when = slot

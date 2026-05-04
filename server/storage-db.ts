@@ -655,6 +655,13 @@ export class DbStorage implements IStorage {
     return (result as any).rowCount ?? 0;
   }
 
+  async markBookingNotificationsAsRead(bookingId: string): Promise<number> {
+    const result = await db.update(notifications)
+      .set({ isRead: true })
+      .where(and(eq(notifications.relatedBookingId, bookingId), eq(notifications.isRead, false)));
+    return (result as any).rowCount ?? 0;
+  }
+
   // ======================== ANALYTICS ========================
 
   async getStudentsList(includeInactive = false): Promise<User[]> {

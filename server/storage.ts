@@ -80,6 +80,7 @@ export interface IStorage {
   markNotificationAsRead(id: string): Promise<Notification>;
   markAllNotificationsAsRead(userId: string): Promise<number>;
   deleteReadNotifications(userId: string): Promise<number>;
+  markBookingNotificationsAsRead(bookingId: string): Promise<number>;
   
   // Documents (consent forms managed by trainer)
   getDocuments(activeOnly?: boolean): Promise<Document[]>;
@@ -1212,6 +1213,17 @@ export class MemStorage implements IStorage {
     let count = 0;
     for (const [id, notif] of Array.from(this.notifications.entries())) {
       if (notif.userId === userId && !notif.isRead) {
+        this.notifications.set(id, { ...notif, isRead: true });
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async markBookingNotificationsAsRead(bookingId: string): Promise<number> {
+    let count = 0;
+    for (const [id, notif] of Array.from(this.notifications.entries())) {
+      if (notif.relatedBookingId === bookingId && !notif.isRead) {
         this.notifications.set(id, { ...notif, isRead: true });
         count++;
       }
