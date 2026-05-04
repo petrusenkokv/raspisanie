@@ -29,6 +29,7 @@ import {
   type StudentPaymentStatus,
   type BroadcastLog,
 } from "@shared/schema";
+import type { PushSubscriptionData } from "./push";
 import { randomUUID } from "crypto";
 
 export type AttendanceStats = {
@@ -142,6 +143,12 @@ export interface IStorage {
   createBroadcastLog(log: Omit<BroadcastLog, "id" | "sentAt">): Promise<BroadcastLog>;
   getBroadcastLogs(): Promise<BroadcastLog[]>;
   deleteBroadcastLog(id: string): Promise<{ deletedNotifications: number }>;
+
+  // Push subscriptions
+  savePushSubscription(sub: PushSubscriptionData): Promise<void>;
+  deletePushSubscription(endpoint: string): Promise<void>;
+  getPushSubscriptionsByUser(userId: string): Promise<PushSubscriptionData[]>;
+  getAllPushSubscriptions(): Promise<PushSubscriptionData[]>;
 }
 
 function localDateStr(d: Date): string {
@@ -215,6 +222,7 @@ export class MemStorage implements IStorage {
   private trainerPayments: Map<string, TrainerPayment> = new Map();
   private sickPeriods: Map<string, SickPeriod> = new Map();
   private broadcastLogs: Map<string, BroadcastLog> = new Map();
+  private pushSubscriptions: Map<string, PushSubscriptionData> = new Map();
   private settings: TrainerSettings = {
     id: randomUUID(),
     dayStartHour: 8,
@@ -1711,6 +1719,22 @@ export class MemStorage implements IStorage {
 
     this.broadcastLogs.delete(id);
     return { deletedNotifications };
+  }
+
+  async savePushSubscription(sub: PushSubscriptionData): Promise<void> {
+    this.pushSubscriptions.set(sub.endpoint, sub);
+  }
+
+  async deletePushSubscription(endpoint: string): Promise<void> {
+    this.pushSubscriptions.delete(endpoint);
+  }
+
+  async getPushSubscriptionsByUser(userId: string): Promise<PushSubscriptionData[]> {
+    return Array.from(this.pushSubscriptions.values()).filter((s) => s.userId === userId);
+  }
+
+  async getAllPushSubscriptions(): Promise<PushSubscriptionData[]> {
+    return Array.from(this.pushSubscriptions.values());
   }
 }
 

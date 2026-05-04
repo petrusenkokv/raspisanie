@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage-instance";
 import { setupWebSocket, broadcast } from "./ws";
+import { sendPushToUser, vapidPublicKey } from "./push";
 import { 
   insertUserSchema, 
   insertBookingSchema, 
@@ -30,6 +31,15 @@ function calculateAgeYears(birthDate: string | null | undefined): number | null 
   const m = today.getMonth() - b.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
   return age;
+}
+
+async function pushNotifyUser(userId: string, title: string, body: string) {
+  try {
+    const subs = await storage.getPushSubscriptionsByUser(userId);
+    if (subs.length > 0) {
+      sendPushToUser(subs, { title, body }).catch(() => {});
+    }
+  } catch {}
 }
 
 async function recordConsents(userId: string, documentIds: string[] | undefined) {
@@ -404,6 +414,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: `${studentName} хочет записаться: ${when}`,
           relatedBookingId: booking.id
         });
+        pushNotifyUser(trainer.id, "Новая заявка на запись", `${studentName} хочет записаться: ${when}`);
       }
       
       const bookingWithDetails = await storage.getBooking(booking.id);
@@ -428,6 +439,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Ваша запись на тренировку подтверждена тренером",
         relatedBookingId: booking.id
       });
+      pushNotifyUser(booking.studentId, "Запись подтверждена", "Ваша запись на тренировку подтверждена тренером");
       
       const bookingWithDetails = await storage.getBooking(booking.id);
       broadcast({ type: "schedule_update" });
@@ -503,6 +515,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: `Ваша запись (${when}) отменена тренером`,
           relatedBookingId: booking.id,
         });
+        pushNotifyUser(booking.studentId, "Запись отменена", `Ваша запись (${when}) отменена тренером`);
       }
 
       const bookingWithDetails = await storage.getBooking(booking.id);
@@ -1284,6 +1297,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         )
       );
 
+      // Send push notifications to all subscribed devices
+      const allSubs = await storage.getAllPushSubscriptions();
+      const targetSet = new Set(targetStudentIds);
+      const pushSubs = allSubs.filter((s) => targetSet.has(s.userId));
+      if (pushSubs.length > 0) {
+        sendPushToUser(pushSubs, {
+          title: title || "Сообщение от тренера",
+          body: message,
+          icon: "/icon-192.svg",
+        }).catch(() => {});
+      }
+
       await storage.createBroadcastLog({
         title: title || "Сообщение от тренера",
         message,
@@ -1315,6 +1340,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Не удалось удалить рассылку" });
+    }
+  });
+
+  // ── Push subscription routes ──────────────────────────────────────────────
+
+  app.get("/api/push/vapid-public-key", (_req, res) => {
+    res.json({ publicKey: vapidPublicKey });
+  });
+
+  app.post("/api/push/subscribe", async (req, res) => {
+    try {
+      const { userId, endpoint, keys } = req.body;
+      if (!userId || !endpoint || !keys) return res.status(400).json({ message: "Неверные данные подписки" });
+      await storage.savePushSubscription({ userId, endpoint, keys });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось сохранить подписку" });
+    }
+  });
+
+  app.post("/api/push/unsubscribe", async (req, res) => {
+    try {
+      const { endpoint } = req.body;
+      if (!endpoint) return res.status(400).json({ message: "Не указан endpoint" });
+      await storage.deletePushSubscription(endpoint);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось удалить подписку" });
     }
   });
 

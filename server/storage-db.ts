@@ -23,6 +23,7 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import type { IStorage, AttendanceStats } from "./storage";
+import type { PushSubscriptionData } from "./push";
 
 // Sick periods table (not in shared schema, defined locally)
 const sickPeriods = pgTable("sick_periods", {
@@ -1255,5 +1256,23 @@ export class DbStorage implements IStorage {
     }
     this.broadcastLogs.delete(id);
     return { deletedNotifications };
+  }
+
+  private pushSubscriptions: Map<string, PushSubscriptionData> = new Map();
+
+  async savePushSubscription(sub: PushSubscriptionData): Promise<void> {
+    this.pushSubscriptions.set(sub.endpoint, sub);
+  }
+
+  async deletePushSubscription(endpoint: string): Promise<void> {
+    this.pushSubscriptions.delete(endpoint);
+  }
+
+  async getPushSubscriptionsByUser(userId: string): Promise<PushSubscriptionData[]> {
+    return Array.from(this.pushSubscriptions.values()).filter((s) => s.userId === userId);
+  }
+
+  async getAllPushSubscriptions(): Promise<PushSubscriptionData[]> {
+    return Array.from(this.pushSubscriptions.values());
   }
 }

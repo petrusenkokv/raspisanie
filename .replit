@@ -41,3 +41,10 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+VAPID_PUBLIC_KEY = "BK_iwRezjA44taQGLEb-UPDf8r7XAUniop27OPmnbYnwrWg7pvVCoAjs5ul7UJCzTpOyk1CRycsBb3p_czjHq68"
+VAPID_PRIVATE_KEY = "jfm8ode6JI3rnVRky3JwuVINuB-6rF9aT9tamZ-VgTQ"
+VAPID_EMAIL = "mailto:admin@gym.local"

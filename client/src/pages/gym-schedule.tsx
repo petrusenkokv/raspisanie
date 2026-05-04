@@ -27,8 +27,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, LogOut, UserPlus, UserCircle2, KeyRound, Lock, Unlock,
-  CalendarOff, Settings, Send, MoreHorizontal, Users,
+  CalendarOff, Settings, Send, MoreHorizontal, Users, Bell, BellOff,
 } from "lucide-react";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -51,6 +52,9 @@ export function GymSchedulePage() {
     isTrainer,
     logout
   } = useGymStore();
+
+  const { status: pushStatus, loading: pushLoading, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } =
+    usePushNotifications(currentUser?.id);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   useWebSocket();
@@ -241,6 +245,23 @@ export function GymSchedulePage() {
               </Button>
             )}
           </div>
+
+          {/* Push notification toggle — for logged-in users on supported browsers */}
+          {isAuthenticated && currentUser && pushStatus !== "unsupported" && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pushLoading}
+              onClick={pushStatus === "granted" ? pushUnsubscribe : pushSubscribe}
+              title={pushStatus === "granted" ? "Отключить push-уведомления" : "Включить push-уведомления на этом устройстве"}
+            >
+              {pushLoading
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : pushStatus === "granted"
+                  ? <Bell className="h-4 w-4 text-blue-600" />
+                  : <BellOff className="h-4 w-4 text-gray-400" />}
+            </Button>
+          )}
 
           {/* Notifications — always visible when logged in */}
           {isAuthenticated && currentUser && (
