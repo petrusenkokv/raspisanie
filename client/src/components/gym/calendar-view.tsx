@@ -631,14 +631,14 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Войдите, чтобы записаться на <strong>{timeSlot.time}</strong>
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="w-full" size="sm" onClick={() => { onLoginRequest("login"); setOpen(false); }}>
+            <div className="flex flex-col gap-2">
+              <Button className="w-full" size="sm" onClick={() => { onLoginRequest("login"); setOpen(false); }}>
                 <LogIn className="mr-2 h-4 w-4" />
                 Войти
               </Button>
-              <Button className="w-full" size="sm" onClick={() => { onLoginRequest("register"); setOpen(false); }}>
+              <Button variant="outline" className="w-full" size="sm" onClick={() => { onLoginRequest("register"); setOpen(false); }}>
                 <UserPlus className="mr-2 h-4 w-4" />
-                Зарег.
+                Зарегистрироваться
               </Button>
             </div>
           </div>

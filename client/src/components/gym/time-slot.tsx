@@ -552,14 +552,14 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Чтобы записаться на <strong>{timeSlot.time}</strong>, войдите или зарегистрируйтесь.
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              <Button onClick={() => handleLoginClick("login")} variant="outline" className="w-full" size="sm">
+            <div className="flex flex-col gap-2">
+              <Button onClick={() => handleLoginClick("login")} className="w-full" size="sm">
                 <LogIn className="mr-2 h-4 w-4" />
                 Войти
               </Button>
-              <Button onClick={() => handleLoginClick("register")} className="w-full" size="sm">
+              <Button onClick={() => handleLoginClick("register")} variant="outline" className="w-full" size="sm">
                 <UserPlus className="mr-2 h-4 w-4" />
-                Зарег.
+                Зарегистрироваться
               </Button>
             </div>
           </div>
