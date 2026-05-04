@@ -141,6 +141,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await recordConsents(user.id, Array.from(accepted));
 
+      // Notify trainer about new self-registered student
+      storage.getTrainer().then(async (trainer) => {
+        if (!trainer) return;
+        const fullName = [user.lastName, user.firstName].filter(Boolean).join(" ");
+        const msg = `Новый ученик зарегистрировался: ${fullName} (${user.phone})`;
+        await storage.createNotification({
+          userId: trainer.id,
+          type: "new_student",
+          title: "Новый ученик",
+          message: msg,
+          isRead: false,
+          relatedBookingId: null,
+        });
+        broadcast({ type: "notification_update" });
+        pushNotifyUser(trainer.id, "Новый ученик", msg);
+      }).catch(() => {});
+
       res.status(201).json({
         user: {
           id: user.id,
