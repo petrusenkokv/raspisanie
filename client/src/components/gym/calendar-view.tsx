@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { type TimeSlotWithBookings, type Holiday } from "@shared/schema";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Clock, Users, UserCheck, LogIn, Lock, Unlock, Ban } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, UserPlus, Lock, Unlock, Ban } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 function minutesUntilSlotMoscow(date: string, time: string): number {
@@ -25,7 +25,7 @@ interface CalendarViewProps {
   onBook: (timeSlotId: string) => void;
   onCancel: (bookingId: string) => void;
   onConfirm: (bookingId: string) => void;
-  onLoginRequest: () => void;
+  onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (timeSlotId: string) => void;
 }
 
@@ -287,7 +287,7 @@ interface WeekGridProps {
   onBook: (id: string) => void;
   onCancel: (id: string) => void;
   onConfirm: (id: string) => void;
-  onLoginRequest: () => void;
+  onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (id: string) => void;
 }
 
@@ -376,7 +376,7 @@ interface WeekCellProps {
   onBook: (id: string) => void;
   onCancel: (id: string) => void;
   onConfirm: (id: string) => void;
-  onLoginRequest: () => void;
+  onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (id: string) => void;
 }
 
@@ -631,10 +631,16 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Войдите, чтобы записаться на <strong>{timeSlot.time}</strong>
             </p>
-            <Button className="w-full" size="sm" onClick={() => { onLoginRequest(); setOpen(false); }}>
-              <LogIn className="mr-2 h-4 w-4" />
-              Войти / Зарегистрироваться
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" className="w-full" size="sm" onClick={() => { onLoginRequest("login"); setOpen(false); }}>
+                <LogIn className="mr-2 h-4 w-4" />
+                Войти
+              </Button>
+              <Button className="w-full" size="sm" onClick={() => { onLoginRequest("register"); setOpen(false); }}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Зарег.
+              </Button>
+            </div>
           </div>
         )}
       </PopoverContent>

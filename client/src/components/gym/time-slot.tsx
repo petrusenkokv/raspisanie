@@ -29,7 +29,7 @@ interface TimeSlotProps {
   onBook: (timeSlotId: string) => void;
   onCancel: (bookingId: string) => void;
   onConfirm: (bookingId: string) => void;
-  onLoginRequest: () => void;
+  onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (timeSlotId: string) => void;
 }
 
@@ -150,9 +150,9 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     }
   };
 
-  const handleLoginClick = () => {
+  const handleLoginClick = (mode?: "login" | "register") => {
     setPopoverOpen(false);
-    onLoginRequest();
+    onLoginRequest(mode);
   };
 
   const cardContent = (
@@ -552,10 +552,16 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Чтобы записаться на <strong>{timeSlot.time}</strong>, войдите или зарегистрируйтесь.
             </p>
-            <Button onClick={handleLoginClick} className="w-full" size="sm">
-              <LogIn className="mr-2 h-4 w-4" />
-              Войти / Зарегистрироваться
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button onClick={() => handleLoginClick("login")} variant="outline" className="w-full" size="sm">
+                <LogIn className="mr-2 h-4 w-4" />
+                Войти
+              </Button>
+              <Button onClick={() => handleLoginClick("register")} className="w-full" size="sm">
+                <UserPlus className="mr-2 h-4 w-4" />
+                Зарег.
+              </Button>
+            </div>
           </div>
         </PopoverContent>
       </Popover>

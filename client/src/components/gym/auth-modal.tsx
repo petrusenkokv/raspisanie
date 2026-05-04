@@ -16,6 +16,7 @@ import { DocumentViewDialog } from "./document-view-dialog";
 interface AuthModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialMode?: "login" | "register";
 }
 
 function calculateAge(birthDate: string): number | null {
@@ -29,7 +30,7 @@ function calculateAge(birthDate: string): number | null {
   return age;
 }
 
-export function AuthModal({ open, onOpenChange }: AuthModalProps) {
+export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const { setUser } = useGymStore();
@@ -80,6 +81,10 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     if (!requiresParent) setParentConfirmed(false);
   }, [requiresParent]);
 
+  useEffect(() => {
+    if (open) setStudentMode(initialMode);
+  }, [open, initialMode]);
+
   const resetStudentForm = () => {
     setStudentPhone("");
     setStudentPassword("");
@@ -91,7 +96,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     setParentPhone("");
     setParentConfirmed(false);
     setAcceptedDocs({});
-    setStudentMode("login");
+    setStudentMode(initialMode);
     setPendingLoginUser(null);
     setPendingConsentDocs([]);
     setLoginConsentAccepted({});

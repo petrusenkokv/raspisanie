@@ -26,13 +26,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Loader2, LogOut, UserPlus, UserCircle2, KeyRound, Lock, Unlock,
+  Loader2, LogOut, LogIn, UserPlus, UserCircle2, KeyRound, Lock, Unlock,
   CalendarOff, Settings, Send, MoreHorizontal, Users, Bell, BellOff,
 } from "lucide-react";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<"login" | "register">("login");
   const [studentsPanelOpen, setStudentsPanelOpen] = useState(false);
   const [trainerBookDialogOpen, setTrainerBookDialogOpen] = useState(false);
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<string | null>(null);
@@ -354,9 +355,14 @@ export function GymSchedulePage() {
               </div>
             </>
           ) : (
-            <Button size="sm" onClick={() => setAuthModalOpen(true)} data-testid="button-login">
-              <UserPlus className="h-4 w-4 mr-2" />Войти
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => { setAuthModalMode("login"); setAuthModalOpen(true); }} data-testid="button-login">
+                <LogIn className="h-4 w-4 mr-2" />Войти
+              </Button>
+              <Button size="sm" onClick={() => { setAuthModalMode("register"); setAuthModalOpen(true); }} data-testid="button-register">
+                <UserPlus className="h-4 w-4 mr-2" />Зарегистрироваться
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -373,7 +379,7 @@ export function GymSchedulePage() {
             onBook={handleBook}
             onCancel={handleCancel}
             onConfirm={(bookingId) => confirmMutation.mutate(bookingId)}
-            onLoginRequest={() => setAuthModalOpen(true)}
+            onLoginRequest={(mode = "login") => { setAuthModalMode(mode); setAuthModalOpen(true); }}
             onTrainerBook={(timeSlotId) => {
               setSelectedTimeSlotId(timeSlotId);
               setTrainerBookDialogOpen(true);
@@ -382,7 +388,7 @@ export function GymSchedulePage() {
         )}
       </div>
 
-      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} />
+      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} initialMode={authModalMode} />
       <StudentsPanel open={studentsPanelOpen} onOpenChange={setStudentsPanelOpen} />
       <BookStudentDialog
         open={trainerBookDialogOpen}
