@@ -11,11 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, Plus, CalendarOff, Clock } from "lucide-react";
+import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { type WeeklyTemplate, type WeekdayTemplateEntry, type Holiday } from "@shared/schema";
@@ -44,6 +45,7 @@ type SettingsResponse = {
   bookingDeadlineHours: number;
   defaultCapacity: number;
   reminderMinutes: number | null;
+  welcomeMessage: string | null;
   holidays: Holiday[];
 };
 
@@ -72,6 +74,7 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
   const [bookingDeadline, setBookingDeadline] = useState(1);
   const [defaultCapacity, setDefaultCapacity] = useState(2);
   const [reminderMinutes, setReminderMinutes] = useState<string>("off");
+  const [welcomeMessage, setWelcomeMessage] = useState<string>("");
   const [newHolidayDate, setNewHolidayDate] = useState<string>(todayLocalStr());
   const [newHolidayName, setNewHolidayName] = useState<string>("");
 
@@ -83,6 +86,7 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
       setBookingDeadline(data.bookingDeadlineHours ?? 0);
       setDefaultCapacity(data.defaultCapacity ?? 2);
       setReminderMinutes(data.reminderMinutes != null ? String(data.reminderMinutes) : "off");
+      setWelcomeMessage(data.welcomeMessage ?? "");
       // Fill in any missing weekdays with default working values
       const next: WeeklyTemplate = { ...data.weeklyTemplate };
       for (let i = 1; i <= 7; i++) {
@@ -207,7 +211,7 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
           </div>
         ) : (
           <Tabs defaultValue="hours" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="hours" data-testid="tab-hours">
                 <Clock className="h-4 w-4 mr-1" />
                 Часы
@@ -216,11 +220,15 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
                 Неделя
               </TabsTrigger>
               <TabsTrigger value="limits" data-testid="tab-limits">
-                Ограничения
+                Лимиты
               </TabsTrigger>
               <TabsTrigger value="holidays" data-testid="tab-holidays">
                 <CalendarOff className="h-4 w-4 mr-1" />
                 Праздники
+              </TabsTrigger>
+              <TabsTrigger value="welcome" data-testid="tab-welcome">
+                <MessageSquare className="h-4 w-4 mr-1" />
+                Привет
               </TabsTrigger>
             </TabsList>
 
@@ -601,6 +609,39 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
                   </div>
                 )}
               </div>
+            </TabsContent>
+            {/* Welcome message tab */}
+            <TabsContent value="welcome" className="space-y-4 pt-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Это сообщение ученик видит сразу после регистрации. Напишите контакты, правила зала и что делать дальше.
+              </p>
+              <div className="space-y-2">
+                <Label>Текст приветственного сообщения</Label>
+                <Textarea
+                  value={welcomeMessage}
+                  onChange={(e) => setWelcomeMessage(e.target.value)}
+                  placeholder={"Добро пожаловать!\n\nТренировки проходят по адресу: ...\nСвязаться со мной: ...\n\nЖдите одобрения заявки — после этого сможете записаться на занятие."}
+                  rows={8}
+                  maxLength={2000}
+                  className="resize-none"
+                  data-testid="textarea-welcome-message"
+                />
+                <p className="text-xs text-gray-500 text-right">{welcomeMessage.length}/2000</p>
+              </div>
+              <Button
+                onClick={() => saveSettings.mutate({ welcomeMessage: welcomeMessage.trim() || null })}
+                disabled={saveSettings.isPending}
+                className="w-full"
+                data-testid="button-save-welcome"
+              >
+                {saveSettings.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Сохранить приветствие
+              </Button>
+              {!welcomeMessage.trim() && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
+                  Если поле пустое — ученик увидит стандартный текст после регистрации.
+                </p>
+              )}
             </TabsContent>
           </Tabs>
         )}

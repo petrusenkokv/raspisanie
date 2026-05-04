@@ -64,6 +64,15 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     enabled: open && studentMode === "register",
   });
 
+  const { data: trainerSettings } = useQuery<{ welcomeMessage: string | null }>({
+    queryKey: ["/api/schedule/settings"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/schedule/settings");
+      return r.json();
+    },
+    enabled: open && studentMode === "welcome",
+  });
+
   const age = useMemo(() => calculateAge(studentBirthDate), [studentBirthDate]);
   const requiresParent = age !== null && age < 14;
 
@@ -276,21 +285,28 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                   </p>
                 </div>
 
-                <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-3 space-y-3">
-                  <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 uppercase tracking-wide">Как это работает</p>
-                  <div className="flex items-start gap-3">
-                    <Clock className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                    <p className="text-sm text-gray-700 dark:text-gray-300">Ожидайте одобрения тренера. Вы получите уведомление в приложении.</p>
+                {trainerSettings?.welcomeMessage ? (
+                  <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-3">
+                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 uppercase tracking-wide mb-2">Сообщение от тренера</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{trainerSettings.welcomeMessage}</p>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <CalendarCheck className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                    <p className="text-sm text-gray-700 dark:text-gray-300">После одобрения нажмите на любой свободный слот в расписании, чтобы записаться.</p>
+                ) : (
+                  <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-3 space-y-3">
+                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 uppercase tracking-wide">Как это работает</p>
+                    <div className="flex items-start gap-3">
+                      <Clock className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                      <p className="text-sm text-gray-700 dark:text-gray-300">Ожидайте одобрения тренера. Вы получите уведомление в приложении.</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <CalendarCheck className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                      <p className="text-sm text-gray-700 dark:text-gray-300">После одобрения нажмите на любой свободный слот в расписании, чтобы записаться.</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <XCircle className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                      <p className="text-sm text-gray-700 dark:text-gray-300">Отменить запись можно самостоятельно в разделе «Мои записи» до установленного тренером времени.</p>
+                    </div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <XCircle className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                    <p className="text-sm text-gray-700 dark:text-gray-300">Отменить запись можно самостоятельно в разделе «Мои записи» до установленного тренером времени.</p>
-                  </div>
-                </div>
+                )}
 
                 <Button
                   className="w-full"

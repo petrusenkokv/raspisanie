@@ -235,6 +235,7 @@ export class MemStorage implements IStorage {
     bookingDeadlineHours: 1,
     defaultCapacity: 2,
     reminderMinutes: null,
+    welcomeMessage: null,
     updatedAt: new Date(),
   };
 
@@ -1524,6 +1525,10 @@ export class MemStorage implements IStorage {
         updates.reminderMinutes !== undefined
           ? updates.reminderMinutes
           : this.settings.reminderMinutes,
+      welcomeMessage:
+        updates.welcomeMessage !== undefined
+          ? updates.welcomeMessage
+          : this.settings.welcomeMessage,
       updatedAt: new Date(),
     };
     if (next.dayEndHour <= next.dayStartHour) {

@@ -129,6 +129,7 @@ export class DbStorage implements IStorage {
       bookingDeadlineHours: (row as any).bookingDeadlineHours ?? 1,
       defaultCapacity: (row as any).defaultCapacity ?? 2,
       reminderMinutes: row.reminderMinutes ?? null,
+      welcomeMessage: (row as any).welcomeMessage ?? null,
       updatedAt: row.updatedAt ?? null,
     };
   }
@@ -880,6 +881,7 @@ export class DbStorage implements IStorage {
       bookingDeadlineHours: updates.bookingDeadlineHours ?? current.bookingDeadlineHours,
       defaultCapacity: updates.defaultCapacity ?? current.defaultCapacity,
       reminderMinutes: updates.reminderMinutes !== undefined ? updates.reminderMinutes : current.reminderMinutes,
+      welcomeMessage: updates.welcomeMessage !== undefined ? updates.welcomeMessage : current.welcomeMessage,
       updatedAt: new Date(),
     };
     if (next.dayEndHour <= next.dayStartHour) throw new Error("Окончание рабочего дня должно быть позже начала");
@@ -892,6 +894,7 @@ export class DbStorage implements IStorage {
       bookingDeadlineHours: next.bookingDeadlineHours,
       defaultCapacity: next.defaultCapacity,
       reminderMinutes: next.reminderMinutes,
+      welcomeMessage: next.welcomeMessage,
       updatedAt: next.updatedAt!,
     }).where(eq(trainerSettings.id, current.id));
     this.settingsCache = next;

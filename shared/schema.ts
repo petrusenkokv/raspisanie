@@ -77,6 +77,8 @@ export const trainerSettings = pgTable("trainer_settings", {
   // Дополнительное напоминание ученикам перед тренировкой (общая настройка для всех).
   // null = выключено; 15|30|60|120 — минут до начала.
   reminderMinutes: integer("reminder_minutes"),
+  // Приветственное сообщение — показывается ученику сразу после регистрации.
+  welcomeMessage: text("welcome_message"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -316,6 +318,8 @@ export const trainerSettingsUpdateSchema = z.object({
   defaultCapacity: z.number().int().min(1).max(50).optional(),
   // Дополнительное напоминание о тренировке (общая настройка). null = выключено.
   reminderMinutes: z.union([z.literal(15), z.literal(30), z.literal(60), z.literal(120)]).nullable().optional(),
+  // Приветственное сообщение для ученика после регистрации.
+  welcomeMessage: z.string().max(2000).nullable().optional(),
 }).refine(
   (d) => d.dayStartHour === undefined || d.dayEndHour === undefined || d.dayEndHour > d.dayStartHour,
   { message: "Час окончания дня должен быть позже часа начала дня" },
@@ -406,6 +410,7 @@ export type TrainerSettings = {
   bookingDeadlineHours: number;
   defaultCapacity: number;
   reminderMinutes: number | null;
+  welcomeMessage: string | null;
   updatedAt: Date | null;
 };
 export type TrainerSettingsUpdate = z.infer<typeof trainerSettingsUpdateSchema>;
