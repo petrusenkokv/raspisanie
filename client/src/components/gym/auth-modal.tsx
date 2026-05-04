@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useGymStore } from "@/store/gym-store";
-import { Loader2, Phone, UserPlus, LogIn } from "lucide-react";
+import { Loader2, Phone, UserPlus, LogIn, CheckCircle, Clock, CalendarCheck, XCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { type Document } from "@shared/schema";
 import { DocumentViewDialog } from "./document-view-dialog";
@@ -46,7 +46,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   const [parentConfirmed, setParentConfirmed] = useState(false);
   const [acceptedDocs, setAcceptedDocs] = useState<Record<string, boolean>>({});
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
-  const [studentMode, setStudentMode] = useState<"login" | "register" | "consent">("login");
+  const [studentMode, setStudentMode] = useState<"login" | "register" | "consent" | "welcome">("login");
   const [pendingLoginUser, setPendingLoginUser] = useState<any>(null);
   const [pendingConsentDocs, setPendingConsentDocs] = useState<Document[]>([]);
   const [loginConsentAccepted, setLoginConsentAccepted] = useState<Record<string, boolean>>({});
@@ -202,9 +202,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       });
       const data = await response.json();
       setUser(data.user);
-      toast({ title: "Регистрация успешна!", description: `Добро пожаловать, ${data.user.firstName}!` });
-      onOpenChange(false);
-      resetStudentForm();
+      setStudentMode("welcome");
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -266,7 +264,42 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
 
           {/* Student Tab */}
           <TabsContent value="student" className="space-y-4 mt-4">
-            {studentMode === "consent" ? (
+            {studentMode === "welcome" ? (
+              <div className="space-y-4">
+                <div className="flex flex-col items-center text-center gap-2 py-2">
+                  <div className="rounded-full bg-blue-100 dark:bg-blue-900/40 p-3">
+                    <CheckCircle className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <h3 className="font-bold text-lg text-gray-900 dark:text-white">Регистрация завершена!</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Ваша заявка отправлена тренеру. Как только он одобрит вашу регистрацию — вы сможете записываться на тренировки.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-3 space-y-3">
+                  <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 uppercase tracking-wide">Как это работает</p>
+                  <div className="flex items-start gap-3">
+                    <Clock className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                    <p className="text-sm text-gray-700 dark:text-gray-300">Ожидайте одобрения тренера. Вы получите уведомление в приложении.</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <CalendarCheck className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                    <p className="text-sm text-gray-700 dark:text-gray-300">После одобрения нажмите на любой свободный слот в расписании, чтобы записаться.</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <XCircle className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                    <p className="text-sm text-gray-700 dark:text-gray-300">Отменить запись можно самостоятельно в разделе «Мои записи» до установленного тренером времени.</p>
+                  </div>
+                </div>
+
+                <Button
+                  className="w-full"
+                  onClick={() => { onOpenChange(false); resetStudentForm(); }}
+                >
+                  Понятно, перейти к расписанию
+                </Button>
+              </div>
+            ) : studentMode === "consent" ? (
               <>
                 <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3 space-y-1">
                   <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">

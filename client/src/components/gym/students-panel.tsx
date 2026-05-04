@@ -38,7 +38,7 @@ import {
 import { BookStudentDialog } from "./book-student-dialog";
 import { DocumentViewDialog } from "./document-view-dialog";
 import { DocumentsManagerDialog } from "./documents-manager-dialog";
-import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle } from "lucide-react";
+import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -173,6 +173,18 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
   });
 
+  const approveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await apiRequest("PATCH", `/api/trainer/students/${id}/approve`, {});
+      return r.json();
+    },
+    onSuccess: (_data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+      toast({ title: "Ученик одобрен", description: "Ученик получил уведомление и может записываться на тренировки" });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
   const filteredStudents = students.filter(student => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;
@@ -291,14 +303,40 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 const age = calculateAge((student as any).birthDate);
                 const isInactive = (student as any).isActive === false;
                 const hasPendingDocs = (student.pendingDocumentCount ?? 0) > 0;
+                const isPending = (student as any).isPendingApproval === true;
                 return (
                   <div key={student.id} className={`border rounded-lg p-4 transition-shadow ${
                     isInactive
                       ? "bg-gray-50 dark:bg-gray-900 opacity-70 border-dashed"
-                      : hasPendingDocs
-                        ? "bg-orange-50 dark:bg-orange-950/20 border-orange-300 dark:border-orange-700 hover:shadow-sm"
-                        : "bg-white dark:bg-gray-800 hover:shadow-sm"
+                      : isPending
+                        ? "bg-blue-50 dark:bg-blue-950/20 border-blue-300 dark:border-blue-700 hover:shadow-sm"
+                        : hasPendingDocs
+                          ? "bg-orange-50 dark:bg-orange-950/20 border-orange-300 dark:border-orange-700 hover:shadow-sm"
+                          : "bg-white dark:bg-gray-800 hover:shadow-sm"
                   }`}>
+                    {isPending && !isInactive && (
+                      <div className="flex items-center justify-between gap-2 mb-3 p-2 rounded-md bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-300">
+                          <Clock className="h-3.5 w-3.5" />
+                          Ожидает вашего одобрения
+                        </span>
+                        <Button
+                          size="sm"
+                          className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                          onClick={() => approveMutation.mutate(student.id)}
+                          disabled={approveMutation.isPending}
+                        >
+                          {approveMutation.isPending ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <>
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Одобрить
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1 min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -339,7 +377,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                         )}
                       </div>
                       <div className="flex flex-col gap-1 shrink-0">
-                        {!isInactive && (
+                        {!isInactive && !isPending && (
                           <Button
                             size="sm"
                             onClick={() => handleBookStudent(student)}
@@ -368,16 +406,18 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                             Восстановить
                           </Button>
                         ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                            onClick={() => setStudentToDeactivate(student)}
-                            data-testid={`button-deactivate-student-${student.id}`}
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            Приостановить
-                          </Button>
+                          !isPending && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                              onClick={() => setStudentToDeactivate(student)}
+                              data-testid={`button-deactivate-student-${student.id}`}
+                            >
+                              <X className="h-4 w-4 mr-1" />
+                              Приостановить
+                            </Button>
+                          )
                         )}
                         <Button
                           size="sm"

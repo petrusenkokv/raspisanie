@@ -137,6 +137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isVerified: true,
         password: String(password),
         mustChangePassword: false,
+        isPendingApproval: true,
       } as any);
 
       await recordConsents(user.id, Array.from(accepted));
@@ -379,6 +380,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({
           message: `Вы уже записаны на ${alreadyBooked.timeSlot.time}. На один день можно записаться только один раз.`
         });
+      }
+
+      // Block booking if student is pending trainer approval
+      const bookingStudent = await storage.getUser(studentId);
+      if (bookingStudent?.isPendingApproval) {
+        return res.status(403).json({ message: "Ваша регистрация ещё не одобрена тренером. Ожидайте подтверждения." });
       }
 
       // Check if time slot is available
@@ -644,6 +651,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(studentsWithConsents);
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить список учеников" });
+    }
+  });
+
+  app.patch("/api/trainer/students/:id/approve", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.approveStudent(id);
+      // Notify student
+      await storage.createNotification({
+        userId: user.id,
+        type: "booking_confirmed",
+        title: "Регистрация одобрена",
+        message: "Тренер одобрил вашу регистрацию. Теперь вы можете записываться на тренировки!",
+        isRead: false,
+        relatedBookingId: null,
+      });
+      broadcast({ type: "notification_update" });
+      pushNotifyUser(user.id, "Регистрация одобрена", "Тренер одобрил вашу регистрацию. Теперь вы можете записываться на тренировки!");
+      res.json(user);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось одобрить ученика" });
     }
   });
 

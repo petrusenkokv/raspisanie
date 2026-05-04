@@ -132,6 +132,9 @@ export interface IStorage {
   // Student active status
   setUserActiveStatus(id: string, isActive: boolean, resetCv?: boolean): Promise<User>;
 
+  // Student approval (self-registered students)
+  approveStudent(id: string): Promise<User>;
+
   // Analytics
   getStudentsList(includeInactive?: boolean): Promise<User[]>;
   getTrainer(): Promise<User | undefined>;
@@ -351,6 +354,7 @@ export class MemStorage implements IStorage {
       sickUntil: insertUser.sickUntil ?? null,
       sickNote: insertUser.sickNote ?? null,
       isActive: true,
+      isPendingApproval: insertUser.isPendingApproval ?? false,
       cvRestartDate: null,
       role: insertUser.role || "student",
       isVerified: insertUser.isVerified ?? false,
@@ -1241,6 +1245,14 @@ export class MemStorage implements IStorage {
       isActive,
       cvRestartDate: resetCv && isActive ? today : user.cvRestartDate,
     };
+    this.users.set(id, updated);
+    return updated;
+  }
+
+  async approveStudent(id: string): Promise<User> {
+    const user = this.users.get(id);
+    if (!user) throw new Error("Пользователь не найден");
+    const updated: User = { ...user, isPendingApproval: false };
     this.users.set(id, updated);
     return updated;
   }

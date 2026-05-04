@@ -140,6 +140,11 @@ export class DbStorage implements IStorage {
   // ======================== SEED ========================
 
   async seed(): Promise<void> {
+    // Ensure DB columns exist (safe migrations)
+    try {
+      await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_pending_approval boolean NOT NULL DEFAULT false`);
+    } catch { /* ignore */ }
+
     // Ensure trainer exists
     const trainer = await this.getTrainer();
     if (!trainer) {
@@ -205,6 +210,7 @@ export class DbStorage implements IStorage {
       sickUntil: insertUser.sickUntil ?? null,
       sickNote: insertUser.sickNote ?? null,
       isActive: true,
+      isPendingApproval: insertUser.isPendingApproval ?? false,
       cvRestartDate: null,
       role: insertUser.role || "student",
       isVerified: insertUser.isVerified ?? false,
@@ -662,6 +668,12 @@ export class DbStorage implements IStorage {
     if (user.role === "trainer") throw new Error("Нельзя изменить статус тренера");
     const today = localDateStr(new Date());
     return this.updateUser(id, { isActive, cvRestartDate: resetCv && isActive ? today : user.cvRestartDate });
+  }
+
+  async approveStudent(id: string): Promise<User> {
+    const user = await this.getUser(id);
+    if (!user) throw new Error("Пользователь не найден");
+    return this.updateUser(id, { isPendingApproval: false });
   }
 
   async getTrainer(): Promise<User | undefined> {
