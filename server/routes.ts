@@ -1491,6 +1491,133 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Payment requests ──
+
+  // Student: submit a payment request
+  app.post("/api/student/payment-requests", async (req, res) => {
+    try {
+      const { studentId, type, paidDate, date, note } = req.body;
+      if (!studentId || !type) return res.status(400).json({ message: "Не указан ученик или тип оплаты" });
+      if (!["monthly_cv", "one_time_bv"].includes(type)) return res.status(400).json({ message: "Неверный тип оплаты" });
+      if (type === "monthly_cv" && !paidDate) return res.status(400).json({ message: "Укажите дату оплаты ЧВ" });
+      if (type === "one_time_bv" && !date) return res.status(400).json({ message: "Укажите дату для БВ" });
+      const req2 = await storage.createPaymentRequest(studentId, type, paidDate ?? null, date ?? null, note ?? null);
+      // Notify trainer
+      const trainer = await storage.getTrainer();
+      if (trainer) {
+        const student = await storage.getUser(studentId);
+        const typeLabel = type === "monthly_cv" ? "ЧВ" : "БВ";
+        const name = student ? `${student.firstName} ${student.lastName ?? ""}`.trim() : "Ученик";
+        await storage.createNotification({
+          userId: trainer.id,
+          type: "payment_request",
+          title: `Заявка на оплату от ${name}`,
+          message: `${name} уведомил(а) об оплате ${typeLabel}`,
+          isRead: false,
+          relatedBookingId: null,
+          relatedUserId: studentId,
+        });
+      }
+      res.json(req2);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось создать заявку" });
+    }
+  });
+
+  // Student: get own payment requests
+  app.get("/api/student/payment-requests/:studentId", async (req, res) => {
+    try {
+      const { studentId } = req.params;
+      const requests = await storage.getPaymentRequestsByStudent(studentId);
+      res.json(requests);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось получить заявки" });
+    }
+  });
+
+  // Trainer: get all pending payment requests
+  app.get("/api/trainer/payment-requests", async (req, res) => {
+    try {
+      const requests = await storage.getPendingPaymentRequests();
+      res.json(requests);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось получить заявки" });
+    }
+  });
+
+  // Trainer: confirm payment request (creates the actual payment)
+  app.post("/api/trainer/payment-requests/:id/confirm", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { trainerId } = req.body;
+      if (!trainerId) return res.status(400).json({ message: "Не указан тренер" });
+
+      const pending = await storage.getPendingPaymentRequests();
+      const found = pending.find(r => r.id === id);
+      if (!found) return res.status(404).json({ message: "Заявка не найдена" });
+
+      // Create the actual membership payment
+      const input = found.type === "monthly_cv"
+        ? { type: "monthly_cv" as const, paidDate: found.paidDate!, note: found.note ?? null }
+        : { type: "one_time_bv" as const, date: found.date!, note: found.note ?? null };
+
+      await storage.addMembershipPayment(found.studentId, input, trainerId);
+
+      // Resolve the request
+      const resolved = await storage.resolvePaymentRequest(id, "confirmed", trainerId);
+
+      // Notify student
+      const student = await storage.getUser(found.studentId);
+      if (student) {
+        const typeLabel = found.type === "monthly_cv" ? "ЧВ" : "БВ";
+        await storage.createNotification({
+          userId: found.studentId,
+          type: "payment_confirmed",
+          title: `Оплата ${typeLabel} подтверждена`,
+          message: `Тренер подтвердил вашу оплату ${typeLabel}`,
+          isRead: false,
+          relatedBookingId: null,
+          relatedUserId: trainerId,
+        });
+      }
+
+      res.json(resolved);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось подтвердить заявку" });
+    }
+  });
+
+  // Trainer: reject payment request
+  app.post("/api/trainer/payment-requests/:id/reject", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { trainerId } = req.body;
+      if (!trainerId) return res.status(400).json({ message: "Не указан тренер" });
+
+      const pending = await storage.getPendingPaymentRequests();
+      const found = pending.find(r => r.id === id);
+      if (!found) return res.status(404).json({ message: "Заявка не найдена" });
+
+      const resolved = await storage.resolvePaymentRequest(id, "rejected", trainerId);
+
+      // Notify student
+      const typeLabel = found.type === "monthly_cv" ? "ЧВ" : "БВ";
+      await storage.createNotification({
+        userId: found.studentId,
+        type: "payment_rejected",
+        title: `Заявка на ${typeLabel} отклонена`,
+        message: `Тренер отклонил вашу заявку на оплату ${typeLabel}. Уточните детали.`,
+        isRead: false,
+        relatedBookingId: null,
+        relatedUserId: trainerId,
+      });
+
+      res.json(resolved);
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось отклонить заявку" });
+    }
+  });
+
   const httpServer = createServer(app);
   setupWebSocket(httpServer);
   return httpServer;

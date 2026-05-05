@@ -150,6 +150,20 @@ export const trainerPayments = pgTable("trainer_payments", {
   completedAt: timestamp("completed_at"),
 });
 
+// Payment requests — student declares they've paid or will pay
+export const paymentRequests = pgTable("payment_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  studentId: varchar("student_id").notNull().references(() => users.id),
+  type: text("type").notNull(), // "monthly_cv" | "one_time_bv"
+  paidDate: text("paid_date"), // YYYY-MM-DD (for monthly_cv — the date they paid)
+  date: text("date"), // YYYY-MM-DD (for one_time_bv)
+  note: text("note"),
+  status: text("status").notNull().default("pending"), // "pending" | "confirmed" | "rejected"
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: varchar("resolved_by").references(() => users.id),
+});
+
 // Notification system for trainer confirmations
 export const notifications = pgTable("notifications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -450,3 +464,18 @@ export type BroadcastLog = {
   sentAt: Date;
 };
 export type BookingRequest = z.infer<typeof bookingRequestSchema>;
+
+// Payment request types
+export const insertPaymentRequestSchema = createInsertSchema(paymentRequests).omit({
+  id: true,
+  createdAt: true,
+  resolvedAt: true,
+  resolvedBy: true,
+  status: true,
+});
+export type PaymentRequest = typeof paymentRequests.$inferSelect;
+export type InsertPaymentRequest = z.infer<typeof insertPaymentRequestSchema>;
+
+export type PaymentRequestWithStudent = PaymentRequest & {
+  student: Pick<User, "id" | "firstName" | "lastName" | "phone">;
+};

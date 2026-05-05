@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useGymStore } from "@/store/gym-store";
 import {
   type User,
   type Document,
@@ -38,7 +39,8 @@ import {
 import { BookStudentDialog } from "./book-student-dialog";
 import { DocumentViewDialog } from "./document-view-dialog";
 import { DocumentsManagerDialog } from "./documents-manager-dialog";
-import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle } from "lucide-react";
+import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, BellDot } from "lucide-react";
+import { type PaymentRequestWithStudent } from "@shared/schema";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -230,6 +232,16 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     });
   };
 
+  const { data: pendingPaymentRequests = [] } = useQuery<PaymentRequestWithStudent[]>({
+    queryKey: ["/api/trainer/payment-requests"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/trainer/payment-requests");
+      return r.json();
+    },
+    enabled: open,
+    refetchInterval: 30000,
+  });
+
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
@@ -238,8 +250,19 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
             <SheetTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-blue-600" />
               Список учеников
+              {pendingPaymentRequests.length > 0 && (
+                <span className="ml-auto flex items-center gap-1 text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full font-medium">
+                  <BellDot className="h-3 w-3" />
+                  {pendingPaymentRequests.length} заявк{pendingPaymentRequests.length === 1 ? "а" : pendingPaymentRequests.length < 5 ? "и" : ""}
+                </span>
+              )}
             </SheetTitle>
           </SheetHeader>
+
+          {/* Pending payment requests */}
+          {pendingPaymentRequests.length > 0 && (
+            <PendingPaymentRequestsSection requests={pendingPaymentRequests} />
+          )}
 
           <div className="grid grid-cols-2 gap-2 mb-3">
             <Button
@@ -1237,6 +1260,88 @@ function SickLeaveSection({ student }: { student: User }) {
       <p className="text-[11px] text-gray-500">
         При установке больничного все будущие записи в указанном периоде отменяются с пометкой «уважительная причина».
       </p>
+    </div>
+  );
+}
+
+// ====== Pending payment requests (trainer view) ======
+function PendingPaymentRequestsSection({ requests }: { requests: PaymentRequestWithStudent[] }) {
+  const { toast } = useToast();
+  const { currentUser } = useGymStore();
+
+  const confirmMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await apiRequest("POST", `/api/trainer/payment-requests/${id}/confirm`, { trainerId: currentUser?.id });
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/payment-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+      toast({ title: "Оплата подтверждена и внесена в систему" });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await apiRequest("POST", `/api/trainer/payment-requests/${id}/reject`, { trainerId: currentUser?.id });
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/payment-requests"] });
+      toast({ title: "Заявка отклонена" });
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="mb-4 border border-amber-300 dark:border-amber-700 rounded-lg bg-amber-50 dark:bg-amber-950/20 p-3 space-y-2">
+      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
+        <BellDot className="h-3.5 w-3.5" />
+        Заявки на оплату от учеников
+      </p>
+      {requests.map(req => {
+        const name = [req.student.lastName, req.student.firstName].filter(Boolean).join(" ") || req.student.phone;
+        const typeLabel = req.type === "monthly_cv" ? "ЧВ" : "БВ";
+        const dateLabel = req.type === "monthly_cv" && req.paidDate
+          ? format(new Date(req.paidDate), "d MMM yyyy", { locale: ru })
+          : req.date ? format(new Date(req.date), "d MMM yyyy", { locale: ru }) : "";
+        return (
+          <div key={req.id} className="bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded p-2 space-y-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-sm">
+                <span className="font-medium">{name}</span>
+                <span className="ml-2 text-amber-700 dark:text-amber-400 font-semibold">{typeLabel}</span>
+                {dateLabel && <span className="ml-1 text-gray-500 text-xs">— {dateLabel}</span>}
+                {req.note && <p className="text-xs text-gray-500 mt-0.5">{req.note}</p>}
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <Button
+                  size="sm"
+                  className="h-7 text-xs bg-green-600 hover:bg-green-700"
+                  onClick={() => confirmMutation.mutate(req.id)}
+                  disabled={confirmMutation.isPending || rejectMutation.isPending}
+                >
+                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                  Подтвердить
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50"
+                  onClick={() => rejectMutation.mutate(req.id)}
+                  disabled={confirmMutation.isPending || rejectMutation.isPending}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-400">
+              Подано: {req.createdAt ? format(new Date(req.createdAt), "d MMM HH:mm", { locale: ru }) : ""}
+            </p>
+          </div>
+        );
+      })}
     </div>
   );
 }

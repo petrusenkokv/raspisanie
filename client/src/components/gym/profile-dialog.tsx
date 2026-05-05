@@ -2,17 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { User, Pencil, Save, X, Phone, CalendarDays, Users, UserCircle2, Loader2, Baby } from "lucide-react";
+import { User, Pencil, Save, X, Phone, CalendarDays, Users, UserCircle2, Loader2, Baby, Wallet, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useGymStore } from "@/store/gym-store";
-import { updateStudentProfileSchema, type User as UserType } from "@shared/schema";
+import { updateStudentProfileSchema, type User as UserType, type PaymentRequest } from "@shared/schema";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
 
 type FormValues = typeof updateStudentProfileSchema._type;
 
@@ -181,6 +185,8 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   if (!currentUser || currentUser.role === "trainer") return null;
 
+  // ── Payment request section ──
+
   const initials = `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`.trim() || "У";
   const fullName = [user?.lastName, user?.firstName, user?.middleName].filter(Boolean).join(" ");
 
@@ -260,6 +266,9 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                     </div>
                   </>
                 )}
+
+                <Separator />
+                <PaymentRequestSection studentId={currentUser.id} />
 
                 <div className="flex justify-end pt-2">
                   <Button onClick={() => setEditing(true)}>
@@ -343,5 +352,145 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Student payment request section ──
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function PaymentRequestSection({ studentId }: { studentId: string }) {
+  const { toast } = useToast();
+  const [type, setType] = useState<"monthly_cv" | "one_time_bv">("monthly_cv");
+  const [paidDate, setPaidDate] = useState(todayStr());
+  const [date, setDate] = useState(todayStr());
+  const [note, setNote] = useState("");
+  const [showForm, setShowForm] = useState(false);
+
+  const { data: requests = [], isLoading } = useQuery<PaymentRequest[]>({
+    queryKey: ["/api/student/payment-requests", studentId],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/student/payment-requests/${studentId}`);
+      return r.json();
+    },
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = { studentId, type, note };
+      if (type === "monthly_cv") body.paidDate = paidDate;
+      else body.date = date;
+      const r = await apiRequest("POST", "/api/student/payment-requests", body);
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/student/payment-requests", studentId] });
+      toast({ title: "Заявка отправлена тренеру" });
+      setShowForm(false);
+      setNote("");
+    },
+    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  const statusBadge = (status: string) => {
+    if (status === "pending") return <Badge variant="outline" className="text-amber-600 border-amber-400 bg-amber-50 dark:bg-amber-950/20"><Clock className="h-3 w-3 mr-1" />Ожидает</Badge>;
+    if (status === "confirmed") return <Badge variant="outline" className="text-green-600 border-green-400 bg-green-50 dark:bg-green-950/20"><CheckCircle className="h-3 w-3 mr-1" />Подтверждено</Badge>;
+    return <Badge variant="outline" className="text-red-600 border-red-400 bg-red-50 dark:bg-red-950/20"><AlertCircle className="h-3 w-3 mr-1" />Отклонено</Badge>;
+  };
+
+  const hasPending = requests.some(r => r.status === "pending");
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          <Wallet className="h-4 w-4 text-blue-600" />
+          Уведомить об оплате
+        </p>
+        {!showForm && !hasPending && (
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowForm(true)}>
+            + Подать заявку
+          </Button>
+        )}
+      </div>
+
+      {hasPending && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          У вас есть заявка на рассмотрении. Новую можно подать после её обработки тренером.
+        </p>
+      )}
+
+      {showForm && (
+        <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant={type === "monthly_cv" ? "default" : "outline"}
+              className="h-7 text-xs flex-1"
+              onClick={() => setType("monthly_cv")}
+            >ЧВ (месячный)</Button>
+            <Button
+              size="sm"
+              variant={type === "one_time_bv" ? "default" : "outline"}
+              className="h-7 text-xs flex-1"
+              onClick={() => setType("one_time_bv")}
+            >БВ (разовый)</Button>
+          </div>
+
+          {type === "monthly_cv" && (
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Дата оплаты</label>
+              <Input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} className="h-8 text-sm" />
+            </div>
+          )}
+          {type === "one_time_bv" && (
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Дата занятия</label>
+              <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-8 text-sm" />
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Комментарий (необязательно)</label>
+            <Textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Напр.: перевод на карту, оплата наличными..."
+              className="text-sm resize-none h-16"
+            />
+          </div>
+
+          <div className="flex gap-2 justify-end">
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowForm(false)}>
+              Отмена
+            </Button>
+            <Button size="sm" className="h-7 text-xs" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
+              {submitMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Отправить"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isLoading && <p className="text-xs text-muted-foreground">Загрузка...</p>}
+
+      {requests.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground">История заявок:</p>
+          {requests.slice(0, 5).map(req => {
+            const typeLabel = req.type === "monthly_cv" ? "ЧВ" : "БВ";
+            const dateStr = req.type === "monthly_cv" && req.paidDate
+              ? format(new Date(req.paidDate), "d MMM yyyy", { locale: ru })
+              : req.date ? format(new Date(req.date), "d MMM yyyy", { locale: ru }) : "";
+            return (
+              <div key={req.id} className="flex items-center justify-between text-xs border rounded px-2 py-1.5 bg-background">
+                <span className="font-medium text-gray-700 dark:text-gray-300">{typeLabel}{dateStr && <span className="font-normal text-gray-500 ml-1">— {dateStr}</span>}</span>
+                {statusBadge(req.status)}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

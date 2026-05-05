@@ -153,6 +153,12 @@ export interface IStorage {
   deletePushSubscription(endpoint: string): Promise<void>;
   getPushSubscriptionsByUser(userId: string): Promise<PushSubscriptionData[]>;
   getAllPushSubscriptions(): Promise<PushSubscriptionData[]>;
+
+  // Payment requests (student-initiated)
+  createPaymentRequest(studentId: string, type: string, paidDate: string | null, date: string | null, note: string | null): Promise<import("@shared/schema").PaymentRequest>;
+  getPaymentRequestsByStudent(studentId: string): Promise<import("@shared/schema").PaymentRequest[]>;
+  getPendingPaymentRequests(): Promise<import("@shared/schema").PaymentRequestWithStudent[]>;
+  resolvePaymentRequest(id: string, status: "confirmed" | "rejected", resolvedBy: string): Promise<import("@shared/schema").PaymentRequest>;
 }
 
 function localDateStr(d: Date): string {
@@ -1779,6 +1785,53 @@ export class MemStorage implements IStorage {
 
   async getAllPushSubscriptions(): Promise<PushSubscriptionData[]> {
     return Array.from(this.pushSubscriptions.values());
+  }
+
+  // ── Payment requests ──
+  private paymentRequestsMap: Map<string, import("@shared/schema").PaymentRequest> = new Map();
+
+  async createPaymentRequest(studentId: string, type: string, paidDate: string | null, date: string | null, note: string | null): Promise<import("@shared/schema").PaymentRequest> {
+    const req: import("@shared/schema").PaymentRequest = {
+      id: randomUUID(),
+      studentId,
+      type,
+      paidDate: paidDate ?? null,
+      date: date ?? null,
+      note: note ?? null,
+      status: "pending",
+      createdAt: new Date(),
+      resolvedAt: null,
+      resolvedBy: null,
+    };
+    this.paymentRequestsMap.set(req.id, req);
+    return req;
+  }
+
+  async getPaymentRequestsByStudent(studentId: string): Promise<import("@shared/schema").PaymentRequest[]> {
+    return Array.from(this.paymentRequestsMap.values())
+      .filter(r => r.studentId === studentId)
+      .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
+  }
+
+  async getPendingPaymentRequests(): Promise<import("@shared/schema").PaymentRequestWithStudent[]> {
+    const pending = Array.from(this.paymentRequestsMap.values())
+      .filter(r => r.status === "pending")
+      .sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
+    return pending.map(r => {
+      const student = this.users.get(r.studentId);
+      return {
+        ...r,
+        student: { id: student?.id ?? r.studentId, firstName: student?.firstName ?? "", lastName: student?.lastName ?? null, phone: student?.phone ?? "" },
+      };
+    });
+  }
+
+  async resolvePaymentRequest(id: string, status: "confirmed" | "rejected", resolvedBy: string): Promise<import("@shared/schema").PaymentRequest> {
+    const req = this.paymentRequestsMap.get(id);
+    if (!req) throw new Error("Заявка не найдена");
+    const updated = { ...req, status, resolvedAt: new Date(), resolvedBy };
+    this.paymentRequestsMap.set(id, updated);
+    return updated;
   }
 }
 
