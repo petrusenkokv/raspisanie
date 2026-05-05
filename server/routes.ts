@@ -290,6 +290,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(400).json({ message: "Не указан пользователь" });
       }
+      // Block profile editing for pending students
+      const currentUserRecord = await storage.getUser(userId);
+      if (currentUserRecord?.isPendingApproval) {
+        return res.status(403).json({ message: "Редактирование профиля доступно только после одобрения тренером." });
+      }
       const parsed = updateStudentProfileSchema.safeParse(payload);
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.issues[0]?.message || "Некорректные данные" });

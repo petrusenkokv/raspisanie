@@ -27,7 +27,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, LogOut, LogIn, UserPlus, UserCircle2, KeyRound, Lock, Unlock,
-  CalendarOff, Settings, Send, MoreHorizontal, Users, Bell, BellOff,
+  CalendarOff, Settings, Send, MoreHorizontal, Users, Bell, BellOff, Clock,
 } from "lucide-react";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 
@@ -180,8 +180,14 @@ export function GymSchedulePage() {
     setLoading(isLoading);
   }, [scheduleData, isLoading, setSchedule, setLoading]);
 
+  const isPendingApproval = !!(currentUser as any)?.isPendingApproval;
+
   const handleBook = (timeSlotId: string) => {
     if (!currentUser) { setAuthModalOpen(true); return; }
+    if (isPendingApproval) {
+      toast({ title: "Ожидайте одобрения", description: "Запись станет доступна после того, как тренер одобрит вашу регистрацию.", variant: "destructive" });
+      return;
+    }
     bookMutation.mutate(timeSlotId);
   };
 
@@ -215,6 +221,14 @@ export function GymSchedulePage() {
             </span>
           )}
         </div>
+
+        {/* Pending approval banner */}
+        {isPendingApproval && (
+          <span className="hidden sm:flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1">
+            <Clock className="h-3.5 w-3.5 flex-shrink-0" />
+            Ожидает одобрения тренера
+          </span>
+        )}
 
         {/* Right side buttons */}
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -312,7 +326,7 @@ export function GymSchedulePage() {
             <>
               {/* Desktop: separate buttons */}
               <div className="hidden sm:flex items-center gap-2">
-                {currentUser?.role !== "trainer" && (
+                {currentUser?.role !== "trainer" && !isPendingApproval && (
                   <Button variant="outline" size="sm" onClick={() => setProfileOpen(true)} data-testid="button-my-profile">
                     <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
                   </Button>
@@ -338,7 +352,7 @@ export function GymSchedulePage() {
                       {currentUser?.firstName} {currentUser?.lastName ?? ""}
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {currentUser?.role !== "trainer" && (
+                    {currentUser?.role !== "trainer" && !isPendingApproval && (
                       <DropdownMenuItem onClick={() => setProfileOpen(true)}>
                         <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
                       </DropdownMenuItem>
