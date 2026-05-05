@@ -670,16 +670,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const user = await storage.approveStudent(id);
-      // Notify student
+      // Notify student about approval
       await storage.createNotification({
         userId: user.id,
-        type: "booking_confirmed",
+        type: "registration_approved",
         title: "Регистрация одобрена",
         message: "Тренер одобрил вашу регистрацию. Теперь вы можете записываться на тренировки!",
         isRead: false,
         relatedBookingId: null,
       });
       broadcast({ type: "notification_update" });
+      broadcast({ type: "user_update", userId: user.id });
       pushNotifyUser(user.id, "Регистрация одобрена", "Тренер одобрил вашу регистрацию. Теперь вы можете записываться на тренировки!");
       res.json(user);
     } catch (error: any) {
