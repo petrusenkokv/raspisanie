@@ -414,12 +414,15 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 px-2 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-md">
-                    <UserCheck className="h-4 w-4 text-green-600 shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-green-800 dark:text-green-300">Вы записаны!</p>
-                      <p className="text-xs text-green-600 dark:text-green-400">Тренер подтвердил запись</p>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2 px-2 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-md">
+                      <UserCheck className="h-4 w-4 text-green-600 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-green-800 dark:text-green-300">Вы записаны!</p>
+                        <p className="text-xs text-green-600 dark:text-green-400">Тренер подтвердил запись</p>
+                      </div>
                     </div>
+                    <StudentPaymentBadges studentId={userBooking.studentId} dateStr={timeSlot.date} />
                   </div>
                 )
               ) : (
@@ -650,6 +653,100 @@ function AttendanceButton({
       {icon}
       <span>{label}</span>
     </button>
+  );
+}
+
+function StudentPaymentBadges({ studentId, dateStr }: { studentId: string; dateStr: string }) {
+  const { data } = useQuery<StudentPaymentStatus>({
+    queryKey: ["student-payment-status", studentId, dateStr],
+    queryFn: async () => {
+      const r = await apiRequest(
+        "GET",
+        `/api/student/payment-status/${studentId}?date=${encodeURIComponent(dateStr)}`,
+      );
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+
+  if (!data) return null;
+
+  const cvOk = data.hasMembership;
+  const cvLabel = data.membershipKind === "monthly_cv" ? "ЧВ" : data.membershipKind === "one_time_bv" ? "БВ" : "ЧВ/БВ";
+  const trainerOk = data.hasTrainerPayment;
+  const trainerLabel = data.activeTrainerPayment
+    ? `${Math.max(0, data.activeTrainerPayment.totalSessions - data.activeTrainerPayment.usedSessions)}/${data.activeTrainerPayment.totalSessions}`
+    : "—";
+
+  let cvTooltipNode: React.ReactNode;
+  let cvDaysLeft: number | null = null;
+  if (cvOk && data.membershipKind === "monthly_cv" && data.cvPaidDate && data.cvValidUntil) {
+    const paid = parseISO(data.cvPaidDate);
+    const validUntil = parseISO(data.cvValidUntil);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const daysLeft = Math.max(0, differenceInCalendarDays(validUntil, today));
+    cvDaysLeft = daysLeft;
+    cvTooltipNode = (
+      <div className="space-y-1 text-xs">
+        <div className="font-semibold">ЧВ оплачен</div>
+        <div>Оплата: {format(paid, "d MMMM yyyy", { locale: ru })}</div>
+        <div>Действует до: {format(validUntil, "d MMMM yyyy", { locale: ru })} вкл.</div>
+        <div className={daysLeft <= 3 ? "text-orange-300 font-medium" : "text-gray-300"}>
+          Осталось дней: {daysLeft}{daysLeft <= 3 && " — скоро нужна оплата"}
+        </div>
+      </div>
+    );
+  } else if (cvOk && data.membershipKind === "one_time_bv" && data.cvPaidDate) {
+    cvTooltipNode = (
+      <div className="space-y-1 text-xs">
+        <div className="font-semibold">БВ оплачен</div>
+        <div>Дата: {format(parseISO(data.cvPaidDate), "d MMMM yyyy", { locale: ru })}</div>
+        <div className="text-gray-300">Разовая оплата на этот день</div>
+      </div>
+    );
+  } else {
+    cvTooltipNode = <span className="text-xs">ЧВ/БВ не оплачены</span>;
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border cursor-help font-medium ${
+              !cvOk
+                ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+                : cvDaysLeft !== null && cvDaysLeft <= 3
+                ? "bg-orange-100 text-orange-700 border-orange-400 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700"
+                : "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+            }`}
+          >
+            <Wallet className="h-2.5 w-2.5" />
+            {cvOk ? (
+              <>
+                {cvLabel}
+                {cvDaysLeft !== null && cvDaysLeft <= 3 && <span className="ml-0.5">·{cvDaysLeft}д</span>}
+              </>
+            ) : (
+              `${cvLabel} ✗`
+            )}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs">{cvTooltipNode}</TooltipContent>
+      </Tooltip>
+      <span
+        className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border font-medium ${
+          trainerOk
+            ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+            : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+        }`}
+        title={trainerOk ? `Оплата тренеру: ${trainerLabel}` : "Нет оплаты тренеру"}
+      >
+        <Dumbbell className="h-2.5 w-2.5" />
+        {trainerOk ? trainerLabel : "✗"}
+      </span>
+    </span>
   );
 }
 

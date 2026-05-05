@@ -1198,6 +1198,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Student: own payment status for a specific date (YYYY-MM-DD)
+  app.get("/api/student/payment-status/:studentId", async (req, res) => {
+    try {
+      const { studentId } = req.params;
+      const dateStr = String(req.query.date || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return res.status(400).json({ message: "Укажите параметр date в формате YYYY-MM-DD" });
+      }
+      const user = await storage.getUser(studentId);
+      if (!user) return res.status(404).json({ message: "Пользователь не найден" });
+      const status = await storage.getStudentPaymentStatus(studentId, dateStr);
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить статус оплаты" });
+    }
+  });
+
   // Payment status for a specific student on a specific date (YYYY-MM-DD)
   app.get("/api/trainer/students/:id/payment-status", async (req, res) => {
     try {
