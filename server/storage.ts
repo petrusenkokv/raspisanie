@@ -403,6 +403,9 @@ export class MemStorage implements IStorage {
     for (const [notifId, notif] of Array.from(this.notifications.entries())) {
       if (notif.userId === id) {
         this.notifications.delete(notifId);
+      } else if ((notif as any).relatedUserId === id) {
+        // Nullify relatedUserId in trainer notifications referencing this student
+        this.notifications.set(notifId, { ...notif, relatedUserId: null } as any);
       }
     }
     // Remove all consents recorded by this user
@@ -415,6 +418,18 @@ export class MemStorage implements IStorage {
     for (const [rid, rule] of Array.from(this.recurringBookings.entries())) {
       if (rule.studentId === id) {
         this.recurringBookings.delete(rid);
+      }
+    }
+    // Remove membership payments for this student
+    for (const [pid, payment] of Array.from(this.membershipPayments.entries())) {
+      if (payment.studentId === id) {
+        this.membershipPayments.delete(pid);
+      }
+    }
+    // Remove trainer payments for this student
+    for (const [pid, payment] of Array.from(this.trainerPayments.entries())) {
+      if (payment.studentId === id) {
+        this.trainerPayments.delete(pid);
       }
     }
     this.users.delete(id);

@@ -238,15 +238,15 @@ export class DbStorage implements IStorage {
     if (user.role === "trainer") throw new Error("Нельзя удалить тренера");
     await db.delete(userConsents).where(eq(userConsents.userId, id));
     await db.delete(notifications).where(eq(notifications.userId, id));
-    // Cancel future bookings
-    const studentBookings = await db.select().from(bookings).where(eq(bookings.studentId, id));
-    if (studentBookings.length > 0) {
-      await db.delete(bookings).where(eq(bookings.studentId, id));
-    }
-    const recurringRules = await db.select().from(recurringBookings).where(eq(recurringBookings.studentId, id));
-    if (recurringRules.length > 0) {
-      await db.delete(recurringBookings).where(eq(recurringBookings.studentId, id));
-    }
+    // Nullify relatedUserId in trainer notifications referencing this student (FK constraint)
+    await db.update(notifications).set({ relatedUserId: null }).where(eq(notifications.relatedUserId, id));
+    // Delete membership and trainer payment records for this student
+    await db.delete(membershipPayments).where(eq(membershipPayments.studentId, id));
+    await db.delete(trainerPayments).where(eq(trainerPayments.studentId, id));
+    // Delete recurring booking rules
+    await db.delete(recurringBookings).where(eq(recurringBookings.studentId, id));
+    // Delete bookings (after recurring rules, since bookings may reference them)
+    await db.delete(bookings).where(eq(bookings.studentId, id));
     await db.delete(users).where(eq(users.id, id));
   }
 
