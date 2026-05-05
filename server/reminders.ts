@@ -153,8 +153,8 @@ async function checkTrainerSubscriptions() {
           await storage.createNotification({
             userId: student.id,
             type: "trainer_subscription_reminder",
-            title: "Остался последний сеанс",
-            message: `В абонементе к тренеру остался 1 сеанс из ${sub.totalSessions}. Не забудьте оплатить новый абонемент.`,
+            title: "Осталась последняя тренировка",
+            message: `В абонементе к тренеру осталась 1 тренировка из ${sub.totalSessions}. Не забудьте оплатить новый абонемент.`,
           });
           sentTrainerSub.add(key);
         }
