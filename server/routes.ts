@@ -290,6 +290,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/trainer/profile", async (req, res) => {
+    try {
+      const { userId, phone } = req.body;
+      if (!userId) return res.status(400).json({ message: "Не указан пользователь" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "Пользователь не найден" });
+      if (user.role !== "trainer") return res.status(403).json({ message: "Доступ только для тренера" });
+
+      if (phone !== undefined) {
+        // Validate phone format
+        let digits = String(phone || "").replace(/\D/g, "");
+        if (digits.length === 10) digits = "7" + digits;
+        else if (digits.length === 11 && digits.startsWith("8")) digits = "7" + digits.slice(1);
+        if (digits.length !== 11 || !digits.startsWith("7")) {
+          return res.status(400).json({ message: "Некорректный номер телефона" });
+        }
+        // Check uniqueness
+        const existing = await storage.getUserByPhone(digits);
+        if (existing && existing.id !== userId) {
+          return res.status(409).json({ message: "Этот номер уже используется другим пользователем" });
+        }
+        const updated = await storage.updateUser(userId, { phone: digits });
+        const { password: _pw, ...safeUser } = updated as any;
+        return res.json({ user: safeUser });
+      }
+
+      const { password: _pw, ...safeUser } = user as any;
+      res.json({ user: safeUser });
+    } catch (error) {
+      res.status(500).json({ message: "Не удалось обновить профиль" });
+    }
+  });
+
   app.get("/api/users/:id", async (req, res) => {
     try {
       const user = await storage.getUser(req.params.id);

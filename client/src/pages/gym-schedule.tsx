@@ -6,6 +6,7 @@ import { AuthModal } from "@/components/gym/auth-modal";
 import { StudentsPanel } from "@/components/gym/students-panel";
 import { BookStudentDialog } from "@/components/gym/book-student-dialog";
 import { ChangePasswordDialog } from "@/components/gym/change-password-dialog";
+import { TrainerProfileDialog } from "@/components/gym/trainer-profile-dialog";
 import { BlockPeriodDialog } from "@/components/gym/block-period-dialog";
 import { ScheduleSettingsDialog } from "@/components/gym/schedule-settings-dialog";
 import { BroadcastDialog } from "@/components/gym/broadcast-dialog";
@@ -38,6 +39,7 @@ export function GymSchedulePage() {
   const [trainerBookDialogOpen, setTrainerBookDialogOpen] = useState(false);
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<string | null>(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [trainerProfileOpen, setTrainerProfileOpen] = useState(false);
   const [blockPeriodOpen, setBlockPeriodOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
@@ -342,14 +344,21 @@ export function GymSchedulePage() {
             <>
               {/* Desktop: separate buttons */}
               <div className="hidden sm:flex items-center gap-2">
+                {currentUser?.role === "trainer" && (
+                  <Button variant="outline" size="sm" onClick={() => setTrainerProfileOpen(true)} data-testid="button-trainer-profile">
+                    <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
+                  </Button>
+                )}
                 {currentUser?.role !== "trainer" && !isPendingApproval && (
                   <Button variant="outline" size="sm" onClick={() => setProfileOpen(true)} data-testid="button-my-profile">
                     <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
                   </Button>
                 )}
-                <Button variant="outline" size="sm" onClick={() => setChangePasswordOpen(true)} data-testid="button-change-password">
-                  <KeyRound className="h-4 w-4 mr-2" />Сменить пароль
-                </Button>
+                {currentUser?.role !== "trainer" && (
+                  <Button variant="outline" size="sm" onClick={() => setChangePasswordOpen(true)} data-testid="button-change-password">
+                    <KeyRound className="h-4 w-4 mr-2" />Сменить пароль
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={handleLogout} data-testid="button-logout">
                   <LogOut className="h-4 w-4 mr-2" />Выйти
                 </Button>
@@ -368,14 +377,21 @@ export function GymSchedulePage() {
                       {currentUser?.firstName} {currentUser?.lastName ?? ""}
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
+                    {currentUser?.role === "trainer" && (
+                      <DropdownMenuItem onClick={() => setTrainerProfileOpen(true)}>
+                        <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
+                      </DropdownMenuItem>
+                    )}
                     {currentUser?.role !== "trainer" && !isPendingApproval && (
                       <DropdownMenuItem onClick={() => setProfileOpen(true)}>
                         <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={() => setChangePasswordOpen(true)}>
-                      <KeyRound className="h-4 w-4 mr-2" />Сменить пароль
-                    </DropdownMenuItem>
+                    {currentUser?.role !== "trainer" && (
+                      <DropdownMenuItem onClick={() => setChangePasswordOpen(true)}>
+                        <KeyRound className="h-4 w-4 mr-2" />Сменить пароль
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-red-600 dark:text-red-400">
                       <LogOut className="h-4 w-4 mr-2" />Выйти
@@ -434,6 +450,7 @@ export function GymSchedulePage() {
       <ScheduleSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <BroadcastDialog open={broadcastOpen} onOpenChange={setBroadcastOpen} />
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+      <TrainerProfileDialog open={trainerProfileOpen} onOpenChange={setTrainerProfileOpen} />
     </div>
   );
 }
