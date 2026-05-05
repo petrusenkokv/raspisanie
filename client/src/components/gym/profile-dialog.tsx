@@ -17,26 +17,10 @@ import { useGymStore } from "@/store/gym-store";
 import { updateStudentProfileSchema, type User as UserType, type PaymentRequest } from "@shared/schema";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+import { calculateAge, todayLocalStr, formatDateDMY } from "@/lib/utils-gym";
 
 type FormValues = typeof updateStudentProfileSchema._type;
 
-function calculateAge(birthDate: string | null | undefined): number | null {
-  if (!birthDate) return null;
-  const b = new Date(birthDate);
-  if (isNaN(b.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - b.getFullYear();
-  const m = today.getMonth() - b.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
-  return age;
-}
-
-function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return "—";
-  const [year, month, day] = dateStr.split("-");
-  if (!year || !month || !day) return dateStr;
-  return `${day}.${month}.${year}`;
-}
 
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value?: string | null }) {
   return (
@@ -232,7 +216,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                   icon={<CalendarDays className="h-4 w-4" />}
                   label="Дата рождения"
                   value={user?.birthDate
-                    ? `${formatDate(user.birthDate)}${viewAge !== null ? ` (${viewAge} лет)` : ""}`
+                    ? `${formatDateDMY(user.birthDate)}${viewAge !== null ? ` (${viewAge} лет)` : ""}`
                     : undefined}
                 />
                 <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={user?.phone} />
@@ -356,15 +340,11 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 }
 
 // ── Student payment request section ──
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function PaymentRequestSection({ studentId }: { studentId: string }) {
   const { toast } = useToast();
   const [type, setType] = useState<"monthly_cv" | "one_time_bv">("monthly_cv");
-  const [paidDate, setPaidDate] = useState(todayStr());
-  const [date, setDate] = useState(todayStr());
+  const [paidDate, setPaidDate] = useState(todayLocalStr());
+  const [date, setDate] = useState(todayLocalStr());
   const [note, setNote] = useState("");
   const [showForm, setShowForm] = useState(false);
 

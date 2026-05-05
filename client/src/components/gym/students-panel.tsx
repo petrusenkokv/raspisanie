@@ -35,29 +35,19 @@ import {
   type MembershipPayment,
   type TrainerPaymentWithUsage,
   type TrainerPaymentType,
+  type PaymentRequestWithStudent,
 } from "@shared/schema";
 import { BookStudentDialog } from "./book-student-dialog";
 import { DocumentViewDialog } from "./document-view-dialog";
 import { DocumentsManagerDialog } from "./documents-manager-dialog";
 import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, BellDot } from "lucide-react";
-import { type PaymentRequestWithStudent } from "@shared/schema";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+import { calculateAge, todayLocalStr } from "@/lib/utils-gym";
 
 interface StudentsPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}
-
-function calculateAge(birthDate: string | null | undefined): number | null {
-  if (!birthDate) return null;
-  const b = new Date(birthDate);
-  if (isNaN(b.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - b.getFullYear();
-  const m = today.getMonth() - b.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
-  return age;
 }
 
 const emptyNewStudent = {
@@ -916,14 +906,6 @@ function Field({ label, value, multiline }: { label: string; value: string; mult
 }
 
 const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
-function todayLocalStr(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 function RecurringBookingsSection({ studentId }: { studentId: string }) {
   const { toast } = useToast();
