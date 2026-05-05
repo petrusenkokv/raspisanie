@@ -183,11 +183,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) {
         return res.status(404).json({ message: "Пользователь не найден" });
       }
-      if (!user.isVerified) {
-        return res.status(400).json({ message: "Пользователь не подтверждён" });
-      }
       if (!password || user.password !== password) {
         return res.status(401).json({ message: "Неверный пароль" });
+      }
+
+      // Trainer: no consent check needed
+      if (user.role === "trainer") {
+        await storage.updateUser(user.id, { lastLogin: new Date() });
+        return res.json({
+          user: {
+            id: user.id,
+            phone: user.phone,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role,
+            mustChangePassword: user.mustChangePassword,
+          },
+          pendingDocuments: [],
+        });
+      }
+
+      if (!user.isVerified) {
+        return res.status(400).json({ message: "Пользователь не подтверждён" });
       }
 
       await storage.updateUser(user.id, { lastLogin: new Date() });
