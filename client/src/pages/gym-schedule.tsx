@@ -50,6 +50,7 @@ export function GymSchedulePage() {
     schedule,
     setSchedule,
     setLoading,
+    setUser,
     isTrainer,
     logout
   } = useGymStore();
@@ -59,6 +60,23 @@ export function GymSchedulePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   useWebSocket();
+
+  // Poll current user status every 5 seconds while pending approval
+  const isPendingApproval = !!(currentUser as any)?.isPendingApproval;
+  const { data: freshUserData } = useQuery<{ user: User }>({
+    queryKey: [`/api/users/${currentUser?.id}`],
+    enabled: !!currentUser?.id && isPendingApproval,
+    refetchInterval: 5000,
+    staleTime: 0,
+  });
+
+  // When polling detects approval — update store immediately
+  useEffect(() => {
+    if (freshUserData?.user && !(freshUserData.user as any).isPendingApproval && isPendingApproval) {
+      setUser(freshUserData.user);
+      toast({ title: "Регистрация одобрена", description: "Теперь вы можете записываться на тренировки!" });
+    }
+  }, [freshUserData]);
 
   const localDate = (d: Date) => {
     const y = d.getFullYear();
@@ -179,8 +197,6 @@ export function GymSchedulePage() {
     }
     setLoading(isLoading);
   }, [scheduleData, isLoading, setSchedule, setLoading]);
-
-  const isPendingApproval = !!(currentUser as any)?.isPendingApproval;
 
   const handleBook = (timeSlotId: string) => {
     if (!currentUser) { setAuthModalOpen(true); return; }
