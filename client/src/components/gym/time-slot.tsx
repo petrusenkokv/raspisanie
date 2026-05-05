@@ -657,19 +657,19 @@ function AttendanceButton({
 }
 
 function StudentPaymentBadges({ studentId, dateStr }: { studentId: string; dateStr: string }) {
-  const { data } = useQuery<StudentPaymentStatus>({
-    queryKey: ["student-payment-status", studentId, dateStr],
-    queryFn: async () => {
-      const r = await apiRequest(
-        "GET",
-        `/api/student/payment-status/${studentId}?date=${encodeURIComponent(dateStr)}`,
-      );
-      return r.json();
-    },
+  const { data, isLoading, isError } = useQuery<StudentPaymentStatus>({
+    queryKey: [`/api/student/payment-status/${studentId}?date=${dateStr}`],
     staleTime: 30_000,
   });
 
-  if (!data) return null;
+  if (isLoading) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+        <span className="text-[10px] text-gray-400 animate-pulse">загрузка...</span>
+      </span>
+    );
+  }
+  if (isError || !data) return null;
 
   const cvOk = data.hasMembership;
   const cvLabel = data.membershipKind === "monthly_cv" ? "ЧВ" : data.membershipKind === "one_time_bv" ? "БВ" : "ЧВ/БВ";
