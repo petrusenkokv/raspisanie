@@ -3,7 +3,7 @@ import { eq, and, or, ne, asc, desc, inArray, gte, lte, lt, sql as drizzleSql } 
 import { pgTable, varchar, text, timestamp } from "drizzle-orm/pg-core";
 import {
   users, documents, userConsents, timeSlots, trainerSettings,
-  holidays, recurringBookings, bookings, membershipPayments, trainerPayments, notifications, paymentRequests,
+  holidays, recurringBookings, bookings, membershipPayments, trainerPayments, notifications,
   type User, type InsertUser,
   type TimeSlot, type InsertTimeSlot,
   type Booking, type InsertBooking,
@@ -20,7 +20,6 @@ import {
   type StudentPaymentStatus,
   type TimeSlotWithBookings, type BookingWithDetails, type DaySchedule,
   type BroadcastLog,
-  type PaymentRequest, type PaymentRequestWithStudent,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import type { IStorage, AttendanceStats } from "./storage";
@@ -1280,70 +1279,6 @@ export class DbStorage implements IStorage {
     }
     this.broadcastLogs.delete(id);
     return { deletedNotifications };
-  }
-
-  // ── Payment requests ──
-  async createPaymentRequest(studentId: string, type: string, paidDate: string | null, date: string | null, note: string | null): Promise<PaymentRequest> {
-    const rows = await db.insert(paymentRequests).values({
-      studentId,
-      type,
-      paidDate: paidDate ?? undefined,
-      date: date ?? undefined,
-      note: note ?? undefined,
-      status: "pending",
-    }).returning();
-    return rows[0];
-  }
-
-  async getPaymentRequestsByStudent(studentId: string): Promise<PaymentRequest[]> {
-    return db.select().from(paymentRequests)
-      .where(eq(paymentRequests.studentId, studentId))
-      .orderBy(desc(paymentRequests.createdAt));
-  }
-
-  async getPendingPaymentRequests(): Promise<PaymentRequestWithStudent[]> {
-    const rows = await db.select({
-      id: paymentRequests.id,
-      studentId: paymentRequests.studentId,
-      type: paymentRequests.type,
-      paidDate: paymentRequests.paidDate,
-      date: paymentRequests.date,
-      note: paymentRequests.note,
-      status: paymentRequests.status,
-      createdAt: paymentRequests.createdAt,
-      resolvedAt: paymentRequests.resolvedAt,
-      resolvedBy: paymentRequests.resolvedBy,
-      studentFirstName: users.firstName,
-      studentLastName: users.lastName,
-      studentPhone: users.phone,
-      studentUserId: users.id,
-    }).from(paymentRequests)
-      .innerJoin(users, eq(paymentRequests.studentId, users.id))
-      .where(eq(paymentRequests.status, "pending"))
-      .orderBy(asc(paymentRequests.createdAt));
-
-    return rows.map(r => ({
-      id: r.id,
-      studentId: r.studentId,
-      type: r.type,
-      paidDate: r.paidDate,
-      date: r.date,
-      note: r.note,
-      status: r.status,
-      createdAt: r.createdAt,
-      resolvedAt: r.resolvedAt,
-      resolvedBy: r.resolvedBy,
-      student: { id: r.studentUserId, firstName: r.studentFirstName, lastName: r.studentLastName, phone: r.studentPhone },
-    }));
-  }
-
-  async resolvePaymentRequest(id: string, status: "confirmed" | "rejected", resolvedBy: string): Promise<PaymentRequest> {
-    const rows = await db.update(paymentRequests)
-      .set({ status, resolvedAt: new Date(), resolvedBy })
-      .where(eq(paymentRequests.id, id))
-      .returning();
-    if (!rows[0]) throw new Error("Заявка не найдена");
-    return rows[0];
   }
 
   private pushSubscriptions: Map<string, PushSubscriptionData> = new Map();
