@@ -52,6 +52,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   const [pendingLoginUser, setPendingLoginUser] = useState<any>(null);
   const [pendingConsentDocs, setPendingConsentDocs] = useState<Document[]>([]);
   const [loginConsentAccepted, setLoginConsentAccepted] = useState<Record<string, boolean>>({});
+  const [pendingShowWelcome, setPendingShowWelcome] = useState(false);
 
   const { data: documents = [] } = useQuery<Document[]>({
     queryKey: ["/api/documents"],
@@ -68,7 +69,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
       const r = await apiRequest("GET", "/api/schedule/settings");
       return r.json();
     },
-    enabled: open && (mode === "welcome" || mode === "welcome_trainer_msg"),
+    enabled: open && (mode === "welcome" || mode === "welcome_trainer_msg" || pendingShowWelcome),
   });
 
   const age = useMemo(() => calculateAge(studentBirthDate), [studentBirthDate]);
@@ -97,6 +98,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
     setPendingLoginUser(null);
     setPendingConsentDocs([]);
     setLoginConsentAccepted({});
+    setPendingShowWelcome(false);
   };
 
   const handleLogin = async () => {
@@ -112,6 +114,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
         setPendingLoginUser(data.user);
         setPendingConsentDocs(data.pendingDocuments);
         setLoginConsentAccepted({});
+        setPendingShowWelcome(!!data.showWelcomeMessage);
         setMode("consent");
       } else if (data.showWelcomeMessage) {
         setUser(data.user);
@@ -154,9 +157,14 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
         documentIds: pendingConsentDocs.map(d => d.id),
       });
       setUser(pendingLoginUser);
-      toast({ title: "Добро пожаловать!", description: `Вы вошли как ${pendingLoginUser.firstName}` });
-      onOpenChange(false);
-      resetForm();
+      if (pendingShowWelcome) {
+        setPendingShowWelcome(false);
+        setMode("welcome_trainer_msg");
+      } else {
+        toast({ title: "Добро пожаловать!", description: `Вы вошли как ${pendingLoginUser.firstName}` });
+        onOpenChange(false);
+        resetForm();
+      }
     } catch (error: any) {
       toast({
         variant: "destructive",
