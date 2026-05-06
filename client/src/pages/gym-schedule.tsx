@@ -13,6 +13,7 @@ import { BroadcastDialog } from "@/components/gym/broadcast-dialog";
 import { ProfileDialog } from "@/components/gym/profile-dialog";
 import { NotificationsPopover } from "@/components/gym/notifications-popover";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,7 +29,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, LogOut, LogIn, UserPlus, UserCircle2, KeyRound, Lock, Unlock,
-  CalendarOff, Settings, Send, MoreHorizontal, Users, Bell, BellOff, Clock,
+  CalendarOff, Settings, Send, MoreHorizontal, Users, Bell, BellOff, Clock, MessageSquare,
 } from "lucide-react";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 
@@ -44,6 +45,7 @@ export function GymSchedulePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [welcomeDialogOpen, setWelcomeDialogOpen] = useState(false);
   const {
     currentUser,
     isAuthenticated,
@@ -72,11 +74,15 @@ export function GymSchedulePage() {
     staleTime: 0,
   });
 
-  // When polling detects approval — update store immediately
+  // When polling detects approval — update store and show welcome dialog
   useEffect(() => {
     if (freshUserData?.user && !(freshUserData.user as any).isPendingApproval && isPendingApproval) {
       setUser(freshUserData.user);
-      toast({ title: "Регистрация одобрена", description: "Теперь вы можете записываться на тренировки!" });
+      if (!(freshUserData.user as any).welcomeShown) {
+        setWelcomeDialogOpen(true);
+      } else {
+        toast({ title: "Регистрация одобрена", description: "Теперь вы можете записываться на тренировки!" });
+      }
     }
   }, [freshUserData]);
 
@@ -435,6 +441,19 @@ export function GymSchedulePage() {
       </div>
 
       <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} initialMode={authModalMode} />
+
+      {/* Welcome dialog shown when trainer approves student while they wait on page */}
+      <WelcomeDialog
+        open={welcomeDialogOpen}
+        onClose={async () => {
+          setWelcomeDialogOpen(false);
+          if (currentUser?.id) {
+            await apiRequest("POST", `/api/users/${currentUser.id}/mark-welcome-shown`).catch(() => {});
+          }
+        }}
+        userId={currentUser?.id}
+        firstName={currentUser?.firstName}
+      />
       <StudentsPanel open={studentsPanelOpen} onOpenChange={setStudentsPanelOpen} />
       <BookStudentDialog
         open={trainerBookDialogOpen}
@@ -452,5 +471,57 @@ export function GymSchedulePage() {
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
       <TrainerProfileDialog open={trainerProfileOpen} onOpenChange={setTrainerProfileOpen} />
     </div>
+  );
+}
+
+function WelcomeDialog({ open, onClose, userId, firstName }: {
+  open: boolean;
+  onClose: () => void;
+  userId?: string;
+  firstName?: string;
+}) {
+  const { data: trainerSettings } = useQuery<{ welcomeMessage: string | null }>({
+    queryKey: ["/api/schedule/settings"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/schedule/settings");
+      return r.json();
+    },
+    enabled: open,
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-center">Вход в систему</DialogTitle>
+          <DialogDescription className="text-center">Добро пожаловать!</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="flex flex-col items-center text-center gap-2 py-2">
+            <div className="rounded-full bg-green-100 dark:bg-green-900/40 p-3">
+              <MessageSquare className="h-8 w-8 text-green-600 dark:text-green-400" />
+            </div>
+            <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+              Добро пожаловать{firstName ? `, ${firstName}` : ""}!
+            </h3>
+          </div>
+          <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20 p-4">
+            {trainerSettings?.welcomeMessage ? (
+              <>
+                <p className="text-xs font-semibold text-green-800 dark:text-green-300 uppercase tracking-wide mb-2">Сообщение от тренера</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{trainerSettings.welcomeMessage}</p>
+              </>
+            ) : (
+              <p className="text-sm text-gray-700 dark:text-gray-300 text-center">
+                Тренер одобрил вашу регистрацию. Теперь вы можете записываться на тренировки!
+              </p>
+            )}
+          </div>
+          <Button className="w-full" onClick={onClose}>
+            Понятно, перейти к расписанию
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

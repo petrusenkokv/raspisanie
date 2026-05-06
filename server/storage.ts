@@ -136,6 +136,9 @@ export interface IStorage {
   // Student approval (self-registered students)
   approveStudent(id: string): Promise<User>;
 
+  // Mark trainer welcome message as shown to student
+  markWelcomeShown(userId: string): Promise<User>;
+
   // Analytics
   getStudentsList(includeInactive?: boolean): Promise<User[]>;
   getTrainer(): Promise<User | undefined>;
@@ -268,6 +271,7 @@ export class MemStorage implements IStorage {
       sickNote: null,
       isActive: true,
       isPendingApproval: false,
+      welcomeShown: true,
       cvRestartDate: null,
       role: "trainer",
       isVerified: true,
@@ -371,6 +375,7 @@ export class MemStorage implements IStorage {
       verificationCode: null,
       password: insertUser.password ?? "",
       mustChangePassword: insertUser.mustChangePassword ?? false,
+      welcomeShown: false,
       lastLogin: null,
       createdAt: new Date()
     };
@@ -1291,6 +1296,14 @@ export class MemStorage implements IStorage {
     if (!user) throw new Error("Пользователь не найден");
     const updated: User = { ...user, isPendingApproval: false };
     this.users.set(id, updated);
+    return updated;
+  }
+
+  async markWelcomeShown(userId: string): Promise<User> {
+    const user = this.users.get(userId);
+    if (!user) throw new Error("Пользователь не найден");
+    const updated: User = { ...user, welcomeShown: true };
+    this.users.set(userId, updated);
     return updated;
   }
 

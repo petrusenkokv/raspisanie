@@ -214,6 +214,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const signedDocIds = new Set(userConsents.map(c => c.documentId));
       const pendingDocuments = allDocs.filter(d => !signedDocIds.has(d.id));
 
+      const showWelcomeMessage = !user.isPendingApproval && !user.welcomeShown;
+
       res.json({
         user: {
           id: user.id,
@@ -222,11 +224,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastName: user.lastName,
           role: user.role,
           mustChangePassword: user.mustChangePassword,
+          isPendingApproval: user.isPendingApproval,
         },
         pendingDocuments,
+        showWelcomeMessage,
       });
     } catch (error) {
       res.status(500).json({ message: "Ошибка входа" });
+    }
+  });
+
+  app.post("/api/users/:id/mark-welcome-shown", async (req, res) => {
+    try {
+      await storage.markWelcomeShown(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Ошибка" });
     }
   });
 

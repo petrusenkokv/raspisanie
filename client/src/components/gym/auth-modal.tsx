@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useGymStore } from "@/store/gym-store";
-import { Loader2, Phone, UserPlus, LogIn, CheckCircle, Clock, CalendarCheck, XCircle } from "lucide-react";
+import { Loader2, Phone, UserPlus, LogIn, CheckCircle, MessageSquare } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { type Document } from "@shared/schema";
 import { DocumentViewDialog } from "./document-view-dialog";
@@ -48,7 +48,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   const [parentConfirmed, setParentConfirmed] = useState(false);
   const [acceptedDocs, setAcceptedDocs] = useState<Record<string, boolean>>({});
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
-  const [mode, setMode] = useState<"login" | "register" | "consent" | "welcome">("login");
+  const [mode, setMode] = useState<"login" | "register" | "consent" | "welcome" | "welcome_trainer_msg">("login");
   const [pendingLoginUser, setPendingLoginUser] = useState<any>(null);
   const [pendingConsentDocs, setPendingConsentDocs] = useState<Document[]>([]);
   const [loginConsentAccepted, setLoginConsentAccepted] = useState<Record<string, boolean>>({});
@@ -68,7 +68,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
       const r = await apiRequest("GET", "/api/schedule/settings");
       return r.json();
     },
-    enabled: open && mode === "welcome",
+    enabled: open && (mode === "welcome" || mode === "welcome_trainer_msg"),
   });
 
   const age = useMemo(() => calculateAge(studentBirthDate), [studentBirthDate]);
@@ -113,6 +113,10 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
         setPendingConsentDocs(data.pendingDocuments);
         setLoginConsentAccepted({});
         setMode("consent");
+      } else if (data.showWelcomeMessage) {
+        setUser(data.user);
+        setPendingLoginUser(data.user);
+        setMode("welcome_trainer_msg");
       } else {
         setUser(data.user);
         const greeting = data.user.role === "trainer"
@@ -233,11 +237,12 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
               {mode === "register" && "Заполните данные для регистрации"}
               {mode === "consent" && "Примите необходимые документы для входа"}
               {mode === "welcome" && "Регистрация завершена"}
+              {mode === "welcome_trainer_msg" && "Добро пожаловать!"}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 mt-2">
-            {/* ── WELCOME ── */}
+            {/* ── WELCOME (after self-registration) ── */}
             {mode === "welcome" && (
               <div className="space-y-4">
                 <div className="flex flex-col items-center text-center gap-2 py-2">
@@ -249,31 +254,45 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                     Ваша заявка отправлена тренеру. Как только он одобрит вашу регистрацию — вы сможете записываться на тренировки.
                   </p>
                 </div>
+                <Button className="w-full" onClick={() => { onOpenChange(false); resetForm(); }}>
+                  Понятно, перейти к расписанию
+                </Button>
+              </div>
+            )}
 
+            {/* ── WELCOME TRAINER MESSAGE (first login after approval/trainer-registration) ── */}
+            {mode === "welcome_trainer_msg" && (
+              <div className="space-y-4">
+                <div className="flex flex-col items-center text-center gap-2 py-2">
+                  <div className="rounded-full bg-green-100 dark:bg-green-900/40 p-3">
+                    <MessageSquare className="h-8 w-8 text-green-600 dark:text-green-400" />
+                  </div>
+                  <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+                    Добро пожаловать, {pendingLoginUser?.firstName}!
+                  </h3>
+                </div>
                 {trainerSettings?.welcomeMessage ? (
-                  <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-3">
-                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 uppercase tracking-wide mb-2">Сообщение от тренера</p>
+                  <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20 p-4">
+                    <p className="text-xs font-semibold text-green-800 dark:text-green-300 uppercase tracking-wide mb-2">Сообщение от тренера</p>
                     <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{trainerSettings.welcomeMessage}</p>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-3 space-y-3">
-                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 uppercase tracking-wide">Как это работает</p>
-                    <div className="flex items-start gap-3">
-                      <Clock className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                      <p className="text-sm text-gray-700 dark:text-gray-300">Ожидайте одобрения тренера.</p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <CalendarCheck className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                      <p className="text-sm text-gray-700 dark:text-gray-300">После одобрения нажмите на любой свободный слот в расписании, чтобы записаться.</p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <XCircle className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                      <p className="text-sm text-gray-700 dark:text-gray-300">Отменить запись можно самостоятельно до установленного тренером времени.</p>
-                    </div>
+                  <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20 p-4">
+                    <p className="text-sm text-gray-700 dark:text-gray-300 text-center">
+                      Тренер одобрил вашу регистрацию. Теперь вы можете записываться на тренировки!
+                    </p>
                   </div>
                 )}
-
-                <Button className="w-full" onClick={() => { onOpenChange(false); resetForm(); }}>
+                <Button
+                  className="w-full"
+                  onClick={async () => {
+                    if (pendingLoginUser?.id) {
+                      await apiRequest("POST", `/api/users/${pendingLoginUser.id}/mark-welcome-shown`).catch(() => {});
+                    }
+                    onOpenChange(false);
+                    resetForm();
+                  }}
+                >
                   Понятно, перейти к расписанию
                 </Button>
               </div>

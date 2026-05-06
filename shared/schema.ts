@@ -24,6 +24,7 @@ export const users = pgTable("users", {
   sickNote: text("sick_note"),
   isActive: boolean("is_active").notNull().default(true), // false = student paused/archived
   isPendingApproval: boolean("is_pending_approval").notNull().default(false), // true = self-registered, awaiting trainer approval
+  welcomeShown: boolean("welcome_shown").notNull().default(false), // true = student has seen trainer welcome message
   cvRestartDate: text("cv_restart_date"), // YYYY-MM-DD; when set, ignore ЧВ payments before this date
   role: text("role").notNull().default("student"), // "student" or "trainer"
   isVerified: boolean("is_verified").notNull().default(false),

@@ -685,6 +685,10 @@ export class DbStorage implements IStorage {
     return this.updateUser(id, { isPendingApproval: false });
   }
 
+  async markWelcomeShown(userId: string): Promise<User> {
+    return this.updateUser(userId, { welcomeShown: true });
+  }
+
   async getTrainer(): Promise<User | undefined> {
     const rows = await db.select().from(users).where(eq(users.role, "trainer")).limit(1);
     return rows[0];
