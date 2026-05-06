@@ -117,7 +117,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
         setPendingShowWelcome(!!data.showWelcomeMessage);
         setMode("consent");
       } else if (data.showWelcomeMessage) {
-        setUser(data.user);
         setPendingLoginUser(data.user);
         setMode("welcome_trainer_msg");
       } else {
@@ -156,11 +155,11 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
         userId: pendingLoginUser.id,
         documentIds: pendingConsentDocs.map(d => d.id),
       });
-      setUser(pendingLoginUser);
       if (pendingShowWelcome) {
         setPendingShowWelcome(false);
         setMode("welcome_trainer_msg");
       } else {
+        setUser(pendingLoginUser);
         toast({ title: "Добро пожаловать!", description: `Вы вошли как ${pendingLoginUser.firstName}` });
         onOpenChange(false);
         resetForm();
@@ -297,6 +296,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                     if (pendingLoginUser?.id) {
                       await apiRequest("POST", `/api/users/${pendingLoginUser.id}/mark-welcome-shown`).catch(() => {});
                     }
+                    setUser(pendingLoginUser);
                     onOpenChange(false);
                     resetForm();
                   }}
