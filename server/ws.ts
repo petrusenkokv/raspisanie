@@ -24,9 +24,9 @@ export function setupWebSocket(server: Server) {
 
 export function broadcast(msg: object) {
   const data = JSON.stringify(msg);
-  for (const client of clients) {
+  clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(data);
     }
-  }
+  });
 }

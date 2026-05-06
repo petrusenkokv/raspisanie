@@ -258,9 +258,16 @@ export class MemStorage implements IStorage {
       trainerNotes: null,
       parentFullName: null,
       parentPhone: null,
+      motherFullName: null,
+      motherPhone: null,
+      fatherFullName: null,
+      fatherPhone: null,
+      guardianFullName: null,
+      guardianPhone: null,
       sickUntil: null,
       sickNote: null,
       isActive: true,
+      isPendingApproval: false,
       cvRestartDate: null,
       role: "trainer",
       isVerified: true,
@@ -1209,7 +1216,8 @@ export class MemStorage implements IStorage {
       ...insertNotification,
       id,
       isRead: false,
-      relatedBookingId: insertNotification.relatedBookingId || null,
+      relatedBookingId: insertNotification.relatedBookingId ?? null,
+      relatedUserId: insertNotification.relatedUserId ?? null,
       createdAt: new Date()
     };
     this.notifications.set(id, notification);
