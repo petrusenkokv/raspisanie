@@ -110,6 +110,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       });
       setAddDialogOpen(false);
       setNewStudent(emptyNewStudent);
+      setSearchQuery("");
     },
     onError: (error: any) => {
       let description = "Попробуйте ещё раз";
