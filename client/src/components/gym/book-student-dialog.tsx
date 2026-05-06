@@ -12,12 +12,19 @@ import { type User, type TimeSlotWithBookings } from "@shared/schema";
 import { Calendar, UserCheck, Loader2, Search, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+import { ToastAction } from "@/components/ui/toast";
 
 type StudentWithConsent = User & { pendingDocumentCount?: number };
 
 function todayLocalStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function isSlotInPast(date: string, time: string): boolean {
+  const t = time.length >= 5 ? time.slice(0, 5) : time;
+  const slotMs = new Date(`${date}T${t}:00+03:00`).getTime();
+  return slotMs < Date.now();
 }
 
 interface BookStudentDialogProps {
@@ -95,12 +102,54 @@ export function BookStudentDialog({
     onOpenChange(false);
   };
 
+  const doBook = (studentId: string, slotId: string) => {
+    bookMutation.mutate({ studentId, timeSlotId: slotId });
+  };
+
   const handleConfirm = () => {
     const studentId = preselectedStudent?.id || selectedStudentId;
     const slotId = preselectedTimeSlotId || selectedTimeSlotId;
-    if (studentId && slotId) {
-      bookMutation.mutate({ studentId, timeSlotId: slotId });
+    if (!studentId || !slotId) return;
+
+    // Determine the date and time of the chosen slot
+    let slotDate: string | null = null;
+    let slotTime: string | null = null;
+
+    if (preselectedTimeSlotId) {
+      // Find slot in the loaded schedule
+      for (const day of schedule) {
+        const found = day.timeSlots.find((ts: TimeSlotWithBookings) => ts.id === preselectedTimeSlotId);
+        if (found) {
+          slotDate = day.date;
+          slotTime = found.time;
+          break;
+        }
+      }
+    } else if (selectedDate && selectedTimeSlotId && dayData) {
+      const found = dayData.timeSlots.find(ts => ts.id === selectedTimeSlotId);
+      if (found) {
+        slotDate = selectedDate;
+        slotTime = found.time;
+      }
     }
+
+    // If the slot is in the past — show a warning toast with a confirm action
+    if (slotDate && slotTime && isSlotInPast(slotDate, slotTime)) {
+      const student = preselectedStudent || students.find(s => s.id === studentId);
+      const dateLabel = format(new Date(slotDate + "T00:00:00"), "d MMMM", { locale: ru });
+      toast({
+        title: "⚠️ Запись на прошедшую дату",
+        description: `Слот ${dateLabel}, ${slotTime} уже прошёл. Вы уверены, что хотите записать${student ? ` ${student.firstName} ${student.lastName}` : ""} задним числом?`,
+        action: (
+          <ToastAction altText="Записать всё равно" onClick={() => doBook(studentId, slotId)}>
+            Записать всё равно
+          </ToastAction>
+        ),
+      });
+      return;
+    }
+
+    doBook(studentId, slotId);
   };
 
   // Fetch slots for the chosen date directly from the server, so the trainer
