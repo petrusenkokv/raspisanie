@@ -722,12 +722,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const consents = await storage.getConsentsByUser(student.id);
           const acceptedIds = new Set(consents.map((c) => c.documentId));
           const pendingDocumentCount = activeDocs.filter((d) => !acceptedIds.has(d.id)).length;
-          const payStatus = await storage.getStudentPaymentStatus(student.id, todayStr);
+          let hasMembership = false;
+          let hasTrainerPayment = false;
+          try {
+            const payStatus = await storage.getStudentPaymentStatus(student.id, todayStr);
+            hasMembership = payStatus.hasMembership;
+            hasTrainerPayment = payStatus.hasTrainerPayment;
+          } catch {}
           return {
             ...student,
             pendingDocumentCount,
-            hasMembership: payStatus.hasMembership,
-            hasTrainerPayment: payStatus.hasTrainerPayment,
+            hasMembership,
+            hasTrainerPayment,
           };
         })
       );

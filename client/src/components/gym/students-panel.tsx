@@ -1338,6 +1338,7 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "next-cv-date"] });
       queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
       setNote("");
       toast({ title: type === "monthly_cv" ? "ЧВ отмечен" : "БВ отмечен" });
     },
@@ -1354,6 +1355,7 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "next-cv-date"] });
       queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
       toast({ title: "Оплата удалена" });
     },
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
@@ -1525,6 +1527,7 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "trainer-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
       queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
       setNote("");
       toast({ title: "Абонемент добавлен" });
     },
@@ -1540,6 +1543,7 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "trainer-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
       queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
       toast({ title: "Абонемент отменён" });
     },
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
@@ -1554,6 +1558,7 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "trainer-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId, "payment-status"] });
       queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
       toast({ title: "Абонемент удалён" });
     },
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
