@@ -414,15 +414,15 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2 px-2 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-md">
-                      <UserCheck className="h-4 w-4 text-green-600 shrink-0" />
-                      <div>
+                  <div className="flex items-center gap-2 px-2 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-md">
+                    <UserCheck className="h-4 w-4 text-green-600 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <p className="text-sm font-medium text-green-800 dark:text-green-300">Вы записаны!</p>
-                        <p className="text-xs text-green-600 dark:text-green-400">Тренер подтвердил запись</p>
+                        <BookingPaymentBadges studentId={userBooking.studentId} dateStr={timeSlot.date} />
                       </div>
+                      <p className="text-xs text-green-600 dark:text-green-400">Тренер подтвердил запись</p>
                     </div>
-                    <BookingPaymentBadges studentId={userBooking.studentId} dateStr={timeSlot.date} />
                   </div>
                 )
               ) : (
