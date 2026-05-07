@@ -729,6 +729,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/trainer/students/payment-summary", async (req, res) => {
+    try {
+      const dateStr = String(req.query.date || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return res.status(400).json({ message: "Укажите параметр date в формате YYYY-MM-DD" });
+      }
+      const students = await storage.getStudentsList(false);
+      const result: Record<string, { hasMembership: boolean; hasTrainerPayment: boolean }> = {};
+      await Promise.all(
+        students.map(async (s) => {
+          const status = await storage.getStudentPaymentStatus(s.id, dateStr);
+          result[s.id] = { hasMembership: status.hasMembership, hasTrainerPayment: status.hasTrainerPayment };
+        })
+      );
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить сводку оплат" });
+    }
+  });
+
   app.patch("/api/trainer/students/:id/approve", async (req, res) => {
     try {
       const { id } = req.params;

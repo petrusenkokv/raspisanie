@@ -39,7 +39,7 @@ import {
 import { BookStudentDialog } from "./book-student-dialog";
 import { DocumentViewDialog } from "./document-view-dialog";
 import { DocumentsManagerDialog } from "./documents-manager-dialog";
-import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle } from "lucide-react";
+import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, BadgeAlert } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { calculateAge, todayLocalStr } from "@/lib/utils-gym";
@@ -62,6 +62,7 @@ const emptyNewStudent = {
 export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [highlightUnpaid, setHighlightUnpaid] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -95,6 +96,17 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       return r.json();
     },
     enabled: open,
+  });
+
+  const today = todayLocalStr();
+  const { data: paymentSummary = {} } = useQuery<Record<string, { hasMembership: boolean; hasTrainerPayment: boolean }>>({
+    queryKey: ["/api/trainer/students/payment-summary", today],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/trainer/students/payment-summary?date=${today}`);
+      return r.json();
+    },
+    enabled: open,
+    staleTime: 60_000,
   });
 
   const addMutation = useMutation({
@@ -263,7 +275,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
           </div>
 
           {/* Stats + inactive toggle */}
-          <div className="flex items-center justify-between mb-4 text-sm text-gray-600 dark:text-gray-400">
+          <div className="flex items-center justify-between mb-2 text-sm text-gray-600 dark:text-gray-400">
             <div className="flex items-center gap-2">
               <UserCheck className="h-4 w-4" />
               <span>Учеников: <strong>{filteredStudents.length}</strong></span>
@@ -277,6 +289,19 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
               onClick={() => setShowInactive(v => !v)}
             >
               {showInactive ? "Скрыть архив" : "Показать архив"}
+            </button>
+          </div>
+          <div className="flex items-center mb-4">
+            <button
+              className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded border transition-colors ${
+                highlightUnpaid
+                  ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700"
+                  : "bg-transparent text-gray-500 border-gray-200 hover:border-gray-400"
+              }`}
+              onClick={() => setHighlightUnpaid(v => !v)}
+            >
+              <BadgeAlert className="h-3.5 w-3.5" />
+              {highlightUnpaid ? "Скрыть подсветку долгов" : "Подсветить должников"}
             </button>
           </div>
 
@@ -296,15 +321,20 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 const isInactive = (student as any).isActive === false;
                 const hasPendingDocs = (student.pendingDocumentCount ?? 0) > 0;
                 const isPending = (student as any).isPendingApproval === true;
+                const payStatus = paymentSummary[student.id];
+                const hasDebt = highlightUnpaid && !isInactive && !isPending && payStatus &&
+                  (!payStatus.hasMembership || !payStatus.hasTrainerPayment);
                 return (
                   <div key={student.id} className={`border rounded-lg p-4 transition-shadow ${
                     isInactive
                       ? "bg-gray-50 dark:bg-gray-900 opacity-70 border-dashed"
                       : isPending
                         ? "bg-blue-50 dark:bg-blue-950/20 border-blue-300 dark:border-blue-700 hover:shadow-sm"
-                        : hasPendingDocs
-                          ? "bg-orange-50 dark:bg-orange-950/20 border-orange-300 dark:border-orange-700 hover:shadow-sm"
-                          : "bg-white dark:bg-gray-800 hover:shadow-sm"
+                        : hasDebt
+                          ? "bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-700 hover:shadow-sm"
+                          : hasPendingDocs
+                            ? "bg-orange-50 dark:bg-orange-950/20 border-orange-300 dark:border-orange-700 hover:shadow-sm"
+                            : "bg-white dark:bg-gray-800 hover:shadow-sm"
                   }`}>
                     {isPending && !isInactive && (
                       <div className="flex items-center justify-between gap-2 mb-3 p-2 rounded-md bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
@@ -349,6 +379,16 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                             <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-700">
                               <AlertTriangle className="h-2.5 w-2.5" />
                               Документы не приняты
+                            </span>
+                          )}
+                          {hasDebt && (
+                            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-red-100 text-red-700 border-red-300 dark:bg-red-900/40 dark:text-red-400 dark:border-red-700">
+                              <BadgeAlert className="h-2.5 w-2.5" />
+                              {!payStatus?.hasMembership && !payStatus?.hasTrainerPayment
+                                ? "Нет ЧВ/БВ и оплаты тренеру"
+                                : !payStatus?.hasMembership
+                                  ? "Нет ЧВ/БВ"
+                                  : "Нет оплаты тренеру"}
                             </span>
                           )}
                           {age !== null && (
