@@ -715,37 +715,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const includeInactive = req.query.includeInactive === "true";
       const students = await storage.getStudentsList(includeInactive);
       const activeDocs = await storage.getDocuments(true);
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
       const studentsWithConsents = await Promise.all(
         students.map(async (student) => {
           const consents = await storage.getConsentsByUser(student.id);
           const acceptedIds = new Set(consents.map((c) => c.documentId));
           const pendingDocumentCount = activeDocs.filter((d) => !acceptedIds.has(d.id)).length;
-          return { ...student, pendingDocumentCount };
+          const payStatus = await storage.getStudentPaymentStatus(student.id, todayStr);
+          return {
+            ...student,
+            pendingDocumentCount,
+            hasMembership: payStatus.hasMembership,
+            hasTrainerPayment: payStatus.hasTrainerPayment,
+          };
         })
       );
       res.json(studentsWithConsents);
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить список учеников" });
-    }
-  });
-
-  app.get("/api/trainer/students/payment-summary", async (req, res) => {
-    try {
-      const dateStr = String(req.query.date || "");
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        return res.status(400).json({ message: "Укажите параметр date в формате YYYY-MM-DD" });
-      }
-      const students = await storage.getStudentsList(false);
-      const result: Record<string, { hasMembership: boolean; hasTrainerPayment: boolean }> = {};
-      await Promise.all(
-        students.map(async (s) => {
-          const status = await storage.getStudentPaymentStatus(s.id, dateStr);
-          result[s.id] = { hasMembership: status.hasMembership, hasTrainerPayment: status.hasTrainerPayment };
-        })
-      );
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error?.message || "Не удалось получить сводку оплат" });
     }
   });
 

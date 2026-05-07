@@ -98,16 +98,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     enabled: open,
   });
 
-  const today = todayLocalStr();
-  const { data: paymentSummary = {} } = useQuery<Record<string, { hasMembership: boolean; hasTrainerPayment: boolean }>>({
-    queryKey: ["/api/trainer/students/payment-summary", today],
-    queryFn: async () => {
-      const r = await apiRequest("GET", `/api/trainer/students/payment-summary?date=${today}`);
-      return r.json();
-    },
-    enabled: open,
-    staleTime: 60_000,
-  });
 
   const addMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -321,9 +311,11 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 const isInactive = (student as any).isActive === false;
                 const hasPendingDocs = (student.pendingDocumentCount ?? 0) > 0;
                 const isPending = (student as any).isPendingApproval === true;
-                const payStatus = paymentSummary[student.id];
-                const hasDebt = highlightUnpaid && !isInactive && !isPending && payStatus &&
-                  (!payStatus.hasMembership || !payStatus.hasTrainerPayment);
+                const hasMembership = (student as any).hasMembership as boolean | undefined;
+                const hasTrainerPayment = (student as any).hasTrainerPayment as boolean | undefined;
+                const hasDebt = highlightUnpaid && !isInactive && !isPending &&
+                  hasMembership !== undefined &&
+                  (!hasMembership || !hasTrainerPayment);
                 return (
                   <div key={student.id} className={`border rounded-lg p-4 transition-shadow ${
                     isInactive
@@ -384,9 +376,9 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                           {hasDebt && (
                             <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-red-100 text-red-700 border-red-300 dark:bg-red-900/40 dark:text-red-400 dark:border-red-700">
                               <BadgeAlert className="h-2.5 w-2.5" />
-                              {!payStatus?.hasMembership && !payStatus?.hasTrainerPayment
+                              {!hasMembership && !hasTrainerPayment
                                 ? "Нет ЧВ/БВ и оплаты тренеру"
-                                : !payStatus?.hasMembership
+                                : !hasMembership
                                   ? "Нет ЧВ/БВ"
                                   : "Нет оплаты тренеру"}
                             </span>
