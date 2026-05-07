@@ -62,7 +62,6 @@ const emptyNewStudent = {
 export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  const [highlightUnpaid, setHighlightUnpaid] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -281,19 +280,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
               {showInactive ? "Скрыть архив" : "Показать архив"}
             </button>
           </div>
-          <div className="flex items-center mb-4">
-            <button
-              className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded border transition-colors ${
-                highlightUnpaid
-                  ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700"
-                  : "bg-transparent text-gray-500 border-gray-200 hover:border-gray-400"
-              }`}
-              onClick={() => setHighlightUnpaid(v => !v)}
-            >
-              <BadgeAlert className="h-3.5 w-3.5" />
-              {highlightUnpaid ? "Скрыть подсветку долгов" : "Подсветить должников"}
-            </button>
-          </div>
 
           {/* Students list */}
           {isLoading ? (
@@ -313,7 +299,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 const isPending = (student as any).isPendingApproval === true;
                 const hasMembership = (student as any).hasMembership as boolean | undefined;
                 const hasTrainerPayment = (student as any).hasTrainerPayment as boolean | undefined;
-                const hasDebt = highlightUnpaid && !isInactive && !isPending &&
+                const hasDebt = !isInactive && !isPending &&
                   hasMembership !== undefined &&
                   (!hasMembership || !hasTrainerPayment);
                 return (
