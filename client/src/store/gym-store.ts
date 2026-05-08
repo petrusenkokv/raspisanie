@@ -47,10 +47,22 @@ interface GymStore {
   logout: () => void;
 }
 
+function loadUserFromStorage(): User | null {
+  try {
+    const raw = localStorage.getItem("gym_current_user");
+    if (!raw) return null;
+    return JSON.parse(raw) as User;
+  } catch {
+    return null;
+  }
+}
+
+const _savedUser = loadUserFromStorage();
+
 export const useGymStore = create<GymStore>((set, get) => ({
   // Initial state
-  currentUser: null,
-  isAuthenticated: false,
+  currentUser: _savedUser,
+  isAuthenticated: !!_savedUser,
   currentView: "day",
   selectedDate: new Date(),
   schedule: [],
@@ -61,10 +73,14 @@ export const useGymStore = create<GymStore>((set, get) => ({
   students: [],
   
   // Actions
-  setUser: (user) => set({ 
-    currentUser: user, 
-    isAuthenticated: !!user 
-  }),
+  setUser: (user) => {
+    if (user) {
+      try { localStorage.setItem("gym_current_user", JSON.stringify(user)); } catch {}
+    } else {
+      try { localStorage.removeItem("gym_current_user"); } catch {}
+    }
+    set({ currentUser: user, isAuthenticated: !!user });
+  },
   
   setCurrentView: (view) => set({ currentView: view }),
   
@@ -119,11 +135,14 @@ export const useGymStore = create<GymStore>((set, get) => ({
     return user?.role === "trainer";
   },
   
-  logout: () => set({ 
-    currentUser: null, 
-    isAuthenticated: false,
-    userBookings: [],
-    notifications: [],
-    unreadCount: 0
-  })
+  logout: () => {
+    try { localStorage.removeItem("gym_current_user"); } catch {}
+    set({ 
+      currentUser: null, 
+      isAuthenticated: false,
+      userBookings: [],
+      notifications: [],
+      unreadCount: 0
+    });
+  }
 }));
