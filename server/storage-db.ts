@@ -236,13 +236,24 @@ export class DbStorage implements IStorage {
     const user = await this.getUser(id);
     if (!user) throw new Error("Пользователь не найден");
     if (user.role === "trainer") throw new Error("Нельзя удалить тренера");
+    // Get all booking IDs for this student so we can nullify FK references in notifications
+    const studentBookingRows = await db.select({ id: bookings.id }).from(bookings).where(eq(bookings.studentId, id));
+    const studentBookingIds = studentBookingRows.map(r => r.id);
+
     await db.delete(userConsents).where(eq(userConsents.userId, id));
+    // Delete student's own notifications
     await db.delete(notifications).where(eq(notifications.userId, id));
-    // Nullify relatedUserId in trainer notifications referencing this student (FK constraint)
+    // Nullify relatedUserId in any notifications referencing this student
     await db.update(notifications).set({ relatedUserId: null }).where(eq(notifications.relatedUserId, id));
+    // Nullify relatedBookingId in any notifications referencing this student's bookings (FK constraint)
+    if (studentBookingIds.length > 0) {
+      await db.update(notifications).set({ relatedBookingId: null }).where(inArray(notifications.relatedBookingId, studentBookingIds));
+    }
     // Delete membership and trainer payment records for this student
     await db.delete(membershipPayments).where(eq(membershipPayments.studentId, id));
     await db.delete(trainerPayments).where(eq(trainerPayments.studentId, id));
+    // Delete sick periods for this student
+    await db.delete(sickPeriods).where(eq(sickPeriods.studentId, id));
     // Delete recurring booking rules
     await db.delete(recurringBookings).where(eq(recurringBookings.studentId, id));
     // Delete bookings (after recurring rules, since bookings may reference them)
