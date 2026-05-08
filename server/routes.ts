@@ -937,8 +937,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       await storage.deleteUser(id);
       res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ message: "Не удалось удалить ученика" });
+    } catch (error: any) {
+      console.error("deleteUser error:", error?.message, error?.detail, error?.constraint);
+      res.status(500).json({ message: "Не удалось удалить ученика", detail: error?.message });
     }
   });
 
