@@ -108,84 +108,86 @@ export function CalendarHeader({ onStudentsOpen }: CalendarHeaderProps) {
 
   return (
     <div className="border-b bg-white dark:bg-gray-900">
-      <div className="flex items-center justify-between px-4 py-3 gap-2">
-        {/* Title */}
+      {/* ── Desktop: single row ── */}
+      <div className="hidden sm:flex items-center justify-between px-4 py-3 gap-2">
         <div className="flex items-center gap-2 flex-shrink-0">
           <Calendar className="h-5 w-5 text-blue-600 flex-shrink-0" />
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-none">
-            <span className="hidden sm:inline">Расписание тренировок</span>
-            <span className="sm:hidden">Расписание</span>
-          </h1>
-          {isTrainer() && (
-            <Badge variant="secondary" className="hidden sm:inline-flex ml-1">Тренер</Badge>
-          )}
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-none">Расписание тренировок</h1>
+          {isTrainer() && <Badge variant="secondary" className="ml-1">Тренер</Badge>}
         </div>
 
-        {/* Date navigation */}
         <div className="flex items-center gap-1 flex-1 justify-center min-w-0">
-          <Button variant="outline" size="sm" onClick={() => navigateDate(-1)} data-testid="button-prev-date"
-            className="flex-shrink-0 h-8 w-8 p-0">
+          <Button variant="outline" size="sm" onClick={() => navigateDate(-1)} data-testid="button-prev-date" className="flex-shrink-0 h-8 w-8 p-0">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-
           <div className="text-center px-1 min-w-0">
             <h2 className="font-semibold text-gray-900 dark:text-white text-sm leading-tight truncate">
-              <span className="hidden sm:inline">{formatDateDesktop(selectedDate)}</span>
-              <span className="sm:hidden">{formatDateMobile(selectedDate)}</span>
+              {formatDateDesktop(selectedDate)}
             </h2>
           </div>
-
-          <Button variant="outline" size="sm" onClick={() => navigateDate(1)} data-testid="button-next-date"
-            className="flex-shrink-0 h-8 w-8 p-0">
+          <Button variant="outline" size="sm" onClick={() => navigateDate(1)} data-testid="button-next-date" className="flex-shrink-0 h-8 w-8 p-0">
             <ChevronRight className="h-4 w-4" />
           </Button>
-
-          <Button
-            variant={isOnToday ? "secondary" : "outline"}
-            size="sm"
-            onClick={goToToday}
-            disabled={isOnToday}
-            className="flex-shrink-0 h-8"
-            data-testid="button-today"
-            title="Перейти к сегодняшнему дню"
-          >
-            <CalendarDays className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">Сегодня</span>
+          <Button variant={isOnToday ? "secondary" : "outline"} size="sm" onClick={goToToday} disabled={isOnToday} className="flex-shrink-0 h-8" data-testid="button-today">
+            <CalendarDays className="h-4 w-4 mr-1" />
+            <span>Сегодня</span>
           </Button>
         </div>
 
-        {/* Right: view toggle + students */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          {/* View toggle */}
           <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
             {(Object.keys(VIEW_LABELS) as ViewType[]).map((view) => (
-              <Button
-                key={view}
-                variant={currentView === view ? "default" : "ghost"}
-                size="sm"
-                onClick={() => handleViewChange(view)}
-                className="h-7 text-xs px-2 sm:px-3"
-                data-testid={`button-view-${view}`}
-              >
-                <span className="hidden sm:inline">{VIEW_LABELS[view]}</span>
-                <span className="sm:hidden">{VIEW_LABELS_SHORT[view]}</span>
+              <Button key={view} variant={currentView === view ? "default" : "ghost"} size="sm"
+                onClick={() => handleViewChange(view)} className="h-7 text-xs px-3" data-testid={`button-view-${view}`}>
+                {VIEW_LABELS[view]}
               </Button>
             ))}
           </div>
-
-          {/* Students button — desktop only (mobile uses the MoreHorizontal dropdown in action bar) */}
           {isTrainer() && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onStudentsOpen}
-              className="hidden sm:flex h-8"
-              data-testid="button-students"
-            >
-              <Users className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Ученики</span>
+            <Button variant="outline" size="sm" onClick={onStudentsOpen} className="h-8" data-testid="button-students">
+              <Users className="h-4 w-4 mr-2" />
+              Ученики
             </Button>
           )}
+        </div>
+      </div>
+
+      {/* ── Mobile: two rows ── */}
+      <div className="sm:hidden">
+        {/* Row 1: title + view toggle */}
+        <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Calendar className="h-4 w-4 text-blue-600 flex-shrink-0" />
+            <h1 className="text-sm font-bold text-gray-900 dark:text-white leading-none truncate">Расписание</h1>
+          </div>
+          <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 flex-shrink-0">
+            {(Object.keys(VIEW_LABELS) as ViewType[]).map((view) => (
+              <Button key={view} variant={currentView === view ? "default" : "ghost"} size="sm"
+                onClick={() => handleViewChange(view)} className="h-7 text-xs px-2.5" data-testid={`button-view-${view}`}>
+                {VIEW_LABELS_SHORT[view]}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {/* Row 2: date navigation */}
+        <div className="flex items-center justify-between px-3 pb-2 gap-1">
+          <Button variant="outline" size="sm" onClick={() => navigateDate(-1)} data-testid="button-prev-date" className="flex-shrink-0 h-8 w-8 p-0">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+
+          <h2 className="flex-1 text-center font-semibold text-gray-900 dark:text-white text-sm leading-tight px-1">
+            {formatDateMobile(selectedDate)}
+          </h2>
+
+          <Button variant="outline" size="sm" onClick={() => navigateDate(1)} data-testid="button-next-date" className="flex-shrink-0 h-8 w-8 p-0">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+
+          <Button variant={isOnToday ? "secondary" : "outline"} size="sm" onClick={goToToday} disabled={isOnToday}
+            className="flex-shrink-0 h-8 w-8 p-0" data-testid="button-today" title="Сегодня">
+            <CalendarDays className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     </div>
