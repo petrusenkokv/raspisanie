@@ -3,6 +3,11 @@ import type { Server, IncomingMessage } from "http";
 import type { Duplex } from "stream";
 
 const clients = new Set<WebSocket>();
+let realtimeEnabled = true;
+
+export function setRealtimeEnabled(enabled: boolean) {
+  realtimeEnabled = enabled;
+}
 
 export function setupWebSocket(server: Server) {
   const wss = new WebSocketServer({ noServer: true });
@@ -23,6 +28,7 @@ export function setupWebSocket(server: Server) {
 }
 
 export function broadcast(msg: object) {
+  if (!realtimeEnabled) return;
   const data = JSON.stringify(msg);
   clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {

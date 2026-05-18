@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage-instance";
-import { setupWebSocket, broadcast } from "./ws";
+import { setupWebSocket, broadcast, setRealtimeEnabled } from "./ws";
 import { sendPushToUser, vapidPublicKey } from "./push";
 import { 
   insertUserSchema, 
@@ -52,7 +52,10 @@ async function recordConsents(userId: string, documentIds: string[] | undefined)
   }
 }
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(
+  app: Express,
+  options: { websocket?: boolean } = {},
+): Promise<Server> {
   
   // Auth routes
   app.post("/api/auth/send-verification", async (req, res) => {
@@ -1570,6 +1573,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
-  setupWebSocket(httpServer);
+  const websocket = options.websocket ?? true;
+  setRealtimeEnabled(websocket);
+  if (websocket) {
+    setupWebSocket(httpServer);
+  }
   return httpServer;
 }

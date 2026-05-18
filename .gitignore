@@ -7,3 +7,5 @@ vite.config.ts.*
 .claude/
 .codex/
 .agents/
+.vercel
+.env*.local

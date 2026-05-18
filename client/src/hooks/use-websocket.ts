@@ -7,6 +7,21 @@ export function useWebSocket() {
   const { currentUser, setUser } = useGymStore();
 
   useEffect(() => {
+    const realtimeDisabled =
+      import.meta.env.VITE_DISABLE_WEBSOCKET === "1" ||
+      window.location.hostname.endsWith(".vercel.app");
+
+    if (realtimeDisabled) {
+      const poll = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: ["schedule"] });
+        if (useGymStore.getState().currentUser) {
+          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+        }
+      }, 15000);
+
+      return () => clearInterval(poll);
+    }
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${protocol}//${window.location.host}/ws`;
 
