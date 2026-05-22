@@ -1,4 +1,5 @@
 import { storage } from "./storage-instance";
+import { moscowDateString } from "./moscow-date";
 
 const sent24h = new Set<string>();
 const sent1h = new Set<string>();
@@ -21,11 +22,6 @@ function slotStartTime(date: string, time: string): Date | null {
   const iso = `${date}T${time.length === 5 ? time : time.slice(0, 5)}:00+03:00`;
   const d = new Date(iso);
   return isNaN(d.getTime()) ? null : d;
-}
-
-function moscowDateString(d: Date): string {
-  // Moscow is fixed UTC+3 (no DST). Shift and read the UTC calendar date.
-  return new Date(d.getTime() + 3 * 60 * 60_000).toISOString().slice(0, 10);
 }
 
 // Разница в календарных днях между двумя датами в формате YYYY-MM-DD.

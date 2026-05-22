@@ -31,6 +31,7 @@ import {
 } from "@shared/schema";
 import type { PushSubscriptionData } from "./push";
 import { randomUUID } from "crypto";
+import { moscowDateString } from "./moscow-date";
 
 export type AttendanceStats = {
   total: number;
@@ -160,10 +161,7 @@ export interface IStorage {
 }
 
 function localDateStr(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return moscowDateString(d);
 }
 
 function isoWeekday(date: Date): number {

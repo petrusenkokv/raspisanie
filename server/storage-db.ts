@@ -24,6 +24,7 @@ import {
 import { randomUUID } from "crypto";
 import type { IStorage, AttendanceStats } from "./storage";
 import type { PushSubscriptionData } from "./push";
+import { moscowDateString } from "./moscow-date";
 
 // Sick periods table (not in shared schema, defined locally)
 const sickPeriods = pgTable("sick_periods", {
@@ -37,10 +38,7 @@ const sickPeriods = pgTable("sick_periods", {
 // ---------- helpers ----------
 
 function localDateStr(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return moscowDateString(d);
 }
 
 function isoWeekday(date: Date): number {

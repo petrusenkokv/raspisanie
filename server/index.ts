@@ -9,14 +9,10 @@ import { log } from "./vite";
   });
 
   const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  const onListen = () => log(`serving on port ${port}`);
+  if (process.platform === "win32") {
+    server.listen(port, onListen);
+  } else {
+    server.listen({ port, host: "0.0.0.0", reusePort: true }, onListen);
+  }
 })();

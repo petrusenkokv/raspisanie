@@ -13,6 +13,7 @@ import {
   updateStudentProfileSchema
 } from "@shared/schema";
 import { z } from "zod";
+import { moscowDateString } from "./moscow-date";
 
 function normalizePhone(input: string): string | null {
   let digits = String(input || "").replace(/\D/g, "");
@@ -718,8 +719,7 @@ export async function registerRoutes(
       const includeInactive = req.query.includeInactive === "true";
       const students = await storage.getStudentsList(includeInactive);
       const activeDocs = await storage.getDocuments(true);
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      const todayStr = moscowDateString();
       const studentsWithConsents = await Promise.all(
         students.map(async (student) => {
           const consents = await storage.getConsentsByUser(student.id);
@@ -731,7 +731,9 @@ export async function registerRoutes(
             const payStatus = await storage.getStudentPaymentStatus(student.id, todayStr);
             hasMembership = payStatus.hasMembership;
             hasTrainerPayment = payStatus.hasTrainerPayment;
-          } catch {}
+          } catch (err) {
+            console.error(`[students] payment status for ${student.id}:`, err);
+          }
           return {
             ...student,
             pendingDocumentCount,

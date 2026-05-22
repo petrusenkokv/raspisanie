@@ -22,9 +22,18 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+function shouldBypassCache(url) {
+  if (url.pathname.startsWith('/api/')) return true;
+  if (url.pathname.startsWith('/src/')) return true;
+  if (url.pathname.startsWith('/@')) return true;
+  if (url.pathname.startsWith('/node_modules/')) return true;
+  if (url.pathname === '/' || url.pathname.endsWith('.html')) return true;
+  return false;
+}
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith('/api/')) return;
+  if (shouldBypassCache(url)) return;
   if (event.request.method !== 'GET') return;
 
   event.respondWith(

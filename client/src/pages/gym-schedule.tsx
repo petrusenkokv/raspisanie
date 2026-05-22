@@ -22,7 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useGymStore } from "@/store/gym-store";
+import { useGymStore, validateStoredUser } from "@/store/gym-store";
 import { type User } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -64,6 +64,10 @@ export function GymSchedulePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   useWebSocket();
+
+  useEffect(() => {
+    void validateStoredUser();
+  }, []);
 
   // Poll current user status every 5 seconds while pending approval
   const isPendingApproval = !!(currentUser as any)?.isPendingApproval;
