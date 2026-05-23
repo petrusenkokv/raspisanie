@@ -1,3 +1,20 @@
+import type { WeeklyTemplate } from "@shared/schema";
+
+export function isoWeekdayFromDateStr(dateStr: string): number {
+  const w = new Date(`${dateStr}T12:00:00`).getDay();
+  return w === 0 ? 7 : w;
+}
+
+/** Whether this calendar day is a working day in the weekly template (Mon=1 … Sun=7). */
+export function isWorkingDayByTemplate(
+  dateStr: string,
+  template: WeeklyTemplate | undefined,
+): boolean {
+  if (!template) return true;
+  const entry = template[String(isoWeekdayFromDateStr(dateStr)) as "1"];
+  return !!(entry && entry.enabled);
+}
+
 export function calculateAge(birthDate: string | null | undefined): number | null {
   if (!birthDate) return null;
   const b = new Date(birthDate);

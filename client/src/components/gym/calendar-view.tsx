@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { type TimeSlotWithBookings, type Holiday } from "@shared/schema";
+import { type TimeSlotWithBookings, type Holiday, type WeeklyTemplate } from "@shared/schema";
+import { isWorkingDayByTemplate } from "@/lib/utils-gym";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Clock, Users, UserCheck, LogIn, UserPlus, Lock, Unlock } from "lucide-react";
@@ -42,11 +43,15 @@ interface CalendarViewProps {
 
 export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: CalendarViewProps) {
   const { currentView, selectedDate, schedule, getWeekDates, getMonthDates } = useGymStore();
-  const { data: scheduleSettingsData } = useQuery<{ holidays?: Holiday[] }>({
+  const { data: scheduleSettingsData } = useQuery<{
+    holidays?: Holiday[];
+    weeklyTemplate?: WeeklyTemplate;
+  }>({
     queryKey: ["/api/schedule/settings"],
     staleTime: 60_000,
   });
   const holidays: Holiday[] = scheduleSettingsData?.holidays ?? [];
+  const weeklyTemplate = scheduleSettingsData?.weeklyTemplate;
 
   // Format date using LOCAL timezone (toISOString gives UTC which can shift the date)
   const localDateStr = (d: Date) => {
@@ -171,10 +176,19 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
               const isSelected = isSameDay(date, selectedDate);
               const dateStr = localDateStr(date);
               const period = getHolidayPeriod(dateStr);
-              const allClosed = openSlots.length === 0 && slots.length > 0;
+              const isWorkday = isWorkingDayByTemplate(dateStr, weeklyTemplate);
+              const hasHolidayBlock = slots.some(
+                (ts) => ts.isBlocked && ts.blockReason === "holiday",
+              );
+              const isTrainerClosed =
+                isWorkday &&
+                openSlots.length === 0 &&
+                slots.length > 0 &&
+                (!!period || hasAnyManualBlock || hasHolidayBlock);
+              const isTemplateDayOff = !isWorkday;
 
               let tooltipNode: React.ReactNode = null;
-              if (allClosed) {
+              if (isTrainerClosed) {
                 const rangeLabel = period
                   ? period.start === period.end
                     ? format(parseISO(period.start), "d MMMM yyyy", { locale: ru })
@@ -182,9 +196,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                   : null;
                 const reasonText = period
                   ? period.name?.trim() || "Отпуск / выходной"
-                  : hasAnyManualBlock
-                    ? "Закрыто тренером"
-                    : "Нерабочий день";
+                  : "Закрыто тренером";
                 tooltipNode = (
                   <div className="space-y-1 text-xs">
                     <div className="font-semibold">{reasonText}</div>
@@ -192,6 +204,10 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                       <div className="text-gray-300 dark:text-gray-400">Период: {rangeLabel}</div>
                     )}
                   </div>
+                );
+              } else if (isTemplateDayOff) {
+                tooltipNode = (
+                  <div className="text-xs">Выходной по расписанию</div>
                 );
               } else if (openSlots.length > 0) {
                 tooltipNode = (
@@ -205,11 +221,13 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
               const cardContent = (
                 <Card
                   className={`p-2 h-20 cursor-pointer transition-colors ${
-                    allClosed
+                    isTrainerClosed
                       ? "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
-                      : "hover:bg-gray-50 dark:hover:bg-gray-800"
+                      : isTemplateDayOff
+                        ? "bg-gray-50/80 dark:bg-gray-900/40 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        : "hover:bg-gray-50 dark:hover:bg-gray-800"
                   } ${
-                    isToday && !allClosed ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200" : ""
+                    isToday && !isTrainerClosed ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200" : ""
                   } ${isSelected ? "ring-2 ring-blue-500" : ""}`}
                   onClick={() => {
                     const store = useGymStore.getState();
@@ -220,13 +238,19 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                   <div className="flex flex-col h-full">
                     <div className="flex items-center justify-between gap-1">
                       <span className={`text-sm font-medium ${
-                        allClosed
+                        isTrainerClosed
                           ? "text-gray-500 dark:text-gray-400 line-through"
-                          : isToday ? "text-blue-600" : "text-gray-900 dark:text-white"
+                          : isTemplateDayOff
+                            ? "text-gray-400 dark:text-gray-500"
+                            : isToday
+                              ? "text-blue-600"
+                              : "text-gray-900 dark:text-white"
                       }`}>
                         {format(date, "d")}
                       </span>
-                      {allClosed && <Lock className="h-3 w-3 text-gray-500 dark:text-gray-400 shrink-0" />}
+                      {isTrainerClosed && (
+                        <Lock className="h-3 w-3 text-gray-500 dark:text-gray-400 shrink-0" />
+                      )}
                     </div>
                     {openSlots.length > 0 && (
                       <div className="flex-1 flex flex-col justify-end">
@@ -253,10 +277,17 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                         )}
                       </div>
                     )}
-                    {allClosed && (
+                    {isTrainerClosed && (
                       <div className="flex-1 flex flex-col justify-end">
                         <div className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate">
-                          {period?.name?.trim() || (hasAnyManualBlock ? "Закрыто" : "Выходной")}
+                          {period?.name?.trim() || "Закрыто"}
+                        </div>
+                      </div>
+                    )}
+                    {isTemplateDayOff && openSlots.length === 0 && (
+                      <div className="flex-1 flex flex-col justify-end">
+                        <div className="text-xs text-gray-400 dark:text-gray-500 truncate">
+                          выходной
                         </div>
                       </div>
                     )}
