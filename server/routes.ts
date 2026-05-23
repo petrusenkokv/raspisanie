@@ -732,7 +732,10 @@ export async function registerRoutes(
             hasMembership = payStatus.hasMembership;
             hasTrainerPayment = payStatus.hasTrainerPayment;
           } catch (err) {
-            console.error(`[students] payment status for ${student.id}:`, err);
+            console.error(
+              `[students] payment status for ${student.id} (${student.lastName} ${student.firstName}):`,
+              err,
+            );
           }
           return {
             ...student,

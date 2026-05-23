@@ -1115,18 +1115,23 @@ export class DbStorage implements IStorage {
   }
 
   private async getSickDaysAfter(studentId: string, afterDate: string): Promise<Set<string>> {
-    const periods = await db.select().from(sickPeriods).where(
-      and(eq(sickPeriods.studentId, studentId), gte(sickPeriods.endDate, afterDate))
-    );
-    const sickDays = new Set<string>();
-    const dayAfterPaid = addDaysToDateStr(afterDate, 1);
-    for (const period of periods) {
-      const startStr = period.startDate > dayAfterPaid ? period.startDate : dayAfterPaid;
-      for (const day of eachDateStrInRange(startStr, period.endDate)) {
-        sickDays.add(day);
+    try {
+      const periods = await db.select().from(sickPeriods).where(
+        and(eq(sickPeriods.studentId, studentId), gte(sickPeriods.endDate, afterDate))
+      );
+      const sickDays = new Set<string>();
+      const dayAfterPaid = addDaysToDateStr(afterDate, 1);
+      for (const period of periods) {
+        const startStr = period.startDate > dayAfterPaid ? period.startDate : dayAfterPaid;
+        for (const day of eachDateStrInRange(startStr, period.endDate)) {
+          sickDays.add(day);
+        }
       }
+      return sickDays;
+    } catch (err) {
+      console.error(`[storage] getSickDaysAfter(${studentId}):`, err);
+      return new Set();
     }
-    return sickDays;
   }
 
   // ======================== PAYMENTS — TRAINER ========================
@@ -1209,7 +1214,9 @@ export class DbStorage implements IStorage {
     const allCvPayments = await db.select().from(membershipPayments).where(
       and(eq(membershipPayments.studentId, studentId), eq(membershipPayments.type, "monthly_cv"))
     );
-    const cvPayments = allCvPayments.filter(p => p.paidDate && (!cvRestartDate || p.paidDate >= cvRestartDate));
+    const cvPayments = allCvPayments
+      .filter(p => p.paidDate && (!cvRestartDate || p.paidDate >= cvRestartDate))
+      .sort((a, b) => b.paidDate!.localeCompare(a.paidDate!));
 
     const cvCoveringEndDate = async (paidDateStr: string): Promise<string | null> => {
       const sickDays = await this.getSickDaysAfter(studentId, paidDateStr);
