@@ -258,9 +258,8 @@ export class DbStorage implements IStorage {
     await db.delete(trainerPayments).where(eq(trainerPayments.studentId, id));
     // Delete sick periods for this student
     await db.delete(sickPeriods).where(eq(sickPeriods.studentId, id));
-    // Delete recurring booking rules
+    await db.update(bookings).set({ recurringBookingId: null }).where(eq(bookings.studentId, id));
     await db.delete(recurringBookings).where(eq(recurringBookings.studentId, id));
-    // Delete bookings (after recurring rules, since bookings may reference them)
     await db.delete(bookings).where(eq(bookings.studentId, id));
     await db.delete(users).where(eq(users.id, id));
   }
@@ -768,24 +767,30 @@ export class DbStorage implements IStorage {
     const rule = await this.getRecurringBooking(id);
     if (!rule) throw new Error("Recurring booking not found");
     const today = localDateStr(new Date());
-    const ruleBookings = await db.select().from(bookings)
-      .innerJoin(timeSlots, eq(bookings.timeSlotId, timeSlots.id))
+
+    const linked = await db
+      .select({ booking: bookings, slot: timeSlots })
+      .from(bookings)
+      .leftJoin(timeSlots, eq(bookings.timeSlotId, timeSlots.id))
       .where(eq(bookings.recurringBookingId, id));
+
     let cancelled = 0;
-    for (const row of ruleBookings) {
-      const slotDate = typeof row.time_slots.date === "object"
-        ? localDateStr(row.time_slots.date as Date)
-        : String(row.time_slots.date);
-      const booking = row.bookings;
+    for (const { booking, slot } of linked) {
+      const slotDate = slot
+        ? typeof slot.date === "object"
+          ? localDateStr(slot.date as Date)
+          : String(slot.date)
+        : "1970-01-01";
       if (booking.status !== "cancelled" && slotDate >= today) {
         await this.cancelBooking(booking.id);
         cancelled++;
       }
     }
-    // Past and already-cancelled bookings still reference the rule — unlink before delete.
-    await db.update(bookings)
-      .set({ recurringBookingId: null })
-      .where(eq(bookings.recurringBookingId, id));
+
+    await db.update(bookings).set({ recurringBookingId: null }).where(eq(bookings.recurringBookingId, id));
+    await db.execute(
+      drizzleSql`UPDATE bookings SET recurring_booking_id = NULL WHERE recurring_booking_id = ${id}`,
+    );
     await db.delete(recurringBookings).where(eq(recurringBookings.id, id));
     return { cancelledCount: cancelled };
   }
