@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { type TimeSlotWithBookings, type Holiday } from "@shared/schema";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Clock, Users, UserCheck, LogIn, UserPlus, Lock, Unlock, Ban } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, UserPlus, Lock, Unlock } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 function minutesUntilSlotMoscow(date: string, time: string): number {
@@ -17,6 +17,17 @@ function minutesUntilSlotMoscow(date: string, time: string): number {
   const ms = new Date(`${date}T${t}:00+03:00`).getTime();
   if (isNaN(ms)) return Number.POSITIVE_INFINITY;
   return Math.round((ms - Date.now()) / 60_000);
+}
+
+function monthDayBookingLabel(booked: number, capacity: number): string {
+  if (capacity <= 0) return "";
+  if (booked === 0) return "нет записей";
+  const mod10 = booked % 10;
+  const mod100 = booked % 100;
+  let word = "записей";
+  if (mod10 === 1 && mod100 !== 11) word = "запись";
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) word = "записи";
+  return `${booked} ${word}`;
 }
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -145,16 +156,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 return <div key={`empty-${wi}-${di}`} className="h-20" />;
               }
               const slots = getScheduleForDate(date);
-              // "Настоящие" блокировки — это отпуск/праздник или ручная блокировка тренера.
-              // Шаблонные нерабочие часы ('template') не считаем блокировкой —
-              // это просто нерабочее время по расписанию.
-              const realBlockedSlots = slots.filter(
-                (ts) => ts.isBlocked && (ts.blockReason === "manual" || ts.blockReason === "holiday"),
-              );
-              const workingSlots = slots.filter(
-                (ts) => !ts.isBlocked || ts.blockReason === "manual" || ts.blockReason === "holiday",
-              );
-              const openSlots = workingSlots.filter((ts) => !ts.isBlocked);
+              const openSlots = slots.filter((ts) => !ts.isBlocked);
               const booked = openSlots.reduce(
                 (sum, ts) =>
                   sum +
@@ -162,18 +164,17 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 0,
               );
               const capacity = openSlots.reduce((sum, ts) => sum + ts.maxCapacity, 0);
-              const hasAnyWorking = workingSlots.length > 0;
-              const allClosed = hasAnyWorking && realBlockedSlots.length === workingSlots.length;
-              const someClosed = realBlockedSlots.length > 0 && !allClosed;
-              const hasAnyManualBlock = realBlockedSlots.some((ts) => ts.blockReason === "manual");
+              const hasAnyManualBlock = slots.some(
+                (ts) => ts.isBlocked && ts.blockReason === "manual",
+              );
               const isToday = isSameDay(date, new Date());
               const isSelected = isSameDay(date, selectedDate);
               const dateStr = localDateStr(date);
               const period = getHolidayPeriod(dateStr);
+              const allClosed = openSlots.length === 0 && slots.length > 0;
 
-              // Build tooltip text describing the block reason / period.
               let tooltipNode: React.ReactNode = null;
-              if (allClosed || someClosed) {
+              if (allClosed) {
                 const rangeLabel = period
                   ? period.start === period.end
                     ? format(parseISO(period.start), "d MMMM yyyy", { locale: ru })
@@ -182,19 +183,21 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 const reasonText = period
                   ? period.name?.trim() || "Отпуск / выходной"
                   : hasAnyManualBlock
-                  ? "Ручная блокировка тренером"
-                  : "Закрыто";
+                    ? "Закрыто тренером"
+                    : "Нерабочий день";
                 tooltipNode = (
                   <div className="space-y-1 text-xs">
                     <div className="font-semibold">{reasonText}</div>
                     {rangeLabel && (
                       <div className="text-gray-300 dark:text-gray-400">Период: {rangeLabel}</div>
                     )}
-                    {someClosed && (
-                      <div className="text-gray-300 dark:text-gray-400">
-                        Закрыто слотов: {realBlockedSlots.length} из {workingSlots.length}
-                      </div>
-                    )}
+                  </div>
+                );
+              } else if (openSlots.length > 0) {
+                tooltipNode = (
+                  <div className="text-xs">
+                    Записано {booked} из {capacity} мест в {openSlots.length}{" "}
+                    {openSlots.length === 1 ? "слоте" : openSlots.length < 5 ? "слотах" : "слотах"}
                   </div>
                 );
               }
@@ -224,54 +227,37 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                         {format(date, "d")}
                       </span>
                       {allClosed && <Lock className="h-3 w-3 text-gray-500 dark:text-gray-400 shrink-0" />}
-                      {someClosed && (
-                        <Ban
-                          className="h-3 w-3 text-orange-500 shrink-0"
-                          aria-label={`Закрыто слотов: ${realBlockedSlots.length}`}
-                        />
-                      )}
                     </div>
-                    {hasAnyWorking && (
+                    {openSlots.length > 0 && (
                       <div className="flex-1 flex flex-col justify-end">
-                        {allClosed ? (
-                          <div className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate">
-                            {period?.name?.trim() || (hasAnyManualBlock ? "Закрыто" : "Отпуск")}
-                          </div>
-                        ) : (
-                          <>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                          {monthDayBookingLabel(booked, capacity)}
+                        </div>
+                        {capacity > 0 && (
+                          <div className="h-1 rounded-full mt-1 bg-gray-200 dark:bg-gray-700 overflow-hidden">
                             <div
-                              className="text-xs text-gray-500"
-                              title={
-                                capacity > 0
-                                  ? `Записано: ${booked} из ${capacity} мест`
-                                  : undefined
-                              }
-                            >
-                              {booked}/{capacity}
-                              {someClosed && (
-                                <span className="text-orange-500"> · −{realBlockedSlots.length}</span>
-                              )}
-                            </div>
-                            {capacity > 0 && (
-                              <div className="h-1 rounded-full mt-1 bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all ${
-                                    booked === 0
-                                      ? "bg-transparent"
-                                      : booked >= capacity
-                                        ? "bg-red-400"
-                                        : booked >= capacity / 2
-                                          ? "bg-yellow-400"
-                                          : "bg-green-500"
-                                  }`}
-                                  style={{
-                                    width: `${capacity > 0 ? Math.min(100, Math.round((booked / capacity) * 100)) : 0}%`,
-                                  }}
-                                />
-                              </div>
-                            )}
-                          </>
+                              className={`h-full rounded-full transition-all ${
+                                booked === 0
+                                  ? "bg-transparent"
+                                  : booked >= capacity
+                                    ? "bg-red-400"
+                                    : booked >= capacity / 2
+                                      ? "bg-yellow-400"
+                                      : "bg-green-500"
+                              }`}
+                              style={{
+                                width: `${Math.min(100, Math.round((booked / capacity) * 100))}%`,
+                              }}
+                            />
+                          </div>
                         )}
+                      </div>
+                    )}
+                    {allClosed && (
+                      <div className="flex-1 flex flex-col justify-end">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate">
+                          {period?.name?.trim() || (hasAnyManualBlock ? "Закрыто" : "Выходной")}
+                        </div>
                       </div>
                     )}
                   </div>
