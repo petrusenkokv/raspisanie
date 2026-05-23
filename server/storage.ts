@@ -1382,12 +1382,16 @@ export class MemStorage implements IStorage {
     const today = localDateStr(new Date());
     let cancelled = 0;
     for (const [bid, booking] of Array.from(this.bookings.entries())) {
-      if (booking.recurringBookingId === id && booking.status !== "cancelled") {
-        const slot = this.timeSlots.get(booking.timeSlotId);
-        if (slot && slot.date >= today) {
-          this.bookings.set(bid, { ...booking, status: "cancelled", cancelledAt: new Date() });
-          cancelled++;
-        }
+      if (booking.recurringBookingId !== id) continue;
+      const slot = this.timeSlots.get(booking.timeSlotId);
+      if (booking.status !== "cancelled" && slot && slot.date >= today) {
+        await this.cancelBooking(bid);
+        cancelled++;
+      }
+    }
+    for (const [bid, booking] of Array.from(this.bookings.entries())) {
+      if (booking.recurringBookingId === id) {
+        this.bookings.set(bid, { ...booking, recurringBookingId: null });
       }
     }
     this.recurringBookings.delete(id);

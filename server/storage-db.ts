@@ -770,15 +770,22 @@ export class DbStorage implements IStorage {
     const today = localDateStr(new Date());
     const ruleBookings = await db.select().from(bookings)
       .innerJoin(timeSlots, eq(bookings.timeSlotId, timeSlots.id))
-      .where(and(eq(bookings.recurringBookingId, id), ne(bookings.status, "cancelled")));
+      .where(eq(bookings.recurringBookingId, id));
     let cancelled = 0;
     for (const row of ruleBookings) {
-      const slotDate = typeof row.time_slots.date === 'object' ? localDateStr(row.time_slots.date as any) : String(row.time_slots.date);
-      if (slotDate >= today) {
-        await db.update(bookings).set({ status: "cancelled", cancelledAt: new Date() }).where(eq(bookings.id, row.bookings.id));
+      const slotDate = typeof row.time_slots.date === "object"
+        ? localDateStr(row.time_slots.date as Date)
+        : String(row.time_slots.date);
+      const booking = row.bookings;
+      if (booking.status !== "cancelled" && slotDate >= today) {
+        await this.cancelBooking(booking.id);
         cancelled++;
       }
     }
+    // Past and already-cancelled bookings still reference the rule — unlink before delete.
+    await db.update(bookings)
+      .set({ recurringBookingId: null })
+      .where(eq(bookings.recurringBookingId, id));
     await db.delete(recurringBookings).where(eq(recurringBookings.id, id));
     return { cancelledCount: cancelled };
   }
