@@ -155,7 +155,13 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 (ts) => !ts.isBlocked || ts.blockReason === "manual" || ts.blockReason === "holiday",
               );
               const openSlots = workingSlots.filter((ts) => !ts.isBlocked);
-              const available = openSlots.filter((ts) => ts.availableSpots > 0).length;
+              const booked = openSlots.reduce(
+                (sum, ts) =>
+                  sum +
+                  ts.bookings.filter((b) => b.status === "confirmed" || b.status === "pending").length,
+                0,
+              );
+              const capacity = openSlots.reduce((sum, ts) => sum + ts.maxCapacity, 0);
               const hasAnyWorking = workingSlots.length > 0;
               const allClosed = hasAnyWorking && realBlockedSlots.length === workingSlots.length;
               const someClosed = realBlockedSlots.length > 0 && !allClosed;
@@ -233,15 +239,37 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                           </div>
                         ) : (
                           <>
-                            <div className="text-xs text-gray-500">
-                              {available}/{openSlots.length}
+                            <div
+                              className="text-xs text-gray-500"
+                              title={
+                                capacity > 0
+                                  ? `Записано: ${booked} из ${capacity} мест`
+                                  : undefined
+                              }
+                            >
+                              {booked}/{capacity}
                               {someClosed && (
                                 <span className="text-orange-500"> · −{realBlockedSlots.length}</span>
                               )}
                             </div>
-                            <div className={`h-1 rounded-full mt-1 ${
-                              available === 0 ? "bg-red-300" : available < openSlots.length / 2 ? "bg-yellow-300" : "bg-green-300"
-                            }`} />
+                            {capacity > 0 && (
+                              <div className="h-1 rounded-full mt-1 bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${
+                                    booked === 0
+                                      ? "bg-transparent"
+                                      : booked >= capacity
+                                        ? "bg-red-400"
+                                        : booked >= capacity / 2
+                                          ? "bg-yellow-400"
+                                          : "bg-green-500"
+                                  }`}
+                                  style={{
+                                    width: `${capacity > 0 ? Math.min(100, Math.round((booked / capacity) * 100)) : 0}%`,
+                                  }}
+                                />
+                              </div>
+                            )}
                           </>
                         )}
                       </div>
