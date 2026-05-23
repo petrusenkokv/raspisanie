@@ -24,7 +24,13 @@ import {
 import { randomUUID } from "crypto";
 import type { IStorage, AttendanceStats } from "./storage";
 import type { PushSubscriptionData } from "./push";
-import { moscowDateString } from "./moscow-date";
+import {
+  moscowDateString,
+  addDaysToDateStr,
+  cvValidUntilForDate,
+  eachDateStrInRange,
+  nextCvAllowedDateStr,
+} from "./moscow-date";
 
 // Sick periods table (not in shared schema, defined locally)
 const sickPeriods = pgTable("sick_periods", {
@@ -1104,13 +1110,8 @@ export class DbStorage implements IStorage {
     const last = cvPayments[0];
     if (!last?.paidDate) return null;
 
-    const paid = new Date(last.paidDate + "T00:00:00");
-    const base = new Date(paid);
-    base.setMonth(base.getMonth() + 1);
-
     const sickDays = await this.getSickDaysAfter(studentId, last.paidDate);
-    base.setDate(base.getDate() + sickDays.size);
-    return localDateStr(base);
+    return nextCvAllowedDateStr(last.paidDate, sickDays.size);
   }
 
   private async getSickDaysAfter(studentId: string, afterDate: string): Promise<Set<string>> {
@@ -1118,16 +1119,11 @@ export class DbStorage implements IStorage {
       and(eq(sickPeriods.studentId, studentId), gte(sickPeriods.endDate, afterDate))
     );
     const sickDays = new Set<string>();
+    const dayAfterPaid = addDaysToDateStr(afterDate, 1);
     for (const period of periods) {
-      const start = new Date(Math.max(
-        new Date(period.startDate + "T00:00:00").getTime(),
-        new Date(afterDate + "T00:00:00").getTime() + 86400000,
-      ));
-      const end = new Date(period.endDate + "T00:00:00");
-      const cur = new Date(start);
-      while (cur <= end) {
-        sickDays.add(localDateStr(cur));
-        cur.setDate(cur.getDate() + 1);
+      const startStr = period.startDate > dayAfterPaid ? period.startDate : dayAfterPaid;
+      for (const day of eachDateStrInRange(startStr, period.endDate)) {
+        sickDays.add(day);
       }
     }
     return sickDays;
@@ -1216,16 +1212,8 @@ export class DbStorage implements IStorage {
     const cvPayments = allCvPayments.filter(p => p.paidDate && (!cvRestartDate || p.paidDate >= cvRestartDate));
 
     const cvCoveringEndDate = async (paidDateStr: string): Promise<string | null> => {
-      if (dateStr < paidDateStr) return null;
-      const paid = new Date(paidDateStr + "T00:00:00");
-      const end = new Date(paid);
-      end.setMonth(end.getMonth() + 1);
       const sickDays = await this.getSickDaysAfter(studentId, paidDateStr);
-      end.setDate(end.getDate() + sickDays.size);
-      if (dateStr >= localDateStr(end)) return null;
-      const lastDay = new Date(end);
-      lastDay.setDate(lastDay.getDate() - 1);
-      return localDateStr(lastDay);
+      return cvValidUntilForDate(paidDateStr, dateStr, sickDays.size);
     };
 
     let membershipKind: "monthly_cv" | "one_time_bv" | null = null;

@@ -31,7 +31,13 @@ import {
 } from "@shared/schema";
 import type { PushSubscriptionData } from "./push";
 import { randomUUID } from "crypto";
-import { moscowDateString } from "./moscow-date";
+import {
+  moscowDateString,
+  addDaysToDateStr,
+  cvValidUntilForDate,
+  eachDateStrInRange,
+  nextCvAllowedDateStr,
+} from "./moscow-date";
 
 export type AttendanceStats = {
   total: number;
@@ -1032,32 +1038,23 @@ export class MemStorage implements IStorage {
     const last = cvPayments[0];
     if (!last?.paidDate) return null;
 
-    // Base: same day next month
-    const paid = new Date(last.paidDate + "T00:00:00");
-    const base = new Date(paid);
-    base.setMonth(base.getMonth() + 1);
+    const sickDays = this.collectSickDaysAfter(studentId, last.paidDate);
+    return nextCvAllowedDateStr(last.paidDate, sickDays.size);
+  }
 
-    // Collect all unique sick days strictly after paidDate
+  private collectSickDaysAfter(studentId: string, afterDate: string): Set<string> {
     const sickDays = new Set<string>();
-    const studentPeriods = Array.from(this.sickPeriods.values())
-      .filter(p => p.studentId === studentId && p.endDate > last.paidDate!);
-
+    const dayAfterPaid = addDaysToDateStr(afterDate, 1);
+    const studentPeriods = Array.from(this.sickPeriods.values()).filter(
+      (p) => p.studentId === studentId && p.endDate > afterDate,
+    );
     for (const period of studentPeriods) {
-      const start = new Date(Math.max(
-        new Date(period.startDate + "T00:00:00").getTime(),
-        new Date(last.paidDate! + "T00:00:00").getTime() + 86400000, // strictly after paidDate
-      ));
-      const end = new Date(period.endDate + "T00:00:00");
-      const cur = new Date(start);
-      while (cur <= end) {
-        sickDays.add(localDateStr(cur));
-        cur.setDate(cur.getDate() + 1);
+      const startStr = period.startDate > dayAfterPaid ? period.startDate : dayAfterPaid;
+      for (const day of eachDateStrInRange(startStr, period.endDate)) {
+        sickDays.add(day);
       }
     }
-
-    // Shift base date by number of unique sick days
-    base.setDate(base.getDate() + sickDays.size);
-    return localDateStr(base);
+    return sickDays;
   }
 
   // ====== Payments: trainer subscription ======
@@ -1139,37 +1136,8 @@ export class MemStorage implements IStorage {
     // Возвращает дату окончания действия ЧВ (включительно) для платежа,
     // если он покрывает dateStr. Иначе — null.
     const cvCoveringEndDate = (paidDateStr: string): string | null => {
-      if (dateStr < paidDateStr) return null;
-      const paid = new Date(paidDateStr + "T00:00:00");
-      const end = new Date(paid);
-      end.setMonth(end.getMonth() + 1);
-
-      // Больничные дни строго после paidDate сдвигают окончание периода.
-      const sickDays = new Set<string>();
-      const periods = Array.from(this.sickPeriods.values()).filter(
-        (sp) => sp.studentId === studentId && sp.endDate > paidDateStr,
-      );
-      for (const period of periods) {
-        const start = new Date(
-          Math.max(
-            new Date(period.startDate + "T00:00:00").getTime(),
-            new Date(paidDateStr + "T00:00:00").getTime() + 86400000,
-          ),
-        );
-        const stop = new Date(period.endDate + "T00:00:00");
-        const cur = new Date(start);
-        while (cur <= stop) {
-          sickDays.add(localDateStr(cur));
-          cur.setDate(cur.getDate() + 1);
-        }
-      }
-      end.setDate(end.getDate() + sickDays.size);
-      // Период действия: [paidDate, end) — следующая оплата нужна с end.
-      if (dateStr >= localDateStr(end)) return null;
-      // Последний день действия (включительно) — день перед end.
-      const lastDay = new Date(end);
-      lastDay.setDate(lastDay.getDate() - 1);
-      return localDateStr(lastDay);
+      const sickDays = this.collectSickDaysAfter(studentId, paidDateStr);
+      return cvValidUntilForDate(paidDateStr, dateStr, sickDays.size);
     };
 
     let membershipKind: "monthly_cv" | "one_time_bv" | null = null;
