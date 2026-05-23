@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { type TimeSlotWithBookings, type Holiday, type WeeklyTemplate } from "@shared/schema";
-import { isWorkingDayByTemplate } from "@/lib/utils-gym";
+import { isSlotInWorkingHours, isWorkingDayByTemplate } from "@/lib/utils-gym";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Clock, Users, UserCheck, LogIn, UserPlus, Lock, Unlock } from "lucide-react";
@@ -169,23 +169,23 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 0,
               );
               const capacity = openSlots.reduce((sum, ts) => sum + ts.maxCapacity, 0);
-              const hasAnyManualBlock = slots.some(
-                (ts) => ts.isBlocked && ts.blockReason === "manual",
-              );
               const isToday = isSameDay(date, new Date());
               const isSelected = isSameDay(date, selectedDate);
               const dateStr = localDateStr(date);
               const period = getHolidayPeriod(dateStr);
               const isWorkday = isWorkingDayByTemplate(dateStr, weeklyTemplate);
-              const hasHolidayBlock = slots.some(
-                (ts) => ts.isBlocked && ts.blockReason === "holiday",
+              const trainerClosedInWorkingHours = slots.some(
+                (ts) =>
+                  ts.isBlocked &&
+                  (ts.blockReason === "manual" || ts.blockReason === "holiday") &&
+                  isSlotInWorkingHours(ts.time, dateStr, weeklyTemplate),
               );
               const isTrainerClosed =
-                isWorkday &&
-                openSlots.length === 0 &&
-                slots.length > 0 &&
-                (!!period || hasAnyManualBlock || hasHolidayBlock);
-              const isTemplateDayOff = !isWorkday;
+                !!period ||
+                (openSlots.length === 0 &&
+                  slots.length > 0 &&
+                  trainerClosedInWorkingHours);
+              const isTemplateDayOff = !isTrainerClosed && openSlots.length === 0;
 
               let tooltipNode: React.ReactNode = null;
               if (isTrainerClosed) {
@@ -207,7 +207,9 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 );
               } else if (isTemplateDayOff) {
                 tooltipNode = (
-                  <div className="text-xs">Выходной по расписанию</div>
+                  <div className="text-xs">
+                    {isWorkday ? "Нет открытых слотов" : "Выходной по расписанию"}
+                  </div>
                 );
               } else if (openSlots.length > 0) {
                 tooltipNode = (
@@ -284,10 +286,10 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                         </div>
                       </div>
                     )}
-                    {isTemplateDayOff && openSlots.length === 0 && (
+                    {isTemplateDayOff && (
                       <div className="flex-1 flex flex-col justify-end">
                         <div className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                          выходной
+                          {isWorkday ? "нет слотов" : "выходной"}
                         </div>
                       </div>
                     )}

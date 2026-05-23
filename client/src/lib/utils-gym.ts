@@ -15,6 +15,24 @@ export function isWorkingDayByTemplate(
   return !!(entry && entry.enabled);
 }
 
+/** Whether a time slot falls inside working hours for that date per the weekly template. */
+export function isSlotInWorkingHours(
+  time: string,
+  dateStr: string,
+  template: WeeklyTemplate | undefined,
+): boolean {
+  if (!template || !isWorkingDayByTemplate(dateStr, template)) return false;
+  const hour = parseInt(time.slice(0, 2), 10);
+  if (Number.isNaN(hour)) return false;
+  const entry = template[String(isoWeekdayFromDateStr(dateStr)) as "1"];
+  if (!entry?.enabled) return false;
+  if (hour < entry.startHour || hour >= entry.endHour) return false;
+  if (entry.breakStartHour != null && entry.breakEndHour != null) {
+    if (hour >= entry.breakStartHour && hour < entry.breakEndHour) return false;
+  }
+  return true;
+}
+
 export function calculateAge(birthDate: string | null | undefined): number | null {
   if (!birthDate) return null;
   const b = new Date(birthDate);
