@@ -152,7 +152,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
     setLoading(true);
     try {
       await apiRequest("POST", "/api/auth/sign-consents", {
-        userId: pendingLoginUser.id,
         documentIds: pendingConsentDocs.map(d => d.id),
       });
       if (pendingShowWelcome) {

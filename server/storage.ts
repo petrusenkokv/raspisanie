@@ -83,6 +83,7 @@ export interface IStorage {
   
   // Notifications
   getNotificationsByUser(userId: string): Promise<Notification[]>;
+  getNotification(id: string): Promise<Notification | undefined>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string): Promise<Notification>;
   markAllNotificationsAsRead(userId: string): Promise<number>;
@@ -1179,6 +1180,10 @@ export class MemStorage implements IStorage {
 
   async getNotificationsByUser(userId: string): Promise<Notification[]> {
     return Array.from(this.notifications.values()).filter(n => n.userId === userId);
+  }
+
+  async getNotification(id: string): Promise<Notification | undefined> {
+    return this.notifications.get(id);
   }
 
   async createNotification(insertNotification: InsertNotification): Promise<Notification> {

@@ -640,6 +640,11 @@ export class DbStorage implements IStorage {
     return db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt));
   }
 
+  async getNotification(id: string): Promise<Notification | undefined> {
+    const rows = await db.select().from(notifications).where(eq(notifications.id, id));
+    return rows[0];
+  }
+
   async createNotification(insertNotification: InsertNotification): Promise<Notification> {
     const rows = await db.insert(notifications).values({
       userId: insertNotification.userId,

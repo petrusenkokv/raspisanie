@@ -14,6 +14,19 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { moscowDateString } from "./moscow-date";
+import {
+  establishSession,
+  destroySession,
+  hashPassword,
+  verifyPassword,
+  upgradePasswordHashIfNeeded,
+  toPublicUser,
+  requireAuth,
+  requireTrainer,
+  requireSelfOrTrainer,
+  sessionUserId,
+  isSessionTrainer,
+} from "./auth";
 
 function normalizePhone(input: string): string | null {
   let digits = String(input || "").replace(/\D/g, "");
@@ -139,12 +152,13 @@ export async function registerRoutes(
         parentPhone: normalizedParentPhone,
         role: "student",
         isVerified: true,
-        password: String(password),
+        password: await hashPassword(String(password)),
         mustChangePassword: false,
         isPendingApproval: true,
       } as any);
 
       await recordConsents(user.id, Array.from(accepted));
+      await establishSession(req, user);
 
       // Notify trainer about new self-registered student
       storage.getTrainer().then(async (trainer) => {
@@ -187,9 +201,18 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ message: "Пользователь не найден" });
       }
-      if (!password || user.password !== password) {
+      if (!password || !(await verifyPassword(password, user.password))) {
         return res.status(401).json({ message: "Неверный пароль" });
       }
+      await upgradePasswordHashIfNeeded(
+        async (id, hash) => {
+          await storage.updateUser(id, { password: hash });
+        },
+        user.id,
+        password,
+        user.password,
+      );
+      await establishSession(req, user);
 
       // Trainer: no consent check needed
       if (user.role === "trainer") {
@@ -238,7 +261,42 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/users/:id/mark-welcome-shown", async (req, res) => {
+  app.get("/api/auth/me", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(sessionUserId(req));
+      if (!user) {
+        await destroySession(req);
+        return res.status(401).json({ message: "Сессия недействительна" });
+      }
+      if (user.role === "trainer") {
+        return res.json({
+          user: toPublicUser(user),
+          pendingDocuments: [],
+        });
+      }
+      const allDocs = await storage.getDocuments(true);
+      const userConsents = await storage.getConsentsByUser(user.id);
+      const signedDocIds = new Set(userConsents.map((c) => c.documentId));
+      const pendingDocuments = allDocs.filter((d) => !signedDocIds.has(d.id));
+      res.json({
+        user: toPublicUser(user),
+        pendingDocuments,
+      });
+    } catch {
+      res.status(500).json({ message: "Не удалось проверить сессию" });
+    }
+  });
+
+  app.post("/api/auth/logout", async (req, res) => {
+    try {
+      await destroySession(req);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Не удалось выйти" });
+    }
+  });
+
+  app.post("/api/users/:id/mark-welcome-shown", requireAuth, requireSelfOrTrainer("id"), async (req, res) => {
     try {
       await storage.markWelcomeShown(req.params.id);
       res.json({ success: true });
@@ -247,10 +305,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/sign-consents", async (req, res) => {
+  app.post("/api/auth/sign-consents", requireAuth, async (req, res) => {
     try {
-      const { userId, documentIds } = req.body;
-      if (!userId || !Array.isArray(documentIds)) {
+      const userId = sessionUserId(req);
+      const { documentIds } = req.body;
+      if (!Array.isArray(documentIds)) {
         return res.status(400).json({ message: "Неверный запрос" });
       }
       await recordConsents(userId, documentIds);
@@ -268,9 +327,18 @@ export async function registerRoutes(
       if (!user || user.role !== "trainer") {
         return res.status(401).json({ message: "Неверные данные тренера" });
       }
-      if (!password || user.password !== password) {
+      if (!password || !(await verifyPassword(password, user.password))) {
         return res.status(401).json({ message: "Неверный пароль" });
       }
+      await upgradePasswordHashIfNeeded(
+        async (id, hash) => {
+          await storage.updateUser(id, { password: hash });
+        },
+        user.id,
+        password,
+        user.password,
+      );
+      await establishSession(req, user);
 
       await storage.updateUser(user.id, { lastLogin: new Date() });
 
@@ -289,28 +357,32 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/change-password", async (req, res) => {
+  app.post("/api/auth/change-password", requireAuth, async (req, res) => {
     try {
-      const { userId, oldPassword, newPassword } = req.body;
-      if (!userId || !newPassword || newPassword.length < 4) {
+      const userId = sessionUserId(req);
+      const { oldPassword, newPassword } = req.body;
+      if (!newPassword || newPassword.length < 4) {
         return res.status(400).json({ message: "Новый пароль должен быть не короче 4 символов" });
       }
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "Пользователь не найден" });
-      if (user.password !== oldPassword) {
+      if (!oldPassword || !(await verifyPassword(oldPassword, user.password))) {
         return res.status(401).json({ message: "Неверный текущий пароль" });
       }
-      await storage.updateUser(userId, { password: newPassword, mustChangePassword: false });
+      await storage.updateUser(userId, {
+        password: await hashPassword(newPassword),
+        mustChangePassword: false,
+      });
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Не удалось сменить пароль" });
     }
   });
 
-  app.patch("/api/trainer/profile", async (req, res) => {
+  app.patch("/api/trainer/profile", requireTrainer, async (req, res) => {
     try {
-      const { userId, phone } = req.body;
-      if (!userId) return res.status(400).json({ message: "Не указан пользователь" });
+      const userId = sessionUserId(req);
+      const { phone } = req.body;
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "Пользователь не найден" });
       if (user.role !== "trainer") return res.status(403).json({ message: "Доступ только для тренера" });
@@ -340,23 +412,20 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/users/:id", async (req, res) => {
+  app.get("/api/users/:id", requireAuth, requireSelfOrTrainer("id"), async (req, res) => {
     try {
       const user = await storage.getUser(req.params.id);
       if (!user) return res.status(404).json({ message: "Пользователь не найден" });
-      const { password: _pw, ...safeUser } = user as any;
-      res.json({ user: safeUser });
+      res.json({ user: toPublicUser(user) });
     } catch {
       res.status(500).json({ message: "Не удалось получить данные пользователя" });
     }
   });
 
-  app.patch("/api/users/me", async (req, res) => {
+  app.patch("/api/users/me", requireAuth, async (req, res) => {
     try {
-      const { userId, ...payload } = req.body ?? {};
-      if (!userId) {
-        return res.status(400).json({ message: "Не указан пользователь" });
-      }
+      const userId = sessionUserId(req);
+      const { userId: _ignored, ...payload } = req.body ?? {};
       // Block profile editing for pending students
       const currentUserRecord = await storage.getUser(userId);
       if (currentUserRecord?.isPendingApproval) {
@@ -395,7 +464,9 @@ export async function registerRoutes(
     }
   }
 
-  // Schedule routes
+  // Schedule routes (authenticated)
+  app.use("/api/schedule", requireAuth);
+
   app.get("/api/schedule/day/:date", async (req, res) => {
     try {
       const { date } = req.params;
@@ -433,9 +504,20 @@ export async function registerRoutes(
   });
 
   // Booking routes
+  app.use("/api/bookings", requireAuth);
+
   app.post("/api/bookings", async (req, res) => {
     try {
-      const { timeSlotId, studentId, notes } = req.body;
+      const { timeSlotId, notes } = req.body;
+      const studentId = isSessionTrainer(req)
+        ? req.body?.studentId
+        : sessionUserId(req);
+      if (!studentId) {
+        return res.status(400).json({ message: "Не указан ученик" });
+      }
+      if (!isSessionTrainer(req) && studentId !== sessionUserId(req)) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
 
       // Get the target time slot to know its date
       const targetSlot = await storage.getTimeSlotById(timeSlotId);
@@ -523,7 +605,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/bookings/:id/confirm", async (req, res) => {
+  app.put("/api/bookings/:id/confirm", requireTrainer, async (req, res) => {
     try {
       const { id } = req.params;
       const booking = await storage.confirmBooking(id);
@@ -553,7 +635,14 @@ export async function registerRoutes(
   app.put("/api/bookings/:id/cancel", async (req, res) => {
     try {
       const { id } = req.params;
-      const { cancelledBy } = req.body ?? {};
+      const cancelledBy =
+        (req.body?.cancelledBy as string | undefined) ?? sessionUserId(req);
+      if (
+        !isSessionTrainer(req) &&
+        cancelledBy !== sessionUserId(req)
+      ) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
 
       const existing = await storage.getBooking(id);
       if (!existing) {
@@ -633,12 +722,22 @@ export async function registerRoutes(
   app.post("/api/bookings/:id/reschedule", async (req, res) => {
     try {
       const { id } = req.params;
-      const { newTimeSlotId, rescheduledBy } = req.body ?? {};
+      const { newTimeSlotId, rescheduledBy: rescheduledByBody } = req.body ?? {};
       if (!newTimeSlotId) return res.status(400).json({ message: "Укажите новый слот" });
 
       const booking = await storage.getRawBooking(id);
       if (!booking) return res.status(404).json({ message: "Запись не найдена" });
       if (booking.status === "cancelled") return res.status(400).json({ message: "Нельзя перенести отменённую запись" });
+
+      const rescheduledBy =
+        (rescheduledByBody as string | undefined) ?? sessionUserId(req);
+      if (
+        !isSessionTrainer(req) &&
+        rescheduledBy !== sessionUserId(req) &&
+        booking.studentId !== sessionUserId(req)
+      ) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
 
       // Determine role of the person rescheduling
       const rescheduler = rescheduledBy ? await storage.getUser(rescheduledBy) : null;
@@ -703,7 +802,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bookings/student/:studentId", async (req, res) => {
+  app.get("/api/bookings/student/:studentId", requireSelfOrTrainer("studentId"), async (req, res) => {
     try {
       const { studentId } = req.params;
       const bookings = await storage.getBookingsByStudent(studentId);
@@ -714,6 +813,8 @@ export async function registerRoutes(
   });
 
   // Trainer routes
+  app.use("/api/trainer", requireTrainer);
+
   app.get("/api/trainer/students", async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === "true";
@@ -860,7 +961,7 @@ export async function registerRoutes(
         parentPhone: null,
         role: "student",
         isVerified: true,
-        password: initialPassword,
+        password: await hashPassword(initialPassword),
         mustChangePassword: true,
       } as any);
 
@@ -1235,7 +1336,7 @@ export async function registerRoutes(
   });
 
   // Student: own payment status for a specific date (YYYY-MM-DD)
-  app.get("/api/student/payment-status/:studentId", async (req, res) => {
+  app.get("/api/student/payment-status/:studentId", requireAuth, requireSelfOrTrainer("studentId"), async (req, res) => {
     try {
       const { studentId } = req.params;
       const dateStr = String(req.query.date || "");
@@ -1510,10 +1611,11 @@ export async function registerRoutes(
     res.json({ publicKey: vapidPublicKey });
   });
 
-  app.post("/api/push/subscribe", async (req, res) => {
+  app.post("/api/push/subscribe", requireAuth, async (req, res) => {
     try {
-      const { userId, endpoint, keys } = req.body;
-      if (!userId || !endpoint || !keys) return res.status(400).json({ message: "Неверные данные подписки" });
+      const userId = sessionUserId(req);
+      const { endpoint, keys } = req.body;
+      if (!endpoint || !keys) return res.status(400).json({ message: "Неверные данные подписки" });
       await storage.savePushSubscription({ userId, endpoint, keys });
       res.json({ success: true });
     } catch (error: any) {
@@ -1521,7 +1623,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/push/unsubscribe", async (req, res) => {
+  app.post("/api/push/unsubscribe", requireAuth, async (req, res) => {
     try {
       const { endpoint } = req.body;
       if (!endpoint) return res.status(400).json({ message: "Не указан endpoint" });
@@ -1533,7 +1635,9 @@ export async function registerRoutes(
   });
 
   // Notifications
-  app.get("/api/notifications/:userId", async (req, res) => {
+  app.use("/api/notifications", requireAuth);
+
+  app.get("/api/notifications/:userId", requireSelfOrTrainer("userId"), async (req, res) => {
     try {
       const { userId } = req.params;
       const notifications = await storage.getNotificationsByUser(userId);
@@ -1547,7 +1651,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/notifications/user/:userId/read-all", async (req, res) => {
+  app.put("/api/notifications/user/:userId/read-all", requireSelfOrTrainer("userId"), async (req, res) => {
     try {
       const { userId } = req.params;
       const count = await storage.markAllNotificationsAsRead(userId);
@@ -1557,7 +1661,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/notifications/user/:userId/read", async (req, res) => {
+  app.delete("/api/notifications/user/:userId/read", requireSelfOrTrainer("userId"), async (req, res) => {
     try {
       const { userId } = req.params;
       const count = await storage.deleteReadNotifications(userId);
@@ -1570,6 +1674,14 @@ export async function registerRoutes(
   app.put("/api/notifications/:id/read", async (req, res) => {
     try {
       const { id } = req.params;
+      const existing = await storage.getNotification(id);
+      if (!existing) return res.status(404).json({ message: "Уведомление не найдено" });
+      if (
+        !isSessionTrainer(req) &&
+        existing.userId !== sessionUserId(req)
+      ) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
       const notification = await storage.markNotificationAsRead(id);
       res.json(notification);
     } catch (error) {

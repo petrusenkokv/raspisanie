@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startReminderScheduler } from "./reminders";
 import { moscowDateString } from "./moscow-date";
+import { setupSession } from "./auth";
 
 type AppOptions = {
   serveClient?: boolean;
@@ -14,6 +15,7 @@ export async function createApp(options: AppOptions = {}) {
   const app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
+  setupSession(app);
 
   app.get("/healthz", (_req, res) => {
     res.status(200).json({

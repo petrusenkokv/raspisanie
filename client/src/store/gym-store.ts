@@ -59,16 +59,30 @@ function loadUserFromStorage(): User | null {
 
 const _savedUser = loadUserFromStorage();
 
-/** Drop cached login if the server no longer has this user (e.g. in-memory restart). */
+/** Sync UI with server session cookie (source of truth for auth). */
 export async function validateStoredUser(): Promise<void> {
-  const user = useGymStore.getState().currentUser;
-  if (!user?.id) return;
+  const { setUser, logout } = useGymStore.getState();
   try {
-    const res = await fetch(`/api/users/${user.id}`);
-    if (res.status === 404) useGymStore.getState().logout();
+    const res = await fetch("/api/auth/me", { credentials: "include" });
+    if (res.status === 401) {
+      logout();
+      return;
+    }
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data?.user) setUser(data.user);
   } catch {
-    /* offline — keep session */
+    /* offline — keep cached user */
   }
+}
+
+export async function logoutFromServer(): Promise<void> {
+  try {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+  } catch {
+    /* ignore */
+  }
+  useGymStore.getState().logout();
 }
 
 export const useGymStore = create<GymStore>((set, get) => ({

@@ -22,7 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useGymStore, validateStoredUser } from "@/store/gym-store";
+import { useGymStore, validateStoredUser, logoutFromServer } from "@/store/gym-store";
 import { type User } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -124,6 +124,7 @@ export function GymSchedulePage() {
   const { data: scheduleData, isLoading } = useQuery({
     queryKey: ["schedule", currentView, selectedDate.toISOString()],
     staleTime: 0,
+    enabled: isAuthenticated,
     queryFn: async () => {
       const localDate = (d: Date) => {
         const y = d.getFullYear();
@@ -221,8 +222,8 @@ export function GymSchedulePage() {
 
   const handleCancel = (bookingId: string) => cancelMutation.mutate(bookingId);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logoutFromServer();
     toast({ title: "Выход выполнен", description: "Вы успешно вышли из системы" });
   };
 

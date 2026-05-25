@@ -33,7 +33,6 @@ export function ChangePasswordDialog({ open, onOpenChange, forced }: ChangePassw
   const mutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/auth/change-password", {
-        userId: currentUser?.id,
         oldPassword,
         newPassword,
       });

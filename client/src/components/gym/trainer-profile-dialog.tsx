@@ -84,7 +84,6 @@ export function TrainerProfileDialog({ open, onOpenChange }: TrainerProfileDialo
       if (newPassword.length < 4) throw new Error("Пароль не короче 4 символов");
       if (newPassword !== repeatPassword) throw new Error("Пароли не совпадают");
       const res = await apiRequest("POST", "/api/auth/change-password", {
-        userId: currentUser?.id,
         oldPassword,
         newPassword,
       });
