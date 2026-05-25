@@ -9,3 +9,4 @@ vite.config.ts.*
 .agents/
 .vercel
 .env*.local
+.env*

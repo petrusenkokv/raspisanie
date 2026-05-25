@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Bell, Check, CheckCheck, Trash2, X, UserCheck } from "lucide-react";
+import { Bell, BellOff, Check, CheckCheck, Trash2, X, UserCheck, Loader2 } from "lucide-react";
+import type { PushStatus } from "@/hooks/use-push-notifications";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +17,10 @@ import type { Notification } from "@shared/schema";
 interface Props {
   userId: string;
   isTrainer: boolean;
+  pushStatus?: PushStatus;
+  pushLoading?: boolean;
+  onPushSubscribe?: () => void;
+  onPushUnsubscribe?: () => void;
 }
 
 function playChime() {
@@ -112,7 +117,14 @@ function groupOf(value: Date | string | null): Group {
   return "earlier";
 }
 
-export function NotificationsPopover({ userId, isTrainer }: Props) {
+export function NotificationsPopover({
+  userId,
+  isTrainer,
+  pushStatus,
+  pushLoading,
+  onPushSubscribe,
+  onPushUnsubscribe,
+}: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   useWebSocket();
@@ -306,7 +318,7 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
         <Button
           variant="outline"
           size="sm"
-          className="relative"
+          className="relative flex-shrink-0"
           data-testid="button-notifications"
           aria-label="Уведомления"
         >
@@ -487,6 +499,31 @@ export function NotificationsPopover({ userId, isTrainer }: Props) {
                 </ul>
               </div>
             ))}
+          </div>
+        )}
+
+        {pushStatus && pushStatus !== "unsupported" && onPushSubscribe && onPushUnsubscribe && (
+          <div className="border-t px-4 py-3 bg-gray-50 dark:bg-gray-900/50">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
+              Push в браузере
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full h-8"
+              disabled={pushLoading}
+              onClick={pushStatus === "granted" ? onPushUnsubscribe : onPushSubscribe}
+            >
+              {pushLoading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : pushStatus === "granted" ? (
+                <Bell className="h-4 w-4 mr-2 text-blue-600" />
+              ) : (
+                <BellOff className="h-4 w-4 mr-2" />
+              )}
+              {pushStatus === "granted" ? "Отключить push" : "Включить push"}
+            </Button>
           </div>
         )}
       </PopoverContent>

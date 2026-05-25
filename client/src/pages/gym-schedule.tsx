@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { CalendarHeader } from "@/components/gym/calendar-header";
-import { NotificationsPopover } from "@/components/gym/notifications-popover";
 import { CalendarView } from "@/components/gym/calendar-view";
 import { AuthModal } from "@/components/gym/auth-modal";
 import { StudentsPanel } from "@/components/gym/students-panel";
@@ -14,23 +13,12 @@ import { BroadcastDialog } from "@/components/gym/broadcast-dialog";
 import { ProfileDialog } from "@/components/gym/profile-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useGymStore, validateStoredUser, logoutFromServer } from "@/store/gym-store";
 import { type User } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Loader2, LogOut, LogIn, UserPlus, UserCircle2, KeyRound, Lock, Unlock,
-  CalendarOff, Settings, Send, Bell, BellOff, Clock, MessageSquare,
-} from "lucide-react";
+import { Loader2, MessageSquare } from "lucide-react";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 
 export function GymSchedulePage() {
@@ -56,7 +44,6 @@ export function GymSchedulePage() {
     setLoading,
     setUser,
     isTrainer,
-    logout
   } = useGymStore();
 
   const { status: pushStatus, loading: pushLoading, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } =
@@ -229,133 +216,23 @@ export function GymSchedulePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <CalendarHeader onStudentsOpen={() => setStudentsPanelOpen(true)} />
-
-      <div className="border-b bg-white dark:bg-gray-900">
-        <div className="px-3 sm:px-4 py-2 flex flex-wrap items-center gap-2">
-          {isAuthenticated && currentUser ? (
-            <span className="text-sm text-gray-600 dark:text-gray-400 truncate">
-              Привет, <span className="font-medium">{currentUser.firstName}</span>!
-            </span>
-          ) : (
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              Войдите, чтобы записаться
-            </span>
-          )}
-          {isPendingApproval && (
-            <span className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1">
-              <Clock className="h-3.5 w-3.5 flex-shrink-0" />
-              Ожидает одобрения тренера
-            </span>
-          )}
-        </div>
-
-        <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:thin] pb-2">
-          <div className="flex items-center gap-2 px-3 sm:px-4 w-max min-w-full">
-            {isAuthenticated && isTrainer() && currentView === "day" && dayBlockedState && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-shrink-0 whitespace-nowrap"
-                onClick={() => blockDayMutation.mutate({ date: dayBlockedState.dateStr, blocked: !dayBlockedState.allBlocked })}
-                disabled={blockDayMutation.isPending}
-                data-testid="button-block-day"
-              >
-                {dayBlockedState.allBlocked
-                  ? <><Unlock className="h-4 w-4 mr-2" />Открыть день</>
-                  : <><Lock className="h-4 w-4 mr-2" />Закрыть день</>}
-              </Button>
-            )}
-            {isAuthenticated && isTrainer() && (
-              <Button variant="outline" size="sm" className="flex-shrink-0 whitespace-nowrap" onClick={() => setBlockPeriodOpen(true)} data-testid="button-vacation">
-                <CalendarOff className="h-4 w-4 mr-2" />Отпуск / период
-              </Button>
-            )}
-            {isAuthenticated && isTrainer() && (
-              <Button variant="outline" size="sm" className="flex-shrink-0 whitespace-nowrap" onClick={() => setSettingsOpen(true)} data-testid="button-schedule-settings">
-                <Settings className="h-4 w-4 mr-2" />Настройки
-              </Button>
-            )}
-            {isAuthenticated && isTrainer() && (
-              <Button variant="outline" size="sm" className="flex-shrink-0 whitespace-nowrap" onClick={() => setBroadcastOpen(true)} data-testid="button-broadcast">
-                <Send className="h-4 w-4 mr-2" />Рассылка
-              </Button>
-            )}
-
-            <div className="flex-shrink-0 w-px h-6 bg-gray-200 dark:bg-gray-700 mx-0.5" aria-hidden />
-
-            {isAuthenticated && currentUser && pushStatus !== "unsupported" && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-shrink-0"
-                disabled={pushLoading}
-                onClick={pushStatus === "granted" ? pushUnsubscribe : pushSubscribe}
-                title={pushStatus === "granted" ? "Отключить push-уведомления" : "Включить push-уведомления"}
-              >
-                {pushLoading
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : pushStatus === "granted"
-                    ? <Bell className="h-4 w-4 text-blue-600" />
-                    : <BellOff className="h-4 w-4 text-gray-400" />}
-              </Button>
-            )}
-
-            {isAuthenticated && currentUser && (
-              <div className="flex-shrink-0">
-                <NotificationsPopover userId={currentUser.id} isTrainer={isTrainer()} />
-              </div>
-            )}
-
-            {isAuthenticated ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="flex-shrink-0 whitespace-nowrap" aria-label="Меню аккаунта">
-                    <UserCircle2 className="h-4 w-4 mr-2" />
-                    <span className="max-w-[8rem] truncate hidden sm:inline">
-                      {currentUser?.firstName}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuLabel className="truncate max-w-[12rem]">
-                    {currentUser?.firstName} {currentUser?.lastName ?? ""}
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {currentUser?.role === "trainer" && (
-                    <DropdownMenuItem onClick={() => setTrainerProfileOpen(true)}>
-                      <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
-                    </DropdownMenuItem>
-                  )}
-                  {currentUser?.role !== "trainer" && !isPendingApproval && (
-                    <DropdownMenuItem onClick={() => setProfileOpen(true)}>
-                      <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
-                    </DropdownMenuItem>
-                  )}
-                  {currentUser?.role !== "trainer" && (
-                    <DropdownMenuItem onClick={() => setChangePasswordOpen(true)}>
-                      <KeyRound className="h-4 w-4 mr-2" />Сменить пароль
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleLogout} className="text-red-600 dark:text-red-400">
-                    <LogOut className="h-4 w-4 mr-2" />Выйти
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <>
-                <Button size="sm" variant="outline" className="flex-shrink-0" onClick={() => { setAuthModalMode("login"); setAuthModalOpen(true); }} data-testid="button-login">
-                  <LogIn className="h-4 w-4 mr-2" />Войти
-                </Button>
-                <Button size="sm" className="flex-shrink-0 whitespace-nowrap" onClick={() => { setAuthModalMode("register"); setAuthModalOpen(true); }} data-testid="button-register">
-                  <UserPlus className="h-4 w-4 mr-2" />Регистрация
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      <CalendarHeader
+        onStudentsOpen={() => setStudentsPanelOpen(true)}
+        onSettingsOpen={() => setSettingsOpen(true)}
+        onTrainerProfileOpen={() => setTrainerProfileOpen(true)}
+        onProfileOpen={() => setProfileOpen(true)}
+        onChangePasswordOpen={() => setChangePasswordOpen(true)}
+        onLogin={() => { setAuthModalMode("login"); setAuthModalOpen(true); }}
+        onRegister={() => { setAuthModalMode("register"); setAuthModalOpen(true); }}
+        onLogout={handleLogout}
+        isAuthenticated={isAuthenticated}
+        isPendingApproval={isPendingApproval}
+        currentUser={currentUser}
+        pushStatus={pushStatus}
+        pushLoading={pushLoading}
+        onPushSubscribe={pushSubscribe}
+        onPushUnsubscribe={pushUnsubscribe}
+      />
 
       {/* Main content */}
       <div className="p-4">
@@ -404,7 +281,21 @@ export function GymSchedulePage() {
         forced={!!(currentUser as any)?.mustChangePassword}
       />
       <BlockPeriodDialog open={blockPeriodOpen} onOpenChange={setBlockPeriodOpen} />
-      <ScheduleSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <ScheduleSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        dayBlockedState={dayBlockedState}
+        blockDayPending={blockDayMutation.isPending}
+        onToggleBlockDay={() => {
+          if (!dayBlockedState) return;
+          blockDayMutation.mutate({
+            date: dayBlockedState.dateStr,
+            blocked: !dayBlockedState.allBlocked,
+          });
+        }}
+        onOpenBlockPeriod={() => setBlockPeriodOpen(true)}
+        onOpenBroadcast={() => setBroadcastOpen(true)}
+      />
       <BroadcastDialog open={broadcastOpen} onOpenChange={setBroadcastOpen} />
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
       <TrainerProfileDialog open={trainerProfileOpen} onOpenChange={setTrainerProfileOpen} />

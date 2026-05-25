@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare } from "lucide-react";
+import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare, Send, Lock, Unlock } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { type WeeklyTemplate, type WeekdayTemplateEntry, type Holiday } from "@shared/schema";
@@ -24,6 +24,11 @@ import { type WeeklyTemplate, type WeekdayTemplateEntry, type Holiday } from "@s
 interface ScheduleSettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenBlockPeriod?: () => void;
+  onOpenBroadcast?: () => void;
+  dayBlockedState?: { allBlocked: boolean; dateStr: string } | null;
+  blockDayPending?: boolean;
+  onToggleBlockDay?: () => void;
 }
 
 const WEEKDAY_LABELS: Record<string, string> = {
@@ -54,7 +59,15 @@ function todayLocalStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsDialogProps) {
+export function ScheduleSettingsDialog({
+  open,
+  onOpenChange,
+  onOpenBlockPeriod,
+  onOpenBroadcast,
+  dayBlockedState,
+  blockDayPending,
+  onToggleBlockDay,
+}: ScheduleSettingsDialogProps) {
   const { toast } = useToast();
 
   const { data, isLoading } = useQuery<SettingsResponse>({
@@ -202,7 +215,9 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Настройки расписания</DialogTitle>
-          <DialogDescription>Изменение рабочих часов, ограничений и праздников.</DialogDescription>
+          <DialogDescription>
+            Рабочие часы, шаблон недели, лимиты и праздники. Внизу — закрытие дня, отпуск и рассылка.
+          </DialogDescription>
         </DialogHeader>
 
         {isLoading || !data ? (
@@ -646,8 +661,72 @@ export function ScheduleSettingsDialog({ open, onOpenChange }: ScheduleSettingsD
           </Tabs>
         )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Закрыть</Button>
+        <DialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
+          {(onToggleBlockDay || onOpenBlockPeriod || onOpenBroadcast) && (
+            <div className="flex flex-col gap-2 w-full">
+              {onToggleBlockDay && dayBlockedState ? (
+                <Button
+                  type="button"
+                  variant={dayBlockedState.allBlocked ? "secondary" : "outline"}
+                  className="w-full justify-start"
+                  disabled={blockDayPending}
+                  onClick={onToggleBlockDay}
+                  data-testid="button-settings-block-day"
+                >
+                  {blockDayPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin flex-shrink-0" />
+                  ) : dayBlockedState.allBlocked ? (
+                    <Unlock className="h-4 w-4 mr-2 flex-shrink-0" />
+                  ) : (
+                    <Lock className="h-4 w-4 mr-2 flex-shrink-0" />
+                  )}
+                  {dayBlockedState.allBlocked ? "Открыть день" : "Закрыть день"}
+                  <span className="ml-1 text-gray-500 font-normal">
+                    ({format(new Date(dayBlockedState.dateStr + "T12:00:00"), "d MMMM yyyy", { locale: ru })})
+                  </span>
+                </Button>
+              ) : onToggleBlockDay ? (
+                <p className="text-xs text-gray-500 px-1">
+                  Закрытие одного дня доступно в виде «День» — выберите дату в расписании и откройте настройки снова.
+                </p>
+              ) : null}
+              <div className="flex flex-col sm:flex-row gap-2 w-full">
+              {onOpenBlockPeriod && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full sm:flex-1 justify-start"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onOpenBlockPeriod();
+                  }}
+                  data-testid="button-settings-block-period"
+                >
+                  <CalendarOff className="h-4 w-4 mr-2 flex-shrink-0" />
+                  Отпуск / закрыть период
+                </Button>
+              )}
+              {onOpenBroadcast && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full sm:flex-1 justify-start"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onOpenBroadcast();
+                  }}
+                  data-testid="button-settings-broadcast"
+                >
+                  <Send className="h-4 w-4 mr-2 flex-shrink-0" />
+                  Рассылка ученикам
+                </Button>
+              )}
+              </div>
+            </div>
+          )}
+          <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>
+            Закрыть
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
