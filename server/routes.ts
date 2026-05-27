@@ -464,8 +464,7 @@ export async function registerRoutes(
     }
   }
 
-  // Schedule routes (authenticated)
-  app.use("/api/schedule", requireAuth);
+  // Schedule routes (public read)
 
   app.get("/api/schedule/day/:date", async (req, res) => {
     try {
@@ -906,13 +905,15 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "Ученик не найден" });
       if (user.role === "trainer") return res.status(400).json({ message: "Нельзя редактировать тренера здесь" });
 
-      const { firstName, lastName, middleName, birthDate, trainerNotes } = req.body;
+      const { firstName, lastName, middleName, birthDate, trainerNotes, exemptMembership, exemptTrainerPayment } = req.body;
       const updates: any = {};
       if (firstName !== undefined) updates.firstName = String(firstName).trim();
       if (lastName !== undefined) updates.lastName = lastName ? String(lastName).trim() : null;
       if (middleName !== undefined) updates.middleName = middleName ? String(middleName).trim() : null;
       if (birthDate !== undefined) updates.birthDate = birthDate || null;
       if (trainerNotes !== undefined) updates.trainerNotes = trainerNotes ? String(trainerNotes) : null;
+      if (exemptMembership !== undefined) updates.exemptMembership = !!exemptMembership;
+      if (exemptTrainerPayment !== undefined) updates.exemptTrainerPayment = !!exemptTrainerPayment;
       const updated = await storage.updateUser(id, updates);
       res.json(updated);
     } catch (error) {
@@ -1079,6 +1080,52 @@ export async function registerRoutes(
       res.status(201).json(bookingWithDetails);
     } catch (error) {
       res.status(500).json({ message: "Не удалось записать ученика" });
+    }
+  });
+
+  app.post("/api/trainer/book-self", async (req, res) => {
+    try {
+      const trainerId = sessionUserId(req);
+      const { timeSlotId } = req.body;
+      if (!timeSlotId) {
+        return res.status(400).json({ message: "Укажите слот" });
+      }
+
+      const slot = await storage.getTimeSlotById(timeSlotId);
+      if (!slot) return res.status(404).json({ message: "Слот не найден" });
+      if (slot.isBlocked) return res.status(400).json({ message: "Слот заблокирован" });
+
+      const slotBookings = await storage.getBookingsByTimeSlot(timeSlotId);
+      const alreadyInSlot = slotBookings.some(
+        (b) => b.studentId === trainerId && b.status !== "cancelled",
+      );
+      if (alreadyInSlot) {
+        return res.status(400).json({ message: "Вы уже записаны на это время" });
+      }
+
+      const dayBookings = await storage.getBookingsByStudent(trainerId);
+      const alreadyThatDay = dayBookings.find(
+        (b) => b.status !== "cancelled" && b.timeSlot.date === slot.date,
+      );
+      if (alreadyThatDay) {
+        return res.status(400).json({
+          message: `Вы уже записаны на ${alreadyThatDay.timeSlot.time} в этот день`,
+        });
+      }
+
+      const booking = await storage.createBooking({
+        studentId: trainerId,
+        timeSlotId,
+        bookedBy: trainerId,
+        status: "confirmed",
+        notes: null,
+      });
+
+      const bookingWithDetails = await storage.getBooking(booking.id);
+      broadcast({ type: "schedule_update" });
+      res.status(201).json(bookingWithDetails);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось записаться" });
     }
   });
 

@@ -9,7 +9,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useGymStore } from "@/store/gym-store";
 import { useToast } from "@/hooks/use-toast";
 import { type User, type TimeSlotWithBookings } from "@shared/schema";
-import { Calendar, UserCheck, Loader2, Search, AlertTriangle } from "lucide-react";
+import { Calendar, UserCheck, User as UserIcon, Loader2, Search, AlertTriangle, Dumbbell } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { ToastAction } from "@/components/ui/toast";
@@ -30,9 +30,7 @@ function isSlotInPast(date: string, time: string): boolean {
 interface BookStudentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  // If timeSlotId is passed — skip date/time selection (booking from a specific slot)
   preselectedTimeSlotId?: string | null;
-  // If student is passed — skip student selection (booking from student card)
   preselectedStudent?: User | null;
 }
 
@@ -49,12 +47,17 @@ export function BookStudentDialog({
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [selectedDate, setSelectedDate] = useState<string>(todayLocalStr());
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState(preselectedTimeSlotId || "");
+  const [bookingForSelf, setBookingForSelf] = useState(false);
 
-  // Reset date to today when the dialog opens (so it doesn't keep stale state)
   useEffect(() => {
     if (open && !preselectedTimeSlotId) {
       setSelectedDate(todayLocalStr());
       setSelectedTimeSlotId("");
+    }
+    if (!open) {
+      setBookingForSelf(false);
+      setSelectedStudentId("");
+      setSearchQuery("");
     }
   }, [open, preselectedTimeSlotId]);
 
@@ -89,9 +92,28 @@ export function BookStudentDialog({
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
       handleClose();
     },
-    onError: () => {
-      toast({ variant: "destructive", title: "Ошибка", description: "Не удалось записать ученика" });
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Ошибка", description: err?.message || "Не удалось записать ученика" });
     }
+  });
+
+  const bookSelfMutation = useMutation({
+    mutationFn: async (timeSlotId: string) => {
+      const res = await apiRequest("POST", "/api/trainer/book-self", { timeSlotId });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Ошибка записи");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Вы записаны", description: "Запись на тренировку подтверждена" });
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      handleClose();
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Не удалось записаться", description: err?.message || "Ошибка записи" });
+    },
   });
 
   const handleClose = () => {
@@ -109,14 +131,13 @@ export function BookStudentDialog({
   const handleConfirm = () => {
     const studentId = preselectedStudent?.id || selectedStudentId;
     const slotId = preselectedTimeSlotId || selectedTimeSlotId;
-    if (!studentId || !slotId) return;
+    if (!slotId) return;
+    if (!bookingForSelf && !studentId) return;
 
-    // Determine the date and time of the chosen slot
     let slotDate: string | null = null;
     let slotTime: string | null = null;
 
     if (preselectedTimeSlotId) {
-      // Find slot in the loaded schedule
       for (const day of schedule) {
         const found = day.timeSlots.find((ts: TimeSlotWithBookings) => ts.id === preselectedTimeSlotId);
         if (found) {
@@ -133,15 +154,26 @@ export function BookStudentDialog({
       }
     }
 
-    // If the slot is in the past — show a warning toast with a confirm action
     if (slotDate && slotTime && isSlotInPast(slotDate, slotTime)) {
       const student = preselectedStudent || students.find(s => s.id === studentId);
       const dateLabel = format(new Date(slotDate + "T00:00:00"), "d MMMM", { locale: ru });
+      const personLabel = bookingForSelf
+        ? " себя"
+        : `${student ? ` ${student.firstName} ${student.lastName}` : " ученика"}`;
       toast({
-        title: "⚠️ Запись на прошедшую дату",
-        description: `Слот ${dateLabel}, ${slotTime} уже прошёл. Вы уверены, что хотите записать${student ? ` ${student.firstName} ${student.lastName}` : ""} задним числом?`,
+        title: "Запись на прошедшую дату",
+        description: `Слот ${dateLabel}, ${slotTime} уже прошёл. Записать${personLabel} задним числом?`,
         action: (
-          <ToastAction altText="Записать всё равно" onClick={() => doBook(studentId, slotId)}>
+          <ToastAction
+            altText="Записать всё равно"
+            onClick={() => {
+              if (bookingForSelf) {
+                bookSelfMutation.mutate(slotId);
+                return;
+              }
+              if (studentId) doBook(studentId, slotId);
+            }}
+          >
             Записать всё равно
           </ToastAction>
         ),
@@ -149,11 +181,13 @@ export function BookStudentDialog({
       return;
     }
 
-    doBook(studentId, slotId);
+    if (bookingForSelf) {
+      bookSelfMutation.mutate(slotId);
+      return;
+    }
+    if (studentId) doBook(studentId, slotId);
   };
 
-  // Fetch slots for the chosen date directly from the server, so the trainer
-  // can pick any future date — not only what's currently visible in the schedule.
   const { data: dayData, isLoading: dayLoading } = useQuery<{
     date: string;
     timeSlots: TimeSlotWithBookings[];
@@ -190,9 +224,9 @@ export function BookStudentDialog({
       })()
     : "";
 
-  const canConfirm =
-    (preselectedStudent || selectedStudentId) &&
-    (preselectedTimeSlotId || selectedTimeSlotId);
+  const canConfirm = bookingForSelf
+    ? !!(preselectedTimeSlotId || selectedTimeSlotId)
+    : !!(preselectedStudent || selectedStudentId) && !!(preselectedTimeSlotId || selectedTimeSlotId);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -200,13 +234,41 @@ export function BookStudentDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-blue-600" />
-            Записать ученика
+            Запись на тренировку
           </DialogTitle>
-          <DialogDescription>Выберите ученика и свободный слот для записи.</DialogDescription>
+          <DialogDescription>Запишите ученика или себя на свободный слот.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Student selection (if not preselected) */}
+          {!preselectedStudent && (
+            <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => { setBookingForSelf(false); setSelectedStudentId(""); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-colors ${
+                  !bookingForSelf
+                    ? "bg-blue-600 text-white"
+                    : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}
+              >
+                <UserIcon className="h-4 w-4" />
+                Записать ученика
+              </button>
+              <button
+                type="button"
+                onClick={() => { setBookingForSelf(true); setSelectedStudentId(""); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-colors border-l border-gray-200 dark:border-gray-700 ${
+                  bookingForSelf
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}
+              >
+                <Dumbbell className="h-4 w-4" />
+                Записать себя
+              </button>
+            </div>
+          )}
+
           {preselectedStudent ? (
             <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <UserCheck className="h-5 w-5 text-blue-600 shrink-0" />
@@ -215,6 +277,16 @@ export function BookStudentDialog({
                   {preselectedStudent.firstName} {preselectedStudent.lastName}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">{preselectedStudent.phone}</p>
+              </div>
+            </div>
+          ) : bookingForSelf ? (
+            <div className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg">
+              <Dumbbell className="h-5 w-5 text-emerald-600 shrink-0" />
+              <div>
+                <p className="font-semibold text-gray-900 dark:text-white">
+                  {currentUser?.firstName} {currentUser?.lastName}
+                </p>
+                <p className="text-sm text-emerald-600 dark:text-emerald-400">Тренер — запись для себя</p>
               </div>
             </div>
           ) : (
@@ -250,14 +322,13 @@ export function BookStudentDialog({
                 <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-950/20 border border-orange-300 dark:border-orange-700 rounded-lg">
                   <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0 mt-0.5" />
                   <p className="text-sm text-orange-700 dark:text-orange-400">
-                    <strong>{selectedStudentObj.firstName} {selectedStudentObj.lastName}</strong> не согласился с документами. Ученику необходимо принять документы при входе в приложение.
+                    <strong>{selectedStudentObj.firstName} {selectedStudentObj.lastName}</strong> не согласился с документами.
                   </p>
                 </div>
               )}
             </div>
           )}
 
-          {/* Time slot selection (if not preselected) */}
           {preselectedTimeSlotId ? (
             <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm text-gray-700 dark:text-gray-300">
               <span className="font-medium">Время:</span> {selectedSlotLabel}
@@ -319,17 +390,24 @@ export function BookStudentDialog({
           )}
 
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" onClick={handleClose} disabled={bookMutation.isPending} className="flex-1">
+            <Button
+              variant="outline"
+              onClick={handleClose}
+              disabled={bookMutation.isPending || bookSelfMutation.isPending}
+              className="flex-1"
+            >
               Отмена
             </Button>
             <Button
               onClick={handleConfirm}
-              disabled={!canConfirm || bookMutation.isPending}
-              className="flex-1"
+              disabled={!canConfirm || bookMutation.isPending || bookSelfMutation.isPending}
+              className={`flex-1 ${bookingForSelf ? "bg-emerald-600 hover:bg-emerald-700" : ""}`}
               data-testid="button-confirm-booking"
             >
-              {bookMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Записать
+              {(bookMutation.isPending || bookSelfMutation.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {bookingForSelf ? "Записать себя" : "Записать"}
             </Button>
           </div>
         </div>

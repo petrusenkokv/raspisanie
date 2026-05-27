@@ -111,7 +111,7 @@ export function GymSchedulePage() {
   const { data: scheduleData, isLoading } = useQuery({
     queryKey: ["schedule", currentView, selectedDate.toISOString()],
     staleTime: 0,
-    enabled: isAuthenticated,
+    enabled: true,
     queryFn: async () => {
       const localDate = (d: Date) => {
         const y = d.getFullYear();

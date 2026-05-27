@@ -149,6 +149,10 @@ export class DbStorage implements IStorage {
     try {
       await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_pending_approval boolean NOT NULL DEFAULT false`);
     } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS exempt_membership boolean NOT NULL DEFAULT false`);
+      await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS exempt_trainer_payment boolean NOT NULL DEFAULT false`);
+    } catch { /* ignore */ }
 
     // Ensure trainer exists
     const trainer = await this.getTrainer();
@@ -214,6 +218,8 @@ export class DbStorage implements IStorage {
       parentPhone: insertUser.parentPhone ?? null,
       sickUntil: insertUser.sickUntil ?? null,
       sickNote: insertUser.sickNote ?? null,
+      exemptMembership: (insertUser as any).exemptMembership ?? false,
+      exemptTrainerPayment: (insertUser as any).exemptTrainerPayment ?? false,
       isActive: true,
       isPendingApproval: insertUser.isPendingApproval ?? false,
       cvRestartDate: null,
@@ -1264,13 +1270,15 @@ export class DbStorage implements IStorage {
       }
     }
 
-    const sub = await this.findActiveTrainerSubscriptionFor(studentId, dateStr);
+    const exemptMembership = student?.exemptMembership === true;
+    const exemptTrainerPayment = student?.exemptTrainerPayment === true;
+    const sub = exemptTrainerPayment ? null : await this.findActiveTrainerSubscriptionFor(studentId, dateStr);
     return {
-      hasMembership: membershipKind !== null,
+      hasMembership: exemptMembership ? true : membershipKind !== null,
       membershipKind,
       cvPaidDate,
       cvValidUntil,
-      hasTrainerPayment: sub !== null,
+      hasTrainerPayment: exemptTrainerPayment ? true : sub !== null,
       activeTrainerPayment: sub ? await this.withUsage(sub) : null,
     };
   }

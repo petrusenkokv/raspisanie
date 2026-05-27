@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +44,11 @@ import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Tr
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { calculateAge, todayLocalStr } from "@/lib/utils-gym";
+
+type StudentWithConsentsExtended = StudentWithConsents & {
+  exemptMembership?: boolean;
+  exemptTrainerPayment?: boolean;
+};
 
 interface StudentsPanelProps {
   open: boolean;
@@ -234,13 +240,24 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
             </SheetTitle>
           </SheetHeader>
 
-          <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="grid grid-cols-3 gap-2 mb-3">
             <Button
               onClick={() => setAddDialogOpen(true)}
               data-testid="button-add-student"
             >
               <UserPlus className="h-4 w-4 mr-2" />
               Добавить
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedStudent(null);
+                setBookingDialogOpen(true);
+              }}
+              data-testid="button-book-any-student"
+            >
+              <Calendar className="h-4 w-4 mr-2" />
+              Записать
             </Button>
             <Button
               variant="outline"
@@ -297,11 +314,18 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 const isInactive = (student as any).isActive === false;
                 const hasPendingDocs = (student.pendingDocumentCount ?? 0) > 0;
                 const isPending = (student as any).isPendingApproval === true;
+                const isParentAccount = student.role === "parent";
                 const hasMembership = (student as any).hasMembership as boolean | undefined;
                 const hasTrainerPayment = (student as any).hasTrainerPayment as boolean | undefined;
-                const hasDebt = !isInactive && !isPending &&
+                const exemptMembership = (student as any).exemptMembership === true;
+                const exemptTrainerPayment = (student as any).exemptTrainerPayment === true;
+                const needsCv = !exemptMembership && hasMembership === false;
+                const needsTrainer = !exemptTrainerPayment && hasTrainerPayment === false;
+                const hasDebt =
+                  !isInactive &&
+                  !isPending &&
                   hasMembership !== undefined &&
-                  (!hasMembership || !hasTrainerPayment);
+                  (needsCv || needsTrainer);
                 return (
                   <div key={student.id} className={`border rounded-lg p-4 transition-shadow ${
                     isInactive
@@ -348,6 +372,11 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                           >
                             {student.lastName} {student.firstName} {(student as any).middleName || ""}
                           </button>
+                          {isParentAccount && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-700">
+                              {(student as any).isAlsoStudent ? "родитель · тренируется" : "аккаунт родителя"}
+                            </span>
+                          )}
                           {isInactive && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded border bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-400">
                               архив
@@ -722,7 +751,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
 
-  const { data: student, isLoading } = useQuery<StudentWithConsents>({
+  const { data: student, isLoading } = useQuery<StudentWithConsentsExtended>({
     queryKey: ["/api/trainer/students", studentId],
     queryFn: async () => {
       const r = await apiRequest("GET", `/api/trainer/students/${studentId}`);
@@ -734,12 +763,17 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
 
   useEffect(() => {
     if (student) {
+      const s = student as any;
       setForm({
         firstName: student.firstName || "",
         lastName: student.lastName || "",
         middleName: student.middleName || "",
         birthDate: student.birthDate || "",
         trainerNotes: student.trainerNotes || "",
+        exemptMembership: student.exemptMembership === true,
+        exemptTrainerPayment: student.exemptTrainerPayment === true,
+        parentFullName: student.parentFullName || s.guardianFullName || "",
+        parentPhone: student.parentPhone || s.guardianPhone || "",
       });
       setEditing(false);
     }
@@ -753,6 +787,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["payment-status"] });
       toast({ title: "Сохранено" });
       setEditing(false);
     },
@@ -783,6 +818,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               value={student.birthDate ? `${format(new Date(student.birthDate), "d MMMM yyyy", { locale: ru })}${age !== null ? ` (${age} лет)` : ""}` : "—"}
             />
             <Field label="Заметки тренера" value={student.trainerNotes || "—"} multiline />
+            <PaymentExemptSection studentId={student.id} student={student} />
             {(() => {
               const s = student as any;
               const hasMother = s.motherFullName || s.motherPhone;
@@ -811,9 +847,11 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                       <Field label="Телефон" value={s.fatherPhone || "—"} />
                     </div>
                   )}
-                  {hasLegacyParent && !hasMother && !hasFather && (
+                  {hasLegacyParent && (
                     <div className="space-y-1">
-                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Представитель</p>
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                        Законный представитель (при регистрации)
+                      </p>
                       <Field label="ФИО" value={student.parentFullName || "—"} />
                       <Field label="Телефон" value={student.parentPhone || "—"} />
                     </div>
@@ -879,6 +917,44 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                 onChange={(e) => setForm({ ...form, trainerNotes: e.target.value })}
               />
             </div>
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Освобождение от оплаты</p>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <Checkbox
+                  checked={!!form.exemptMembership}
+                  onCheckedChange={(v) => setForm({ ...form, exemptMembership: !!v })}
+                />
+                <span className="text-sm leading-tight">Не требовать членский взнос (ЧВ/БВ)</span>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <Checkbox
+                  checked={!!form.exemptTrainerPayment}
+                  onCheckedChange={(v) => setForm({ ...form, exemptTrainerPayment: !!v })}
+                />
+                <span className="text-sm leading-tight">Не требовать оплату тренеру</span>
+              </label>
+            </div>
+            {age !== null && age < 18 && (
+              <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                  Законный представитель
+                </p>
+                <div>
+                  <Label>ФИО</Label>
+                  <Input
+                    value={form.parentFullName || ""}
+                    onChange={(e) => setForm({ ...form, parentFullName: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Телефон</Label>
+                  <Input
+                    value={form.parentPhone || ""}
+                    onChange={(e) => setForm({ ...form, parentPhone: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditing(false)}>Отмена</Button>
               <Button onClick={() => updateMutation.mutate(form)} disabled={updateMutation.isPending}>
@@ -890,6 +966,75 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PaymentExemptSection({
+  studentId,
+  student,
+}: {
+  studentId: string;
+  student: { exemptMembership?: boolean; exemptTrainerPayment?: boolean };
+}) {
+  const { toast } = useToast();
+  const [exemptMembership, setExemptMembership] = useState(student.exemptMembership === true);
+  const [exemptTrainerPayment, setExemptTrainerPayment] = useState(student.exemptTrainerPayment === true);
+
+  useEffect(() => {
+    setExemptMembership(student.exemptMembership === true);
+    setExemptTrainerPayment(student.exemptTrainerPayment === true);
+  }, [student.exemptMembership, student.exemptTrainerPayment]);
+
+  const patchMutation = useMutation({
+    mutationFn: async (payload: { exemptMembership?: boolean; exemptTrainerPayment?: boolean }) => {
+      const r = await apiRequest("PATCH", `/api/trainer/students/${studentId}`, payload);
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["payment-status"] });
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      toast({ title: "Сохранено" });
+    },
+    onError: (e: any) => {
+      setExemptMembership(student.exemptMembership === true);
+      setExemptTrainerPayment(student.exemptTrainerPayment === true);
+      toast({ title: "Ошибка", description: e?.message, variant: "destructive" });
+    },
+  });
+
+  const handleToggle = (field: "exemptMembership" | "exemptTrainerPayment", next: boolean) => {
+    if (field === "exemptMembership") setExemptMembership(next);
+    else setExemptTrainerPayment(next);
+    patchMutation.mutate({ [field]: next });
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+        Освобождение от оплаты
+      </p>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Для бесплатных занятий или учеников без абонемента — красные отметки в расписании не показываются.
+      </p>
+      <label className="flex items-start gap-2 cursor-pointer">
+        <Checkbox
+          checked={exemptMembership}
+          disabled={patchMutation.isPending}
+          onCheckedChange={(v) => handleToggle("exemptMembership", !!v)}
+        />
+        <span className="text-sm leading-tight">Не требовать членский взнос (ЧВ/БВ)</span>
+      </label>
+      <label className="flex items-start gap-2 cursor-pointer">
+        <Checkbox
+          checked={exemptTrainerPayment}
+          disabled={patchMutation.isPending}
+          onCheckedChange={(v) => handleToggle("exemptTrainerPayment", !!v)}
+        />
+        <span className="text-sm leading-tight">Не требовать оплату тренеру</span>
+      </label>
+    </div>
   );
 }
 

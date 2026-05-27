@@ -22,6 +22,10 @@ export const users = pgTable("users", {
   guardianPhone: text("guardian_phone"),
   sickUntil: text("sick_until"), // YYYY-MM-DD; while set, student is on sick leave
   sickNote: text("sick_note"),
+  // If true, membership payment is not required for this student.
+  exemptMembership: boolean("exempt_membership").notNull().default(false),
+  // If true, trainer payment is not required for this student.
+  exemptTrainerPayment: boolean("exempt_trainer_payment").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true), // false = student paused/archived
   isPendingApproval: boolean("is_pending_approval").notNull().default(false), // true = self-registered, awaiting trainer approval
   welcomeShown: boolean("welcome_shown").notNull().default(false), // true = student has seen trainer welcome message
