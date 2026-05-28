@@ -1,5 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { randomUUID } from "crypto";
+import type { User } from "@shared/schema";
 import { storage } from "./storage-instance";
 import { setupWebSocket, broadcast, setRealtimeEnabled } from "./ws";
 import { sendPushToUser, vapidPublicKey } from "./push";
@@ -64,6 +66,160 @@ async function recordConsents(userId: string, documentIds: string[] | undefined)
       await storage.recordConsent(userId, docId);
     }
   }
+}
+
+function sanitizeScheduleForPublic<T extends any>(schedule: T): T {
+  const maskOneDay = (day: any) => ({
+    ...day,
+    timeSlots: (day?.timeSlots ?? []).map((slot: any) => ({
+      ...slot,
+      bookings: (slot?.bookings ?? []).map((booking: any) => ({
+        ...booking,
+        student: {
+          ...(booking?.student ?? {}),
+          firstName: "Ученик",
+          lastName: "",
+          phone: "",
+        },
+      })),
+    })),
+  });
+  if (Array.isArray(schedule)) {
+    return schedule.map(maskOneDay) as T;
+  }
+  return maskOneDay(schedule) as T;
+}
+
+/** Unique login phone for a child card (parent phone + suffix 01, 02, …). */
+function syntheticChildPhone(parentPhone: string, index: number): string {
+  const prefix = parentPhone.slice(0, 9);
+  const suffix = String(index).padStart(2, "0");
+  return prefix + suffix;
+}
+
+async function canActForStudent(req: any, studentId: string): Promise<boolean> {
+  if (isSessionTrainer(req)) return true;
+  const uid = sessionUserId(req);
+  if (studentId === uid) {
+    const me = await storage.getUser(uid);
+    return me?.role === "student" || !!(me?.role === "parent" && me.isAlsoStudent);
+  }
+  const me = await storage.getUser(uid);
+  if (me?.role === "parent" || me?.isParent) {
+    return storage.isParentOfChild(uid, studentId);
+  }
+  return false;
+}
+
+async function createChildUserForParent(
+  parent: User,
+  child: {
+    firstName: string;
+    lastName: string;
+    middleName?: string | null;
+    birthDate?: string | null;
+    phone?: string | null;
+  },
+  childIndex: number,
+  legalRepresentativeConfirmed: boolean,
+): Promise<User> {
+  const parentFullName = [parent.lastName, parent.firstName, parent.middleName].filter(Boolean).join(" ");
+  let childPhone = child.phone ? normalizePhone(child.phone) : null;
+  if (!childPhone) {
+    let idx = childIndex;
+    do {
+      childPhone = syntheticChildPhone(parent.phone, idx);
+      const taken = await storage.getUserByPhone(childPhone);
+      if (!taken) break;
+      idx += 1;
+    } while (idx < 100);
+  }
+  if (!childPhone) {
+    throw new Error("Не удалось создать уникальный телефон для ребёнка");
+  }
+  const existing = await storage.getUserByPhone(childPhone);
+  if (existing) {
+    if (existing.role !== "student") {
+      throw new Error("Этот телефон уже занят другим аккаунтом");
+    }
+    const norm = (v?: string | null) => String(v || "").trim().toLowerCase();
+    const samePerson =
+      norm(existing.firstName) === norm(child.firstName) &&
+      norm(existing.lastName) === norm(child.lastName) &&
+      norm(existing.middleName) === norm(child.middleName ?? null) &&
+      String(existing.birthDate || "") === String(child.birthDate || "");
+    const linkedToParent = await storage.isParentOfChild(parent.id, existing.id);
+    // Protect against accidental overwrite of another child card
+    // when phone was copied from previous form values.
+    if (!samePerson && !linkedToParent) {
+      throw new Error("Телефон уже используется другой карточкой ребёнка. Очистите поле телефона или укажите другой номер.");
+    }
+    const updatedExisting = await storage.updateUser(existing.id, {
+      firstName: String(child.firstName).trim(),
+      lastName: String(child.lastName).trim(),
+      middleName: child.middleName ? String(child.middleName).trim() : null,
+      birthDate: child.birthDate || null,
+      parentFullName,
+      parentPhone: parent.phone,
+      legalRepresentativeConfirmed,
+      // If old card was archived, bring it back to active list.
+      isActive: true,
+      // New (or repeated) child registration always requires trainer approval.
+      isPendingApproval: true,
+    } as any);
+    await storage.addParentChild({ parentId: parent.id, childId: existing.id });
+    storage.getTrainer().then(async (trainer) => {
+      if (!trainer) return;
+      const fullName = [updatedExisting.lastName, updatedExisting.firstName].filter(Boolean).join(" ");
+      const msg = `Добавлен ребёнок: ${fullName}`;
+      await storage.createNotification({
+        userId: trainer.id,
+        type: "new_student",
+        title: "Новый ученик",
+        message: msg,
+        isRead: false,
+        relatedBookingId: null,
+        relatedUserId: updatedExisting.id,
+      } as any);
+      broadcast({ type: "notification_update" });
+      pushNotifyUser(trainer.id, "Новый ученик", msg);
+    }).catch(() => {});
+    return updatedExisting;
+  }
+  const childUser = await storage.createUser({
+    phone: childPhone,
+    firstName: String(child.firstName).trim(),
+    lastName: String(child.lastName).trim(),
+    middleName: child.middleName ? String(child.middleName).trim() : null,
+    birthDate: child.birthDate || null,
+    parentFullName,
+    parentPhone: parent.phone,
+    legalRepresentativeConfirmed,
+    role: "student",
+    isVerified: true,
+    password: await hashPassword(randomUUID()),
+    mustChangePassword: false,
+    isPendingApproval: true,
+    isAlsoStudent: false,
+  } as any);
+  await storage.addParentChild({ parentId: parent.id, childId: childUser.id });
+  storage.getTrainer().then(async (trainer) => {
+    if (!trainer) return;
+    const fullName = [childUser.lastName, childUser.firstName].filter(Boolean).join(" ");
+    const msg = `Новый ученик (ребёнок): ${fullName}`;
+    await storage.createNotification({
+      userId: trainer.id,
+      type: "new_student",
+      title: "Новый ученик",
+      message: msg,
+      isRead: false,
+      relatedBookingId: null,
+      relatedUserId: childUser.id,
+    } as any);
+    broadcast({ type: "notification_update" });
+    pushNotifyUser(trainer.id, "Новый ученик", msg);
+  }).catch(() => {});
+  return childUser;
 }
 
 export async function registerRoutes(
@@ -179,17 +335,135 @@ export async function registerRoutes(
       }).catch(() => {});
 
       res.status(201).json({
-        user: {
-          id: user.id,
-          phone: user.phone,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          role: user.role,
-          mustChangePassword: user.mustChangePassword,
-        }
+        user: toPublicUser(user),
       });
     } catch (error) {
       res.status(500).json({ message: "Не удалось зарегистрировать пользователя" });
+    }
+  });
+
+  app.post("/api/auth/register-parent", async (req, res) => {
+    try {
+      const {
+        phone,
+        firstName,
+        lastName,
+        middleName,
+        birthDate,
+        password,
+        isAlsoStudent,
+        legalRepresentativeConfirmed,
+        consentDocumentIds,
+        children,
+      } = req.body ?? {};
+
+      if (!firstName || !lastName) {
+        return res.status(400).json({ message: "Заполните имя и фамилию" });
+      }
+      if (!password || String(password).length < 4) {
+        return res.status(400).json({ message: "Пароль должен быть не короче 4 символов" });
+      }
+      const normalized = normalizePhone(phone);
+      if (!normalized) {
+        return res.status(400).json({ message: "Некорректный номер телефона" });
+      }
+      const existingUser = await storage.getUserByPhone(normalized);
+      if (existingUser) {
+        return res.status(400).json({ message: "Пользователь с таким телефоном уже существует" });
+      }
+
+      const alsoStudent = !!isAlsoStudent;
+      if (alsoStudent) {
+        const age = calculateAgeYears(birthDate);
+        if (age !== null && age < 14) {
+          return res.status(400).json({
+            message: "До 14 лет регистрация только как законный представитель ребёнка",
+          });
+        }
+      }
+
+      const childList = Array.isArray(children) ? children : [];
+      if (childList.length === 0 && !alsoStudent) {
+        return res.status(400).json({ message: "Добавьте хотя бы одного ребёнка" });
+      }
+      if (childList.length > 0 && legalRepresentativeConfirmed !== true) {
+        return res.status(400).json({ message: "Подтвердите, что Вы — законный представитель ребёнка" });
+      }
+
+      const activeDocs = await storage.getDocuments(true);
+      const accepted = new Set<string>(Array.isArray(consentDocumentIds) ? consentDocumentIds : []);
+      const missing = activeDocs.filter((d) => !accepted.has(d.id));
+      if (missing.length > 0) {
+        return res.status(400).json({
+          message: `Необходимо принять документы: ${missing.map((d) => d.title).join(", ")}`,
+        });
+      }
+
+      const parent = await storage.createUser({
+        phone: normalized,
+        firstName: String(firstName).trim(),
+        lastName: String(lastName).trim(),
+        middleName: middleName ? String(middleName).trim() : null,
+        birthDate: alsoStudent ? (birthDate || null) : null,
+        role: "parent",
+        isParent: true,
+        isAlsoStudent: alsoStudent,
+        isVerified: true,
+        password: await hashPassword(String(password)),
+        mustChangePassword: false,
+        isPendingApproval: alsoStudent,
+      } as any);
+
+      await recordConsents(parent.id, Array.from(accepted));
+      const createdChildren: User[] = [];
+      for (let i = 0; i < childList.length; i++) {
+        const c = childList[i];
+        if (!c?.firstName || !c?.lastName) {
+          return res.status(400).json({ message: `Заполните имя и фамилию ребёнка ${i + 1}` });
+        }
+        const childUser = await createChildUserForParent(
+          parent,
+          {
+            firstName: c.firstName,
+            lastName: c.lastName,
+            middleName: c.middleName ?? null,
+            birthDate: c.birthDate ?? null,
+            phone: c.phone ?? null,
+          },
+          i + 1,
+          true,
+        );
+        createdChildren.push(childUser);
+        await recordConsents(childUser.id, Array.from(accepted));
+      }
+
+      await establishSession(req, parent);
+
+      if (alsoStudent) {
+        storage.getTrainer().then(async (trainer) => {
+          if (!trainer) return;
+          const fullName = [parent.lastName, parent.firstName].filter(Boolean).join(" ");
+          const msg = `Родитель (тренируется): ${fullName} (${parent.phone})`;
+          await storage.createNotification({
+            userId: trainer.id,
+            type: "new_student",
+            title: "Новый ученик",
+            message: msg,
+            isRead: false,
+            relatedBookingId: null,
+            relatedUserId: parent.id,
+          } as any);
+          broadcast({ type: "notification_update" });
+          pushNotifyUser(trainer.id, "Новый ученик", msg);
+        }).catch(() => {});
+      }
+
+      res.status(201).json({
+        user: toPublicUser(parent),
+        children: createdChildren.map((c) => toPublicUser(c)),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось зарегистрировать родителя" });
     }
   });
 
@@ -245,12 +519,7 @@ export async function registerRoutes(
 
       res.json({
         user: {
-          id: user.id,
-          phone: user.phone,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          role: user.role,
-          mustChangePassword: user.mustChangePassword,
+          ...toPublicUser(user),
           isPendingApproval: user.isPendingApproval,
         },
         pendingDocuments,
@@ -412,9 +681,17 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/users/:id", requireAuth, requireSelfOrTrainer("id"), async (req, res) => {
+  app.get("/api/users/:id", requireAuth, async (req, res) => {
     try {
-      const user = await storage.getUser(req.params.id);
+      const targetId = req.params.id;
+      if (
+        !isSessionTrainer(req) &&
+        targetId !== sessionUserId(req) &&
+        !(await storage.isParentOfChild(sessionUserId(req), targetId))
+      ) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
+      const user = await storage.getUser(targetId);
       if (!user) return res.status(404).json({ message: "Пользователь не найден" });
       res.json({ user: toPublicUser(user) });
     } catch {
@@ -455,6 +732,151 @@ export async function registerRoutes(
     }
   });
 
+  // Parent routes
+  const hasParentAccess = (user?: User) => !!user && (user.role === "parent" || user.isParent);
+  const requireParent = async (req: any, res: any, next: any) => {
+    if (!req.session?.userId) {
+      return res.status(401).json({ message: "Требуется вход в систему" });
+    }
+    const me = await storage.getUser(req.session.userId);
+    if (!hasParentAccess(me)) {
+      return res.status(403).json({ message: "Доступ только для родителя" });
+    }
+    next();
+  };
+
+  app.patch("/api/parent/enable-mode", requireAuth, async (req, res) => {
+    try {
+      const me = await storage.getUser(sessionUserId(req));
+      if (!me) return res.status(404).json({ message: "Пользователь не найден" });
+      if (me.role === "trainer") {
+        return res.status(403).json({ message: "Режим родителя недоступен для тренера" });
+      }
+      const { enabled } = req.body ?? {};
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ message: "Укажите enabled (boolean)" });
+      }
+      if (!enabled) {
+        const children = await storage.getChildrenByParent(me.id);
+        if (children.length > 0) {
+          return res.status(400).json({ message: "Сначала удалите или отвяжите детей" });
+        }
+      }
+      const updated = await storage.updateUser(me.id, { isParent: enabled } as any);
+      res.json({ user: toPublicUser(updated) });
+    } catch {
+      res.status(500).json({ message: "Не удалось обновить режим родителя" });
+    }
+  });
+
+  app.get("/api/parent/children", requireAuth, requireParent, async (req, res) => {
+    try {
+      const children = await storage.getChildrenByParent(sessionUserId(req));
+      res.json(children.map((c) => toPublicUser(c)));
+    } catch {
+      res.status(500).json({ message: "Не удалось получить список детей" });
+    }
+  });
+
+  app.post("/api/parent/children", requireAuth, requireParent, async (req, res) => {
+    try {
+      const parent = await storage.getUser(sessionUserId(req));
+      if (!parent) return res.status(404).json({ message: "Пользователь не найден" });
+      const { firstName, lastName, middleName, birthDate, phone, legalRepresentativeConfirmed } = req.body ?? {};
+      if (!firstName || !lastName) {
+        return res.status(400).json({ message: "Заполните имя и фамилию ребёнка" });
+      }
+      if (legalRepresentativeConfirmed !== true) {
+        return res.status(400).json({ message: "Подтвердите, что Вы — законный представитель ребёнка" });
+      }
+      const existingChildren = await storage.getChildrenByParent(parent.id);
+      const child = await createChildUserForParent(
+        parent,
+        { firstName, lastName, middleName, birthDate, phone },
+        existingChildren.length + 1,
+        legalRepresentativeConfirmed,
+      );
+      // Child inherits all already accepted parent consents.
+      const parentConsents = await storage.getConsentsByUser(parent.id);
+      const parentDocumentIds = Array.from(
+        new Set(parentConsents.map((consent) => consent.documentId)),
+      );
+      await recordConsents(child.id, parentDocumentIds);
+      res.status(201).json(toPublicUser(child));
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось добавить ребёнка" });
+    }
+  });
+
+  app.patch("/api/parent/children/:id", requireAuth, requireParent, async (req, res) => {
+    try {
+      const parentId = sessionUserId(req);
+      const childId = req.params.id;
+      if (!(await storage.isParentOfChild(parentId, childId))) {
+        return res.status(403).json({ message: "Этот ребёнок не привязан к вашему аккаунту" });
+      }
+      const child = await storage.getUser(childId);
+      if (!child || child.role !== "student") {
+        return res.status(404).json({ message: "Ребёнок не найден" });
+      }
+      const { firstName, lastName, middleName, birthDate, parentFullName, parentPhone } = req.body ?? {};
+      const updates: Partial<User> = {};
+      if (firstName !== undefined) updates.firstName = String(firstName).trim();
+      if (lastName !== undefined) updates.lastName = String(lastName).trim();
+      if (middleName !== undefined) updates.middleName = middleName ? String(middleName).trim() : null;
+      if (birthDate !== undefined) updates.birthDate = birthDate || null;
+      if (parentFullName !== undefined) updates.parentFullName = parentFullName ? String(parentFullName).trim() : null;
+      if (parentPhone !== undefined) {
+        const np = parentPhone ? normalizePhone(parentPhone) : null;
+        updates.parentPhone = np;
+      }
+      const updated = await storage.updateUser(childId, updates);
+      res.json(toPublicUser(updated));
+    } catch {
+      res.status(500).json({ message: "Не удалось обновить данные ребёнка" });
+    }
+  });
+
+  app.patch("/api/parent/enable-self-booking", requireAuth, requireParent, async (req, res) => {
+    try {
+      const parentId = sessionUserId(req);
+      const { enabled } = req.body ?? {};
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ message: "Укажите enabled (boolean)" });
+      }
+      const currentParent = await storage.getUser(parentId);
+      if (!currentParent) {
+        return res.status(404).json({ message: "Пользователь не найден" });
+      }
+      const updated = await storage.updateUser(parentId, {
+        isAlsoStudent: enabled,
+        isPendingApproval: enabled ? true : false,
+      } as any);
+      // Notify trainer when parent submits a new self-training request.
+      if (enabled && !currentParent.isAlsoStudent) {
+        const trainer = await storage.getTrainer();
+        if (trainer) {
+          const fullName = [updated.lastName, updated.firstName].filter(Boolean).join(" ");
+          const message = `${fullName || "Родитель"} подал(а) заявку «Хочу тренироваться»`;
+          await storage.createNotification({
+            userId: trainer.id,
+            type: "new_student",
+            title: "Новая заявка",
+            message,
+            isRead: false,
+            relatedBookingId: null,
+            relatedUserId: updated.id,
+          } as any);
+          broadcast({ type: "notification_update" });
+          pushNotifyUser(trainer.id, "Новая заявка", message);
+        }
+      }
+      res.json({ user: toPublicUser(updated) });
+    } catch {
+      res.status(500).json({ message: "Не удалось обновить настройку" });
+    }
+  });
+
   // Helper: ensure recurring rules are materialized up to a given date
   async function ensureMaterializedUntil(dateStr: string) {
     try {
@@ -471,6 +893,9 @@ export async function registerRoutes(
       const { date } = req.params;
       await ensureMaterializedUntil(date);
       const schedule = await storage.getScheduleForDate(date);
+      if (!req.session?.userId) {
+        return res.json(sanitizeScheduleForPublic(schedule));
+      }
       res.json(schedule);
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить расписание дня" });
@@ -484,6 +909,9 @@ export async function registerRoutes(
       end.setDate(end.getDate() + 6);
       await ensureMaterializedUntil(end.toISOString().split("T")[0]);
       const schedule = await storage.getScheduleForWeek(startDate);
+      if (!req.session?.userId) {
+        return res.json(sanitizeScheduleForPublic(schedule));
+      }
       res.json(schedule);
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить расписание недели" });
@@ -496,6 +924,9 @@ export async function registerRoutes(
       const lastDay = new Date(parseInt(year), parseInt(month), 0);
       await ensureMaterializedUntil(lastDay.toISOString().split("T")[0]);
       const schedule = await storage.getScheduleForMonth(parseInt(year), parseInt(month));
+      if (!req.session?.userId) {
+        return res.json(sanitizeScheduleForPublic(schedule));
+      }
       res.json(schedule);
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить расписание месяца" });
@@ -508,14 +939,34 @@ export async function registerRoutes(
   app.post("/api/bookings", async (req, res) => {
     try {
       const { timeSlotId, notes } = req.body;
-      const studentId = isSessionTrainer(req)
-        ? req.body?.studentId
-        : sessionUserId(req);
+      let studentId: string | undefined;
+      let bookedBy: string;
+
+      if (isSessionTrainer(req)) {
+        studentId = req.body?.studentId;
+        bookedBy = (req.body?.bookedBy as string) || sessionUserId(req);
+      } else {
+        bookedBy = sessionUserId(req);
+        const me = await storage.getUser(sessionUserId(req));
+        const requested = req.body?.studentId as string | undefined;
+        if (requested) {
+          if (!(await canActForStudent(req, requested))) {
+            return res.status(403).json({ message: "Нет доступа" });
+          }
+          studentId = requested;
+        } else if (me?.role === "parent") {
+          if (me.isAlsoStudent) {
+            studentId = me.id;
+          } else {
+            return res.status(400).json({ message: "Выберите ребёнка для записи" });
+          }
+        } else {
+          studentId = sessionUserId(req);
+        }
+      }
+
       if (!studentId) {
         return res.status(400).json({ message: "Не указан ученик" });
-      }
-      if (!isSessionTrainer(req) && studentId !== sessionUserId(req)) {
-        return res.status(403).json({ message: "Нет доступа" });
       }
 
       // Get the target time slot to know its date
@@ -568,7 +1019,7 @@ export async function registerRoutes(
       const booking = await storage.createBooking({
         studentId,
         timeSlotId,
-        bookedBy: studentId,
+        bookedBy,
         status: "pending",
         notes: notes || null
       });
@@ -636,25 +1087,36 @@ export async function registerRoutes(
       const { id } = req.params;
       const cancelledBy =
         (req.body?.cancelledBy as string | undefined) ?? sessionUserId(req);
-      if (
-        !isSessionTrainer(req) &&
-        cancelledBy !== sessionUserId(req)
-      ) {
-        return res.status(403).json({ message: "Нет доступа" });
-      }
 
       const existing = await storage.getBooking(id);
       if (!existing) {
         return res.status(404).json({ message: "Запись не найдена" });
       }
 
+      if (!isSessionTrainer(req) && cancelledBy !== sessionUserId(req)) {
+        const canCancelChild = await storage.isParentOfChild(
+          sessionUserId(req),
+          existing.studentId,
+        );
+        if (!canCancelChild) {
+          return res.status(403).json({ message: "Нет доступа" });
+        }
+      }
+
       // Enforce cancel deadline only for student-self-cancellations
       const canceller = cancelledBy ? await storage.getUser(cancelledBy) : null;
       const cancelledByStudent =
-        !!canceller && canceller.role === "student" &&
+        !!canceller &&
+        (canceller.role === "student" ||
+          (canceller.role === "parent" && canceller.isAlsoStudent)) &&
         canceller.id === existing.studentId;
+      const cancelledByParentForChild =
+        !!canceller &&
+        canceller.role === "parent" &&
+        canceller.id !== existing.studentId &&
+        (await storage.isParentOfChild(canceller.id, existing.studentId));
 
-      if (cancelledByStudent) {
+      if (cancelledByStudent || cancelledByParentForChild) {
         const settings = await storage.getTrainerSettings();
         if (settings.cancelDeadlineHours > 0) {
           const startIso = `${existing.timeSlot.date}T${existing.timeSlot.time.slice(0, 5)}:00+03:00`;
@@ -683,8 +1145,8 @@ export async function registerRoutes(
           })()
         : "тренировку";
 
-      if (cancelledByStudent) {
-        // Student cancelled their own booking → notify the trainer
+      if (cancelledByStudent || cancelledByParentForChild) {
+        // Student or parent cancelled → notify the trainer
         const trainer = await storage.getTrainer();
         if (trainer) {
           const studentName = canceller.firstName ?? "Ученик";
@@ -730,21 +1192,26 @@ export async function registerRoutes(
 
       const rescheduledBy =
         (rescheduledByBody as string | undefined) ?? sessionUserId(req);
-      if (
-        !isSessionTrainer(req) &&
-        rescheduledBy !== sessionUserId(req) &&
-        booking.studentId !== sessionUserId(req)
-      ) {
-        return res.status(403).json({ message: "Нет доступа" });
+      if (!isSessionTrainer(req) && rescheduledBy !== sessionUserId(req)) {
+        const canReschedule =
+          booking.studentId === sessionUserId(req) ||
+          (await storage.isParentOfChild(sessionUserId(req), booking.studentId));
+        if (!canReschedule) {
+          return res.status(403).json({ message: "Нет доступа" });
+        }
       }
 
       // Determine role of the person rescheduling
       const rescheduler = rescheduledBy ? await storage.getUser(rescheduledBy) : null;
       const byRole: "trainer" | "student" = rescheduler?.role === "trainer" ? "trainer" : "student";
 
-      // Students can only reschedule their own bookings
       if (byRole === "student" && booking.studentId !== rescheduler?.id) {
-        return res.status(403).json({ message: "Нет доступа" });
+        const parentReschedule =
+          rescheduler?.role === "parent" &&
+          (await storage.isParentOfChild(rescheduler.id, booking.studentId));
+        if (!parentReschedule) {
+          return res.status(403).json({ message: "Нет доступа" });
+        }
       }
 
       // Enforce cancel deadline for students
@@ -801,9 +1268,12 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bookings/student/:studentId", requireSelfOrTrainer("studentId"), async (req, res) => {
+  app.get("/api/bookings/student/:studentId", requireAuth, async (req, res) => {
     try {
       const { studentId } = req.params;
+      if (!(await canActForStudent(req, studentId))) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
       const bookings = await storage.getBookingsByStudent(studentId);
       res.json(bookings);
     } catch (error) {
@@ -837,11 +1307,16 @@ export async function registerRoutes(
               err,
             );
           }
+          const hasLinkedChildren =
+            student.role === "parent"
+              ? (await storage.getChildrenByParent(student.id)).length > 0
+              : false;
           return {
             ...student,
             pendingDocumentCount,
             hasMembership,
             hasTrainerPayment,
+            hasLinkedChildren,
           };
         })
       );
@@ -892,7 +1367,15 @@ export async function registerRoutes(
       const { id } = req.params;
       const student = await storage.getStudentWithConsents(id);
       if (!student) return res.status(404).json({ message: "Ученик не найден" });
-      res.json(student);
+      const linkedParents = student.role === "student" ? await storage.getParentsByChild(id) : [];
+      const parentWhoTrains = linkedParents.find((p) => p.isAlsoStudent);
+      res.json({
+        ...student,
+        parentAlsoTrains: !!parentWhoTrains,
+        parentAlsoTrainsName: parentWhoTrains
+          ? [parentWhoTrains.lastName, parentWhoTrains.firstName].filter(Boolean).join(" ")
+          : null,
+      });
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить данные ученика" });
     }
@@ -1045,8 +1528,25 @@ export async function registerRoutes(
       if (user.role === "trainer") {
         return res.status(400).json({ message: "Нельзя удалить тренера" });
       }
+      if (user.role === "parent") {
+        const children = await storage.getChildrenByParent(user.id);
+        if (children.length > 0) {
+          return res.status(400).json({
+            message: "Нельзя удалить родителя, к которому привязаны дети. Сначала удалите или отвяжите детей.",
+          });
+        }
+      }
+      const linkedParents = user.role === "student" ? await storage.getParentsByChild(user.id) : [];
       await storage.deleteUser(id);
-      res.json({ success: true });
+      let deletedParentCount = 0;
+      for (const parent of linkedParents) {
+        const remainingChildren = await storage.getChildrenByParent(parent.id);
+        if (remainingChildren.length === 0 && !parent.isAlsoStudent) {
+          await storage.deleteUser(parent.id);
+          deletedParentCount++;
+        }
+      }
+      res.json({ success: true, deletedParentCount });
     } catch (error: any) {
       console.error("deleteUser error:", error?.message, error?.detail, error?.constraint);
       res.status(500).json({ message: "Не удалось удалить ученика", detail: error?.message });
@@ -1382,10 +1882,13 @@ export async function registerRoutes(
     }
   });
 
-  // Student: own payment status for a specific date (YYYY-MM-DD)
-  app.get("/api/student/payment-status/:studentId", requireAuth, requireSelfOrTrainer("studentId"), async (req, res) => {
+  // Student / parent / trainer: payment status for a student on a date (YYYY-MM-DD)
+  app.get("/api/student/payment-status/:studentId", requireAuth, async (req, res) => {
     try {
       const { studentId } = req.params;
+      if (!(await canActForStudent(req, studentId))) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
       const dateStr = String(req.query.date || "");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
         return res.status(400).json({ message: "Укажите параметр date в формате YYYY-MM-DD" });
@@ -1400,7 +1903,7 @@ export async function registerRoutes(
   });
 
   // Payment status for a specific student on a specific date (YYYY-MM-DD)
-  app.get("/api/trainer/students/:id/payment-status", async (req, res) => {
+  app.get("/api/trainer/students/:id/payment-status", requireAuth, requireTrainer, async (req, res) => {
     try {
       const { id } = req.params;
       const dateStr = String(req.query.date || "");

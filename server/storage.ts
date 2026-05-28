@@ -28,6 +28,8 @@ import {
   type TrainerPaymentWithUsage,
   type StudentPaymentStatus,
   type BroadcastLog,
+  type ParentChild,
+  type InsertParentChild,
 } from "@shared/schema";
 import type { PushSubscriptionData } from "./push";
 import { randomUUID } from "crypto";
@@ -56,7 +58,11 @@ export interface IStorage {
   updateUser(id: string, updates: Partial<User>): Promise<User>;
   verifyUser(id: string): Promise<User>;
   deleteUser(id: string): Promise<void>;
-  
+  getChildrenByParent(parentId: string): Promise<User[]>;
+  getParentsByChild(childId: string): Promise<User[]>;
+  addParentChild(link: InsertParentChild): Promise<ParentChild>;
+  isParentOfChild(parentId: string, childId: string): Promise<boolean>;
+
   // Time Slots
   getTimeSlotById(id: string): Promise<TimeSlot | undefined>;
   getTimeSlotsByDate(date: string): Promise<TimeSlotWithBookings[]>;
@@ -236,6 +242,7 @@ export class MemStorage implements IStorage {
   private sickPeriods: Map<string, SickPeriod> = new Map();
   private broadcastLogs: Map<string, BroadcastLog> = new Map();
   private pushSubscriptions: Map<string, PushSubscriptionData> = new Map();
+  private parentChildren: Map<string, ParentChild> = new Map();
   private settings: TrainerSettings = {
     id: randomUUID(),
     dayStartHour: 8,
@@ -272,6 +279,7 @@ export class MemStorage implements IStorage {
       fatherPhone: null,
       guardianFullName: null,
       guardianPhone: null,
+      legalRepresentativeConfirmed: false,
       sickUntil: null,
       sickNote: null,
       exemptMembership: false,
@@ -281,6 +289,8 @@ export class MemStorage implements IStorage {
       welcomeShown: true,
       cvRestartDate: null,
       role: "trainer",
+      isParent: false,
+      isAlsoStudent: false,
       isVerified: true,
       verificationCode: null,
       password: "12345",
@@ -372,6 +382,7 @@ export class MemStorage implements IStorage {
       fatherPhone: insertUser.fatherPhone ?? null,
       guardianFullName: insertUser.guardianFullName ?? null,
       guardianPhone: insertUser.guardianPhone ?? null,
+      legalRepresentativeConfirmed: (insertUser as any).legalRepresentativeConfirmed ?? false,
       sickUntil: insertUser.sickUntil ?? null,
       sickNote: insertUser.sickNote ?? null,
       exemptMembership: (insertUser as any).exemptMembership ?? false,
@@ -380,6 +391,8 @@ export class MemStorage implements IStorage {
       isPendingApproval: insertUser.isPendingApproval ?? false,
       cvRestartDate: null,
       role: insertUser.role || "student",
+      isParent: (insertUser as any).isParent ?? false,
+      isAlsoStudent: (insertUser as any).isAlsoStudent ?? false,
       isVerified: insertUser.isVerified ?? false,
       verificationCode: null,
       password: insertUser.password ?? "",
@@ -410,10 +423,55 @@ export class MemStorage implements IStorage {
     return verifiedUser;
   }
 
+  async getChildrenByParent(parentId: string): Promise<User[]> {
+    const childIds = Array.from(this.parentChildren.values())
+      .filter((l) => l.parentId === parentId)
+      .map((l) => l.childId);
+    return childIds
+      .map((cid) => this.users.get(cid))
+      .filter((u): u is User => !!u && u.role === "student");
+  }
+
+  async getParentsByChild(childId: string): Promise<User[]> {
+    const parentIds = Array.from(this.parentChildren.values())
+      .filter((l) => l.childId === childId)
+      .map((l) => l.parentId);
+    return parentIds
+      .map((pid) => this.users.get(pid))
+      .filter((u): u is User => !!u && u.role === "parent");
+  }
+
+  async addParentChild(link: InsertParentChild): Promise<ParentChild> {
+    const existing = Array.from(this.parentChildren.values()).find(
+      (l) => l.parentId === link.parentId && l.childId === link.childId,
+    );
+    if (existing) return existing;
+    const row: ParentChild = {
+      id: randomUUID(),
+      parentId: link.parentId,
+      childId: link.childId,
+      createdAt: new Date(),
+    };
+    this.parentChildren.set(row.id, row);
+    return row;
+  }
+
+  async isParentOfChild(parentId: string, childId: string): Promise<boolean> {
+    return Array.from(this.parentChildren.values()).some(
+      (l) => l.parentId === parentId && l.childId === childId,
+    );
+  }
+
   async deleteUser(id: string): Promise<void> {
     const user = this.users.get(id);
     if (!user) throw new Error("Пользователь не найден");
     if (user.role === "trainer") throw new Error("Нельзя удалить тренера");
+
+    for (const [lid, link] of Array.from(this.parentChildren.entries())) {
+      if (link.parentId === id || link.childId === id) {
+        this.parentChildren.delete(lid);
+      }
+    }
 
     // Remove all bookings made by this student
     for (const [bookingId, booking] of Array.from(this.bookings.entries())) {
@@ -501,16 +559,27 @@ export class MemStorage implements IStorage {
   // ----- Consents -----
   async getConsentsByUser(userId: string): Promise<(UserConsent & { document: Document })[]> {
     const list = Array.from(this.consents.values()).filter(c => c.userId === userId);
-    return list
+    const mapped = list
       .map(c => {
         const doc = this.documents.get(c.documentId);
         if (!doc) return null;
         return { ...c, document: doc };
       })
       .filter(Boolean) as (UserConsent & { document: Document })[];
+    const seen = new Set<string>();
+    return mapped.filter((row) => {
+      if (seen.has(row.documentId)) return false;
+      seen.add(row.documentId);
+      return true;
+    });
   }
 
   async recordConsent(userId: string, documentId: string): Promise<UserConsent> {
+    const existing = Array.from(this.consents.values()).find(
+      (c) => c.userId === userId && c.documentId === documentId,
+    );
+    if (existing) return existing;
+
     const id = randomUUID();
     const consent: UserConsent = {
       id,
@@ -985,7 +1054,9 @@ export class MemStorage implements IStorage {
   ): Promise<MembershipPayment> {
     const user = this.users.get(studentId);
     if (!user) throw new Error("Пользователь не найден");
-    if (user.role !== "student") throw new Error("Абонементы доступны только ученикам");
+    if (user.role !== "student" && !(user.role === "parent" && user.isAlsoStudent)) {
+      throw new Error("Абонементы доступны только ученикам");
+    }
 
     let derivedMonth: string | null = null;
     if (input.type === "monthly_cv") {
@@ -1081,7 +1152,9 @@ export class MemStorage implements IStorage {
   ): Promise<TrainerPaymentWithUsage> {
     const user = this.users.get(studentId);
     if (!user) throw new Error("Пользователь не найден");
-    if (user.role !== "student") throw new Error("Подписки доступны только ученикам");
+    if (user.role !== "student" && !(user.role === "parent" && user.isAlsoStudent)) {
+      throw new Error("Подписки доступны только ученикам");
+    }
 
     const id = randomUUID();
     const payment: TrainerPayment = {
@@ -1250,7 +1323,9 @@ export class MemStorage implements IStorage {
 
   async getStudentsList(includeInactive = false): Promise<User[]> {
     return Array.from(this.users.values()).filter(
-      user => user.role === "student" && (includeInactive || user.isActive !== false),
+      (user) =>
+        (user.role === "student" || (user.role === "parent" && user.isAlsoStudent)) &&
+        (includeInactive || user.isActive !== false),
     );
   }
 

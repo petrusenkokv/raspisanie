@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useGymStore } from "@/store/gym-store";
@@ -161,6 +162,28 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     },
   });
 
+  const parentModeMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const response = await apiRequest("PATCH", "/api/parent/enable-mode", { enabled });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setUser(data.user as UserType);
+      queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parent/children"] });
+      toast({
+        title: (data?.user as any)?.isParent ? "Режим родителя включен" : "Режим родителя отключен",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Не удалось изменить режим родителя",
+        description: error?.message || "Попробуйте ещё раз",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSubmit = (values: FormValues) => {
     mutation.mutate(values);
   };
@@ -206,6 +229,22 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             {/* ── VIEW MODE ── */}
             {!editing && (
               <div className="space-y-1">
+                {currentUser.role === "student" && (
+                  <div className="rounded-lg border p-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Я родитель</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Включите, чтобы добавить детей и записывать их через раздел «Мои дети».
+                      </p>
+                    </div>
+                    <Switch
+                      checked={!!(user as any)?.isParent}
+                      onCheckedChange={(checked) => parentModeMutation.mutate(checked)}
+                      disabled={parentModeMutation.isPending}
+                      aria-label="Я родитель"
+                    />
+                  </div>
+                )}
                 <InfoRow icon={<User className="h-4 w-4" />} label="Имя" value={user?.firstName} />
                 <InfoRow icon={<User className="h-4 w-4" />} label="Фамилия" value={user?.lastName} />
                 <InfoRow icon={<User className="h-4 w-4" />} label="Отчество" value={user?.middleName} />

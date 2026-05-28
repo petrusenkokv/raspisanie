@@ -1,9 +1,39 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+async function readErrorMessage(res: Response): Promise<string> {
+  const text = (await res.text()) || res.statusText;
+  const trimmed = text.trim();
+  if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
+    return "Сервер вернул HTML вместо JSON. Перезапустите приложение (npm run dev:win) или обновите сайт на Vercel.";
+  }
+  try {
+    const json = JSON.parse(trimmed);
+    if (json?.message) return String(json.message);
+  } catch {
+    /* not JSON */
+  }
+  return trimmed.length > 200 ? `${trimmed.slice(0, 200)}…` : trimmed;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    throw new Error(await readErrorMessage(res));
+  }
+}
+
+/** Parse JSON body; show a clear error if the server returned HTML (SPA fallback). */
+export async function parseJsonResponse<T = unknown>(res: Response): Promise<T> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
+    throw new Error(
+      "Сервер вернул HTML вместо JSON. Перезапустите приложение (npm run dev:win) или обновите сайт на Vercel.",
+    );
+  }
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new Error(trimmed || "Некорректный ответ сервера");
   }
 }
 
@@ -17,6 +47,7 @@ export async function apiRequest(
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
+    cache: "no-store",
   });
 
   await throwIfResNotOk(res);
@@ -31,6 +62,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      cache: "no-store",
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

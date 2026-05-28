@@ -20,6 +20,7 @@ export const users = pgTable("users", {
   fatherPhone: text("father_phone"),
   guardianFullName: text("guardian_full_name"),
   guardianPhone: text("guardian_phone"),
+  legalRepresentativeConfirmed: boolean("legal_representative_confirmed").notNull().default(false),
   sickUntil: text("sick_until"), // YYYY-MM-DD; while set, student is on sick leave
   sickNote: text("sick_note"),
   // If true, membership payment is not required for this student.
@@ -30,7 +31,11 @@ export const users = pgTable("users", {
   isPendingApproval: boolean("is_pending_approval").notNull().default(false), // true = self-registered, awaiting trainer approval
   welcomeShown: boolean("welcome_shown").notNull().default(false), // true = student has seen trainer welcome message
   cvRestartDate: text("cv_restart_date"), // YYYY-MM-DD; when set, ignore ЧВ payments before this date
-  role: text("role").notNull().default("student"), // "student" or "trainer"
+  role: text("role").notNull().default("student"), // "student" | "trainer" | "parent"
+  // Student can enable parent mode without role switch
+  isParent: boolean("is_parent").notNull().default(false),
+  // Parent who also trains (books slots for themselves using the same account)
+  isAlsoStudent: boolean("is_also_student").notNull().default(false),
   isVerified: boolean("is_verified").notNull().default(false),
   verificationCode: text("verification_code"),
   password: text("password").notNull().default(""),
@@ -45,6 +50,14 @@ export const documents = pgTable("documents", {
   title: text("title").notNull(),
   content: text("content").notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Parent ↔ child links (child is always role=student)
+export const parentChildren = pgTable("parent_children", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  parentId: varchar("parent_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  childId: varchar("child_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -189,6 +202,11 @@ export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
   lastLogin: true,
+});
+
+export const insertParentChildSchema = createInsertSchema(parentChildren).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertTimeSlotSchema = createInsertSchema(timeSlots).omit({
@@ -391,6 +409,8 @@ export const bookingRequestSchema = z.object({
 // Inferred types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+export type InsertParentChild = z.infer<typeof insertParentChildSchema>;
+export type ParentChild = typeof parentChildren.$inferSelect;
 export type InsertTimeSlot = z.infer<typeof insertTimeSlotSchema>;
 export type TimeSlot = typeof timeSlots.$inferSelect;
 export type InsertBooking = z.infer<typeof insertBookingSchema>;

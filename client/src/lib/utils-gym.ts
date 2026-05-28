@@ -44,6 +44,22 @@ export function calculateAge(birthDate: string | null | undefined): number | nul
   return age;
 }
 
+/** Подпись к блоку «Законные представители» в карточке ученика. */
+export function legalRepresentativeSectionHint(age: number | null): string | null {
+  if (age === null) return null;
+  if (age < 14) return "до 14 лет — нужен законный представитель";
+  if (age < 18) return "несовершеннолетний — контакт родителей";
+  return null;
+}
+
+export function studentIsUnder18(age: number | null): boolean {
+  return age !== null && age < 18;
+}
+
+export function studentNeedsLegalRepresentative(age: number | null): boolean {
+  return age !== null && age < 14;
+}
+
 export function todayLocalStr(): string {
   const d = new Date();
   const y = d.getFullYear();

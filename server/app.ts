@@ -65,6 +65,11 @@ export async function createApp(options: AppOptions = {}) {
     res.status(status).json({ message });
   });
 
+  // Never serve SPA HTML for unknown API routes (avoids "Unexpected token '<'" on the client)
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ message: "API-маршрут не найден. Перезапустите сервер или обновите деплой." });
+  });
+
   if (options.serveClient) {
     if (app.get("env") === "development") {
       await setupVite(app, server);

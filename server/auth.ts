@@ -12,7 +12,7 @@ const SESSION_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 declare module "express-session" {
   interface SessionData {
     userId?: string;
-    role?: "trainer" | "student";
+    role?: "trainer" | "student" | "parent";
   }
 }
 
@@ -62,7 +62,7 @@ export async function saveSession(req: Request): Promise<void> {
 
 export async function establishSession(req: Request, user: User): Promise<void> {
   req.session.userId = user.id;
-  req.session.role = user.role as "trainer" | "student";
+  req.session.role = user.role as "trainer" | "student" | "parent";
   await saveSession(req);
 }
 

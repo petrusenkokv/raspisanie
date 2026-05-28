@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Calendar,
   Users,
+  Baby,
   CalendarDays,
   Settings,
   LogIn,
@@ -77,7 +78,9 @@ export interface CalendarHeaderProps {
   onSettingsOpen: () => void;
   onTrainerProfileOpen: () => void;
   onProfileOpen: () => void;
+  onParentChildrenOpen?: () => void;
   onChangePasswordOpen: () => void;
+  isParent?: boolean;
   onLogin: () => void;
   onRegister: () => void;
   onLogout: () => void;
@@ -95,7 +98,9 @@ export function CalendarHeader({
   onSettingsOpen,
   onTrainerProfileOpen,
   onProfileOpen,
+  onParentChildrenOpen,
   onChangePasswordOpen,
+  isParent = false,
   onLogin,
   onRegister,
   onLogout,
@@ -133,24 +138,15 @@ export function CalendarHeader({
     });
   };
 
-  const getMondayOf = (date: Date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    d.setDate(d.getDate() + diff);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  };
-
   const navigateDate = (direction: 1 | -1) => {
     if (currentView === "day") {
       const newDate = new Date(selectedDate);
       newDate.setDate(selectedDate.getDate() + direction);
       setSelectedDate(newDate);
     } else if (currentView === "week") {
-      const monday = getMondayOf(selectedDate);
-      monday.setDate(monday.getDate() + direction * 7);
-      setSelectedDate(monday);
+      const newDate = new Date(selectedDate);
+      newDate.setDate(selectedDate.getDate() + direction * 7);
+      setSelectedDate(newDate);
     } else {
       const newDate = new Date(selectedDate);
       newDate.setMonth(selectedDate.getMonth() + direction);
@@ -159,14 +155,13 @@ export function CalendarHeader({
   };
 
   const handleViewChange = (view: ViewType) => {
-    if (view === "week") setSelectedDate(getMondayOf(selectedDate));
     setCurrentView(view);
   };
 
   const goToToday = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    setSelectedDate(currentView === "week" ? getMondayOf(today) : today);
+    setSelectedDate(today);
   };
 
   const today = new Date();
@@ -303,6 +298,12 @@ export function CalendarHeader({
               )}
               {currentUser && (
                 <>
+                  {isParent && onParentChildrenOpen && (
+                    <ToolButton onClick={onParentChildrenOpen} testId="button-my-children" title="Мои дети">
+                      <Baby className="h-4 w-4 mr-1.5 text-blue-600" />
+                      Мои дети
+                    </ToolButton>
+                  )}
                   <NotificationsPopover
                     userId={currentUser.id}
                     isTrainer={trainer}
@@ -336,11 +337,11 @@ export function CalendarHeader({
                         <DropdownMenuItem onClick={onTrainerProfileOpen}>
                           <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
                         </DropdownMenuItem>
-                      ) : !isPendingApproval ? (
+                      ) : (
                         <DropdownMenuItem onClick={onProfileOpen}>
                           <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
                         </DropdownMenuItem>
-                      ) : null}
+                      )}
                       {!trainer && (
                         <DropdownMenuItem onClick={onChangePasswordOpen}>
                           <KeyRound className="h-4 w-4 mr-2" />Сменить пароль

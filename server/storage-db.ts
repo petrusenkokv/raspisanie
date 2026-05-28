@@ -2,7 +2,7 @@ import { db } from "./db";
 import { eq, and, or, ne, asc, desc, inArray, gte, lte, lt, sql as drizzleSql } from "drizzle-orm";
 import { pgTable, varchar, text, timestamp } from "drizzle-orm/pg-core";
 import {
-  users, documents, userConsents, timeSlots, trainerSettings,
+  users, documents, userConsents, parentChildren, timeSlots, trainerSettings,
   holidays, recurringBookings, bookings, membershipPayments, trainerPayments, notifications,
   type User, type InsertUser,
   type TimeSlot, type InsertTimeSlot,
@@ -20,6 +20,8 @@ import {
   type StudentPaymentStatus,
   type TimeSlotWithBookings, type BookingWithDetails, type DaySchedule,
   type BroadcastLog,
+  type ParentChild,
+  type InsertParentChild,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import type { IStorage, AttendanceStats } from "./storage";
@@ -153,6 +155,26 @@ export class DbStorage implements IStorage {
       await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS exempt_membership boolean NOT NULL DEFAULT false`);
       await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS exempt_trainer_payment boolean NOT NULL DEFAULT false`);
     } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_parent boolean NOT NULL DEFAULT false`);
+    } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_also_student boolean NOT NULL DEFAULT false`);
+    } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS legal_representative_confirmed boolean NOT NULL DEFAULT false`);
+    } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`
+        CREATE TABLE IF NOT EXISTS parent_children (
+          id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+          parent_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          child_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at timestamp DEFAULT now(),
+          UNIQUE(parent_id, child_id)
+        )
+      `);
+    } catch { /* ignore */ }
 
     // Ensure trainer exists
     const trainer = await this.getTrainer();
@@ -216,6 +238,7 @@ export class DbStorage implements IStorage {
       trainerNotes: insertUser.trainerNotes ?? null,
       parentFullName: insertUser.parentFullName ?? null,
       parentPhone: insertUser.parentPhone ?? null,
+      legalRepresentativeConfirmed: (insertUser as any).legalRepresentativeConfirmed ?? false,
       sickUntil: insertUser.sickUntil ?? null,
       sickNote: insertUser.sickNote ?? null,
       exemptMembership: (insertUser as any).exemptMembership ?? false,
@@ -224,6 +247,8 @@ export class DbStorage implements IStorage {
       isPendingApproval: insertUser.isPendingApproval ?? false,
       cvRestartDate: null,
       role: insertUser.role || "student",
+      isParent: (insertUser as any).isParent ?? false,
+      isAlsoStudent: (insertUser as any).isAlsoStudent ?? false,
       isVerified: insertUser.isVerified ?? false,
       verificationCode: null,
       password: insertUser.password ?? "",
@@ -242,10 +267,45 @@ export class DbStorage implements IStorage {
     return this.updateUser(id, { isVerified: true, verificationCode: null });
   }
 
+  async getChildrenByParent(parentId: string): Promise<User[]> {
+    const links = await db.select().from(parentChildren).where(eq(parentChildren.parentId, parentId));
+    if (links.length === 0) return [];
+    const childIds = links.map((l) => l.childId);
+    const rows = await db.select().from(users).where(inArray(users.id, childIds));
+    return rows.filter((u) => u.role === "student");
+  }
+
+  async getParentsByChild(childId: string): Promise<User[]> {
+    const links = await db.select().from(parentChildren).where(eq(parentChildren.childId, childId));
+    if (links.length === 0) return [];
+    const parentIds = links.map((l) => l.parentId);
+    const rows = await db.select().from(users).where(inArray(users.id, parentIds));
+    return rows.filter((u) => u.role === "parent");
+  }
+
+  async addParentChild(link: InsertParentChild): Promise<ParentChild> {
+    const existing = await db.select().from(parentChildren).where(
+      and(eq(parentChildren.parentId, link.parentId), eq(parentChildren.childId, link.childId)),
+    );
+    if (existing[0]) return existing[0];
+    const rows = await db.insert(parentChildren).values(link).returning();
+    return rows[0];
+  }
+
+  async isParentOfChild(parentId: string, childId: string): Promise<boolean> {
+    const rows = await db.select().from(parentChildren).where(
+      and(eq(parentChildren.parentId, parentId), eq(parentChildren.childId, childId)),
+    );
+    return rows.length > 0;
+  }
+
   async deleteUser(id: string): Promise<void> {
     const user = await this.getUser(id);
     if (!user) throw new Error("Пользователь не найден");
     if (user.role === "trainer") throw new Error("Нельзя удалить тренера");
+    await db.delete(parentChildren).where(
+      or(eq(parentChildren.parentId, id), eq(parentChildren.childId, id)),
+    );
     // Get all booking IDs for this student so we can nullify FK references in notifications
     const studentBookingRows = await db.select({ id: bookings.id }).from(bookings).where(eq(bookings.studentId, id));
     const studentBookingIds = studentBookingRows.map(r => r.id);
@@ -312,10 +372,23 @@ export class DbStorage implements IStorage {
     const rows = await db.select().from(userConsents)
       .innerJoin(documents, eq(userConsents.documentId, documents.id))
       .where(eq(userConsents.userId, userId));
-    return rows.map(r => ({ ...r.user_consents, document: r.documents }));
+    const mapped = rows.map(r => ({ ...r.user_consents, document: r.documents }));
+    const seen = new Set<string>();
+    return mapped.filter((row) => {
+      if (seen.has(row.documentId)) return false;
+      seen.add(row.documentId);
+      return true;
+    });
   }
 
   async recordConsent(userId: string, documentId: string): Promise<UserConsent> {
+    const existing = await db
+      .select()
+      .from(userConsents)
+      .where(and(eq(userConsents.userId, userId), eq(userConsents.documentId, documentId)))
+      .limit(1);
+    if (existing[0]) return existing[0];
+
     const rows = await db.insert(userConsents).values({ userId, documentId }).returning();
     return rows[0];
   }
@@ -691,9 +764,10 @@ export class DbStorage implements IStorage {
   // ======================== ANALYTICS ========================
 
   async getStudentsList(includeInactive = false): Promise<User[]> {
+    const roleFilter = or(eq(users.role, "student"), and(eq(users.role, "parent"), eq(users.isAlsoStudent, true)));
     return includeInactive
-      ? await db.select().from(users).where(eq(users.role, "student")).orderBy(asc(users.createdAt))
-      : await db.select().from(users).where(and(eq(users.role, "student"), eq(users.isActive, true))).orderBy(asc(users.createdAt));
+      ? await db.select().from(users).where(roleFilter).orderBy(asc(users.createdAt))
+      : await db.select().from(users).where(and(roleFilter, eq(users.isActive, true))).orderBy(asc(users.createdAt));
   }
 
   async setUserActiveStatus(id: string, isActive: boolean, resetCv = false): Promise<User> {
@@ -1089,7 +1163,9 @@ export class DbStorage implements IStorage {
   async addMembershipPayment(studentId: string, input: MembershipPaymentInput, createdBy: string): Promise<MembershipPayment> {
     const user = await this.getUser(studentId);
     if (!user) throw new Error("Пользователь не найден");
-    if (user.role !== "student") throw new Error("Абонементы доступны только ученикам");
+    if (user.role !== "student" && !(user.role === "parent" && (user as any).isAlsoStudent)) {
+      throw new Error("Абонементы доступны только ученикам");
+    }
 
     let derivedMonth: string | null = null;
     if (input.type === "monthly_cv") {
@@ -1206,7 +1282,9 @@ export class DbStorage implements IStorage {
   async addTrainerPayment(studentId: string, input: TrainerPaymentInput, createdBy: string): Promise<TrainerPaymentWithUsage> {
     const user = await this.getUser(studentId);
     if (!user) throw new Error("Пользователь не найден");
-    if (user.role !== "student") throw new Error("Подписки доступны только ученикам");
+    if (user.role !== "student" && !(user.role === "parent" && (user as any).isAlsoStudent)) {
+      throw new Error("Подписки доступны только ученикам");
+    }
     const rows = await db.insert(trainerPayments).values({
       studentId,
       type: input.type,

@@ -11,6 +11,8 @@ import { BlockPeriodDialog } from "@/components/gym/block-period-dialog";
 import { ScheduleSettingsDialog } from "@/components/gym/schedule-settings-dialog";
 import { BroadcastDialog } from "@/components/gym/broadcast-dialog";
 import { ProfileDialog } from "@/components/gym/profile-dialog";
+import { ParentChildrenDialog } from "@/components/gym/parent-children-dialog";
+import { ParentBookDialog } from "@/components/gym/parent-book-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useGymStore, validateStoredUser, logoutFromServer } from "@/store/gym-store";
@@ -34,6 +36,10 @@ export function GymSchedulePage() {
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [welcomeDialogOpen, setWelcomeDialogOpen] = useState(false);
+  const [parentChildrenOpen, setParentChildrenOpen] = useState(false);
+  const [parentBookOpen, setParentBookOpen] = useState(false);
+  const [parentBookSlotId, setParentBookSlotId] = useState<string | null>(null);
+  const [parentBookedStudentIds, setParentBookedStudentIds] = useState<string[]>([]);
   const {
     currentUser,
     isAuthenticated,
@@ -56,8 +62,47 @@ export function GymSchedulePage() {
     void validateStoredUser();
   }, []);
 
+  // Force fresh data on auth/session switch (login/logout) so UI updates without full reload.
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ["schedule"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/parent/children"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/schedule/settings"] });
+    void queryClient.refetchQueries({ queryKey: ["schedule"], type: "all" });
+    void queryClient.refetchQueries({ queryKey: ["/api/schedule/settings"], type: "all" });
+  }, [currentUser?.id, isAuthenticated, queryClient]);
+
   // Poll current user status every 5 seconds while pending approval
-  const isPendingApproval = !!(currentUser as any)?.isPendingApproval;
+  const isParentRole = currentUser?.role === "parent";
+  const isParentMode = !!(currentUser as any)?.isParent;
+  const canManageChildren = !!currentUser && (isParentRole || isParentMode);
+  const isAlsoStudent = !!(currentUser as any)?.isAlsoStudent;
+  const isPendingApproval =
+    currentUser?.role === "student"
+      ? !!(currentUser as any)?.isPendingApproval
+      : isParentRole && isAlsoStudent && !!(currentUser as any)?.isPendingApproval;
+
+  const { data: parentChildren = [] } = useQuery<User[]>({
+    queryKey: ["/api/parent/children"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/parent/children");
+      return r.json();
+    },
+    enabled: canManageChildren,
+    staleTime: 30_000,
+  });
+
+  const familyStudentIds = useMemo(() => {
+    if (!currentUser) return [];
+    const ids = parentChildren.map((c) => c.id);
+    if (canManageChildren && currentUser.id) {
+      ids.push(currentUser.id);
+      return Array.from(new Set(ids));
+    }
+    if (currentUser.role === "student" && currentUser.id) {
+      return [currentUser.id];
+    }
+    return ids;
+  }, [parentChildren, canManageChildren, currentUser]);
   const { data: freshUserData } = useQuery<{ user: User }>({
     queryKey: [`/api/users/${currentUser?.id}`],
     enabled: !!currentUser?.id && isPendingApproval,
@@ -142,11 +187,11 @@ export function GymSchedulePage() {
   });
 
   const bookMutation = useMutation({
-    mutationFn: async (timeSlotId: string) => {
+    mutationFn: async ({ timeSlotId, studentId }: { timeSlotId: string; studentId: string }) => {
       const response = await apiRequest("POST", "/api/bookings", {
         timeSlotId,
-        studentId: currentUser?.id,
-        notes: ""
+        studentId,
+        notes: "",
       });
       return response.json();
     },
@@ -200,11 +245,62 @@ export function GymSchedulePage() {
 
   const handleBook = (timeSlotId: string) => {
     if (!currentUser) { setAuthModalOpen(true); return; }
-    if (isPendingApproval) {
-      toast({ title: "Ожидайте одобрения", description: "Запись станет доступна после того, как тренер одобрит вашу регистрацию.", variant: "destructive" });
+    if (canManageChildren) {
+      if (isParentRole && !isAlsoStudent && parentChildren.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Добавьте ребёнка",
+          description: "Сначала добавьте ребёнка в разделе «Мои дети».",
+        });
+        return;
+      }
+      const slot = schedule
+        .flatMap((d) => d.timeSlots)
+        .find((s) => s.id === timeSlotId);
+      const bookedIds = slot
+        ? slot.bookings
+            .filter((b) => b.status !== "cancelled")
+            .map((b) => b.studentId)
+        : [];
+      setParentBookedStudentIds(bookedIds);
+      setParentBookSlotId(timeSlotId);
+      setParentBookOpen(true);
       return;
     }
-    bookMutation.mutate(timeSlotId);
+    if (isPendingApproval) {
+      toast({
+        title: "Ожидайте одобрения",
+        description: "Запись станет доступна после того, как тренер одобрит вашу регистрацию.",
+        variant: "destructive",
+      });
+      return;
+    }
+    bookMutation.mutate({ timeSlotId, studentId: currentUser.id });
+  };
+
+  const handleParentBookConfirm = (studentId: string) => {
+    if (!parentBookSlotId) return;
+    const target =
+      studentId === currentUser?.id
+        ? currentUser
+        : parentChildren.find((c) => c.id === studentId);
+    if ((target as any)?.isPendingApproval) {
+      toast({
+        variant: "destructive",
+        title: "Ожидайте одобрения",
+        description: "Тренер ещё не одобрил карточку этого ученика.",
+      });
+      return;
+    }
+    bookMutation.mutate(
+      { timeSlotId: parentBookSlotId, studentId },
+      {
+        onSuccess: () => {
+          setParentBookOpen(false);
+          setParentBookSlotId(null);
+        },
+      },
+    );
   };
 
   const handleCancel = (bookingId: string) => cancelMutation.mutate(bookingId);
@@ -221,7 +317,9 @@ export function GymSchedulePage() {
         onSettingsOpen={() => setSettingsOpen(true)}
         onTrainerProfileOpen={() => setTrainerProfileOpen(true)}
         onProfileOpen={() => setProfileOpen(true)}
+        onParentChildrenOpen={() => setParentChildrenOpen(true)}
         onChangePasswordOpen={() => setChangePasswordOpen(true)}
+        isParent={canManageChildren}
         onLogin={() => { setAuthModalMode("login"); setAuthModalOpen(true); }}
         onRegister={() => { setAuthModalMode("register"); setAuthModalOpen(true); }}
         onLogout={handleLogout}
@@ -251,6 +349,7 @@ export function GymSchedulePage() {
               setSelectedTimeSlotId(timeSlotId);
               setTrainerBookDialogOpen(true);
             }}
+            familyStudentIds={familyStudentIds}
           />
         )}
       </div>
@@ -298,6 +397,23 @@ export function GymSchedulePage() {
       />
       <BroadcastDialog open={broadcastOpen} onOpenChange={setBroadcastOpen} />
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+      <ParentChildrenDialog open={parentChildrenOpen} onOpenChange={setParentChildrenOpen} />
+      <ParentBookDialog
+        open={parentBookOpen}
+        onOpenChange={(open) => {
+          setParentBookOpen(open);
+          if (!open) {
+            setParentBookSlotId(null);
+            setParentBookedStudentIds([]);
+          }
+        }}
+        children={parentChildren}
+        currentUser={currentUser}
+        isAlsoStudent={isParentRole ? isAlsoStudent : true}
+        bookedStudentIds={parentBookedStudentIds}
+        loading={bookMutation.isPending}
+        onConfirm={handleParentBookConfirm}
+      />
       <TrainerProfileDialog open={trainerProfileOpen} onOpenChange={setTrainerProfileOpen} />
     </div>
   );

@@ -21,10 +21,27 @@ async function seedWithRetry(
   }
 }
 
-if (process.env.DATABASE_URL) {
+function hasSeed(target: IStorage): target is IStorage & { seed(): Promise<void> } {
+  return typeof (target as { seed?: unknown }).seed === "function";
+}
+
+async function initStorage() {
+  if (!process.env.DATABASE_URL) {
+    return;
+  }
   const { DbStorage } = await import("./storage-db");
-  storage = new DbStorage();
-  seedWithRetry(storage);
-} else {
+  const dbStorage = new DbStorage();
+  storage = dbStorage;
+  if (hasSeed(dbStorage)) {
+    await seedWithRetry(dbStorage);
+  }
+}
+
+void initStorage().catch((err) => {
+  console.error("[storage] Failed to initialize database storage, fallback to in-memory:", err);
+  storage = new MemStorage();
+});
+
+if (!process.env.DATABASE_URL) {
   console.log("[storage] DATABASE_URL not set — using in-memory storage");
 }

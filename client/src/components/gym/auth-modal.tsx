@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, parseJsonResponse } from "@/lib/queryClient";
 import { useGymStore } from "@/store/gym-store";
-import { Loader2, Phone, UserPlus, LogIn, CheckCircle, MessageSquare } from "lucide-react";
+import { Loader2, UserPlus, LogIn, CheckCircle, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { type Document } from "@shared/schema";
 import { DocumentViewDialog } from "./document-view-dialog";
@@ -32,20 +32,28 @@ function calculateAge(birthDate: string): number | null {
 export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { setUser } = useGymStore();
+  const { setUser, setCurrentView, setSelectedDate } = useGymStore();
+
+  const resetCalendarToToday = () => {
+    setCurrentView("day");
+    setSelectedDate(new Date());
+  };
 
   // Unified login state
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
 
   // Register state
-  const [studentFirstName, setStudentFirstName] = useState("");
-  const [studentLastName, setStudentLastName] = useState("");
-  const [studentMiddleName, setStudentMiddleName] = useState("");
-  const [studentBirthDate, setStudentBirthDate] = useState("");
-  const [parentFullName, setParentFullName] = useState("");
-  const [parentPhone, setParentPhone] = useState("");
-  const [parentConfirmed, setParentConfirmed] = useState(false);
+  const [registerSelf, setRegisterSelf] = useState(true);
+  const [registerChild, setRegisterChild] = useState(false);
+  const [parentFirstName, setParentFirstName] = useState("");
+  const [parentLastName, setParentLastName] = useState("");
+  const [parentMiddleName, setParentMiddleName] = useState("");
+  const [selfBirthDate, setSelfBirthDate] = useState("");
+  const [legalRepresentativeConfirmed, setLegalRepresentativeConfirmed] = useState(false);
+  type ChildRow = { firstName: string; lastName: string; middleName: string; birthDate: string };
+  const emptyChild = (): ChildRow => ({ firstName: "", lastName: "", middleName: "", birthDate: "" });
+  const [childrenRows, setChildrenRows] = useState<ChildRow[]>([emptyChild()]);
   const [acceptedDocs, setAcceptedDocs] = useState<Record<string, boolean>>({});
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [mode, setMode] = useState<"login" | "register" | "consent" | "welcome" | "welcome_trainer_msg">("login");
@@ -72,12 +80,18 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
     enabled: open && (mode === "welcome" || mode === "welcome_trainer_msg" || pendingShowWelcome),
   });
 
-  const age = useMemo(() => calculateAge(studentBirthDate), [studentBirthDate]);
-  const requiresParent = age !== null && age < 14;
+  const selfAge = useMemo(() => calculateAge(selfBirthDate), [selfBirthDate]);
+  const selfIsMinor = selfAge !== null && selfAge < 14;
 
   useEffect(() => {
-    if (!requiresParent) setParentConfirmed(false);
-  }, [requiresParent]);
+    if (!registerSelf || !selfIsMinor) return;
+    setRegisterSelf(false);
+    setRegisterChild(true);
+    toast({
+      title: "Регистрация через представителя",
+      description: "До 14 лет нужно зарегистрировать ребёнка — заполните данные ниже.",
+    });
+  }, [selfIsMinor, registerSelf]);
 
   useEffect(() => {
     if (open) setMode(initialMode);
@@ -86,13 +100,14 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   const resetForm = () => {
     setPhone("");
     setPassword("");
-    setStudentFirstName("");
-    setStudentLastName("");
-    setStudentMiddleName("");
-    setStudentBirthDate("");
-    setParentFullName("");
-    setParentPhone("");
-    setParentConfirmed(false);
+    setRegisterSelf(true);
+    setRegisterChild(false);
+    setParentFirstName("");
+    setParentLastName("");
+    setParentMiddleName("");
+    setSelfBirthDate("");
+    setLegalRepresentativeConfirmed(false);
+    setChildrenRows([emptyChild()]);
     setAcceptedDocs({});
     setMode(initialMode);
     setPendingLoginUser(null);
@@ -121,6 +136,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
         setMode("welcome_trainer_msg");
       } else {
         setUser(data.user);
+        resetCalendarToToday();
         const greeting = data.user.role === "trainer"
           ? `Добро пожаловать, тренер!`
           : `Добро пожаловать, ${data.user.firstName}!`;
@@ -159,6 +175,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
         setMode("welcome_trainer_msg");
       } else {
         setUser(pendingLoginUser);
+        resetCalendarToToday();
         toast({ title: "Добро пожаловать!", description: `Вы вошли как ${pendingLoginUser.firstName}` });
         onOpenChange(false);
         resetForm();
@@ -175,50 +192,113 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   };
 
   const handleRegister = async () => {
-    if (!phone.trim() || !studentFirstName.trim() || !studentLastName.trim() || !password.trim()) {
-      toast({ variant: "destructive", title: "Заполните обязательные поля" });
+    if (!registerSelf && !registerChild) {
+      toast({ variant: "destructive", title: "Выберите вариант регистрации" });
       return;
     }
-    if (!studentBirthDate) {
-      toast({ variant: "destructive", title: "Укажите дату рождения" });
+    if (!phone.trim() || !password.trim()) {
+      toast({ variant: "destructive", title: "Введите телефон и пароль" });
       return;
     }
-    if (requiresParent) {
-      if (!parentFullName.trim() || !parentPhone.trim()) {
-        toast({ variant: "destructive", title: "Заполните данные законного представителя" });
-        return;
-      }
-      if (!parentConfirmed) {
-        toast({ variant: "destructive", title: "Подтвердите, что Вы — законный представитель" });
-        return;
-      }
-    }
-    const missingDocs = documents.filter(d => !acceptedDocs[d.id]);
+
+    const missingDocs = documents.filter((d) => !acceptedDocs[d.id]);
     if (missingDocs.length > 0) {
       toast({
         variant: "destructive",
         title: "Примите все документы",
-        description: missingDocs.map(d => d.title).join(", "),
+        description: missingDocs.map((d) => d.title).join(", "),
       });
       return;
     }
 
+    const consentIds = Object.keys(acceptedDocs).filter((id) => acceptedDocs[id]);
+
     setLoading(true);
     try {
-      const response = await apiRequest("POST", "/api/auth/register", {
-        phone,
-        firstName: studentFirstName,
-        lastName: studentLastName,
-        middleName: studentMiddleName || null,
-        birthDate: studentBirthDate,
-        password,
-        parentFullName: requiresParent ? parentFullName : null,
-        parentPhone: requiresParent ? parentPhone : null,
-        consentDocumentIds: Object.keys(acceptedDocs).filter(id => acceptedDocs[id]),
-      });
-      const data = await response.json();
-      setUser(data.user);
-      setMode("welcome");
+      if (registerSelf && !registerChild) {
+        if (!parentFirstName.trim() || !parentLastName.trim()) {
+          toast({ variant: "destructive", title: "Заполните имя и фамилию" });
+          return;
+        }
+        if (!selfBirthDate) {
+          toast({ variant: "destructive", title: "Укажите дату рождения" });
+          return;
+        }
+        const response = await apiRequest("POST", "/api/auth/register", {
+          phone,
+          firstName: parentFirstName,
+          lastName: parentLastName,
+          middleName: parentMiddleName || null,
+          birthDate: selfBirthDate,
+          password,
+          parentFullName: null,
+          parentPhone: null,
+          consentDocumentIds: consentIds,
+        });
+        const data = await parseJsonResponse<{ user: unknown }>(response);
+        setUser(data.user as any);
+        setMode("welcome");
+        return;
+      }
+
+      if (registerChild) {
+        if (!parentFirstName.trim() || !parentLastName.trim()) {
+          toast({ variant: "destructive", title: "Заполните ФИО для входа в систему" });
+          return;
+        }
+        const validChildren = childrenRows.filter((c) => c.firstName.trim() && c.lastName.trim());
+        if (validChildren.length === 0) {
+          toast({ variant: "destructive", title: "Добавьте хотя бы одного ребёнка" });
+          return;
+        }
+        for (let i = 0; i < validChildren.length; i++) {
+          if (!validChildren[i].birthDate) {
+            toast({ variant: "destructive", title: `Укажите дату рождения ребёнка ${i + 1}` });
+            return;
+          }
+        }
+        if (registerSelf && !selfBirthDate) {
+          toast({ variant: "destructive", title: "Укажите вашу дату рождения" });
+          return;
+        }
+        if (!legalRepresentativeConfirmed) {
+          toast({
+            variant: "destructive",
+            title: "Подтвердите, что Вы — законный представитель ребёнка",
+          });
+          return;
+        }
+
+        const response = await apiRequest("POST", "/api/auth/register-parent", {
+          phone,
+          firstName: parentFirstName,
+          lastName: parentLastName,
+          middleName: parentMiddleName || null,
+          birthDate: registerSelf ? selfBirthDate : null,
+          isAlsoStudent: registerSelf,
+          legalRepresentativeConfirmed,
+          password,
+          consentDocumentIds: consentIds,
+          children: validChildren.map((c) => ({
+            firstName: c.firstName.trim(),
+            lastName: c.lastName.trim(),
+            middleName: c.middleName.trim() || null,
+            birthDate: c.birthDate,
+          })),
+        });
+        const data = await parseJsonResponse<{ user: any }>(response);
+        setUser(data.user);
+        if (registerSelf && data.user?.isPendingApproval) {
+          setMode("welcome");
+        } else {
+          toast({
+            title: "Регистрация завершена",
+            description: "Дети добавлены. После одобрения тренером можно записывать на тренировки.",
+          });
+          onOpenChange(false);
+          resetForm();
+        }
+      }
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -296,6 +376,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                       await apiRequest("POST", `/api/users/${pendingLoginUser.id}/mark-welcome-shown`).catch(() => {});
                     }
                     setUser(pendingLoginUser);
+                    resetCalendarToToday();
                     onOpenChange(false);
                     resetForm();
                   }}
@@ -388,52 +469,179 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
             {/* ── REGISTER ── */}
             {mode === "register" && (
               <>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-2">
-                    <Label>Фамилия</Label>
-                    <Input value={studentLastName} onChange={(e) => setStudentLastName(e.target.value)} disabled={loading} data-testid="input-lastName" />
+                <div className="space-y-2 border rounded-lg p-3">
+                  <p className="text-sm font-medium">Кого регистрируем?</p>
+                  <label className="flex items-start gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={registerSelf}
+                      onCheckedChange={(v) => setRegisterSelf(!!v)}
+                      disabled={loading || selfIsMinor}
+                      data-testid="checkbox-register-self"
+                    />
+                    <span>Тренируюсь сам(а)</span>
+                  </label>
+                  <label className="flex items-start gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={registerChild}
+                      onCheckedChange={(v) => {
+                        setRegisterChild(!!v);
+                        if (v && childrenRows.length === 0) setChildrenRows([emptyChild()]);
+                      }}
+                      disabled={loading}
+                      data-testid="checkbox-register-child"
+                    />
+                    <span>Записать ребёнка</span>
+                  </label>
+                  {selfIsMinor && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      До 14 лет — только через «Записать ребёнка».
+                    </p>
+                  )}
+                </div>
+
+                {(registerSelf || registerChild) && (
+                  <div className="border rounded-lg p-3 space-y-3">
+                    <p className="text-sm font-semibold">
+                      {registerSelf ? "Ваши данные (вы ученик)" : "Данные для входа (взрослый)"}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-2">
+                        <Label>Фамилия</Label>
+                        <Input value={parentLastName} onChange={(e) => setParentLastName(e.target.value)} disabled={loading} data-testid="input-lastName" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Имя</Label>
+                        <Input value={parentFirstName} onChange={(e) => setParentFirstName(e.target.value)} disabled={loading} data-testid="input-firstName" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Отчество (если есть)</Label>
+                      <Input value={parentMiddleName} onChange={(e) => setParentMiddleName(e.target.value)} disabled={loading} data-testid="input-middleName" />
+                    </div>
+                    {registerSelf && (
+                      <div className="space-y-2">
+                        <Label>Дата рождения</Label>
+                        <Input
+                          type="date"
+                          value={selfBirthDate}
+                          onChange={(e) => setSelfBirthDate(e.target.value)}
+                          disabled={loading}
+                          data-testid="input-birthDate"
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-2">
-                    <Label>Имя</Label>
-                    <Input value={studentFirstName} onChange={(e) => setStudentFirstName(e.target.value)} disabled={loading} data-testid="input-firstName" />
+                )}
+
+                {registerChild && (
+                  <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20">
+                    <label className="flex items-start gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={legalRepresentativeConfirmed}
+                        onCheckedChange={(v) => setLegalRepresentativeConfirmed(!!v)}
+                        disabled={loading}
+                        data-testid="checkbox-legal-representative-confirmed"
+                      />
+                      <span>
+                        Я являюсь законным представителем ребёнка и подтверждаю достоверность данных.
+                      </span>
+                    </label>
                   </div>
-                </div>
+                )}
+
+                {registerChild && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Дети</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={loading}
+                        onClick={() => setChildrenRows((rows) => [...rows, emptyChild()])}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Ещё ребёнок
+                      </Button>
+                    </div>
+                    {childrenRows.map((row, idx) => (
+                      <div key={idx} className="border rounded-lg p-3 space-y-2 relative">
+                        {childrenRows.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-2 right-2 h-8 w-8"
+                            disabled={loading}
+                            onClick={() => setChildrenRows((rows) => rows.filter((_, i) => i !== idx))}
+                            aria-label="Удалить ребёнка"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        )}
+                        <p className="text-xs font-medium text-muted-foreground pr-8">Ребёнок {idx + 1}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label>Фамилия</Label>
+                            <Input
+                              value={row.lastName}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setChildrenRows((rows) => rows.map((r, i) => (i === idx ? { ...r, lastName: v } : r)));
+                              }}
+                              disabled={loading}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Имя</Label>
+                            <Input
+                              value={row.firstName}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setChildrenRows((rows) => rows.map((r, i) => (i === idx ? { ...r, firstName: v } : r)));
+                              }}
+                              disabled={loading}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label>Отчество</Label>
+                            <Input
+                              value={row.middleName}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setChildrenRows((rows) => rows.map((r, i) => (i === idx ? { ...r, middleName: v } : r)));
+                              }}
+                              disabled={loading}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Дата рождения</Label>
+                            <Input
+                              type="date"
+                              value={row.birthDate}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setChildrenRows((rows) => rows.map((r, i) => (i === idx ? { ...r, birthDate: v } : r)));
+                              }}
+                              disabled={loading}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  <Label>Отчество (если есть)</Label>
-                  <Input value={studentMiddleName} onChange={(e) => setStudentMiddleName(e.target.value)} disabled={loading} data-testid="input-middleName" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Дата рождения</Label>
-                  <Input type="date" value={studentBirthDate} onChange={(e) => setStudentBirthDate(e.target.value)} disabled={loading} data-testid="input-birthDate" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Номер телефона</Label>
+                  <Label>Номер телефона (для входа)</Label>
                   <Input type="tel" placeholder="+79991234567" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={loading} data-testid="input-phone-register" />
                 </div>
                 <div className="space-y-2">
                   <Label>Пароль</Label>
                   <Input type="password" placeholder="Не короче 4 символов" value={password} onChange={(e) => setPassword(e.target.value)} disabled={loading} data-testid="input-register-password" />
                 </div>
-
-                {requiresParent && (
-                  <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20 space-y-3">
-                    <p className="text-sm font-medium">
-                      Ученику меньше 14 лет — заполните данные законного представителя
-                    </p>
-                    <div className="space-y-2">
-                      <Label>ФИО законного представителя</Label>
-                      <Input value={parentFullName} onChange={(e) => setParentFullName(e.target.value)} disabled={loading} data-testid="input-parent-name" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Телефон законного представителя</Label>
-                      <Input type="tel" placeholder="+79991234567" value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} disabled={loading} data-testid="input-parent-phone" />
-                    </div>
-                    <label className="flex items-start gap-2 text-sm cursor-pointer">
-                      <Checkbox checked={parentConfirmed} onCheckedChange={(v) => setParentConfirmed(!!v)} data-testid="checkbox-parent-confirmed" />
-                      <span>Я являюсь законным представителем ребёнка и подтверждаю достоверность данных.</span>
-                    </label>
-                  </div>
-                )}
 
                 {documents.length > 0 && (
                   <div className="border rounded-lg p-3 space-y-2">

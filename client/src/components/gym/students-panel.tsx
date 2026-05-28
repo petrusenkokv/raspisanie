@@ -43,7 +43,13 @@ import { DocumentsManagerDialog } from "./documents-manager-dialog";
 import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, BadgeAlert } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { calculateAge, todayLocalStr } from "@/lib/utils-gym";
+import {
+  calculateAge,
+  legalRepresentativeSectionHint,
+  studentIsUnder18,
+  studentNeedsLegalRepresentative,
+  todayLocalStr,
+} from "@/lib/utils-gym";
 
 type StudentWithConsentsExtended = StudentWithConsents & {
   exemptMembership?: boolean;
@@ -142,10 +148,15 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       const response = await apiRequest("DELETE", `/api/trainer/students/${id}`);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
-      toast({ title: "Ученик удалён" });
+      toast({
+        title: "Ученик удалён",
+        description: data?.deletedParentCount > 0
+          ? "Это был последний ребёнок — аккаунт родителя удалён автоматически."
+          : undefined,
+      });
       setStudentToDelete(null);
     },
     onError: (error: any) => {
@@ -195,6 +206,20 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       ((student as any).middleName || "").toLowerCase().includes(query) ||
       (digitsQuery.length > 0 && phoneDigits.includes(digitsQuery))
     );
+  });
+  const prioritizedStudents = [...filteredStudents].sort((a, b) => {
+    const getIsRedCard = (student: any) => {
+      const isInactive = student.isActive === false;
+      const isPending = student.isPendingApproval === true;
+      const hasMembership = student.hasMembership as boolean | undefined;
+      const hasTrainerPayment = student.hasTrainerPayment as boolean | undefined;
+      const exemptMembership = student.exemptMembership === true;
+      const exemptTrainerPayment = student.exemptTrainerPayment === true;
+      const needsCv = !exemptMembership && hasMembership === false;
+      const needsTrainer = !exemptTrainerPayment && hasTrainerPayment === false;
+      return !isInactive && !isPending && hasMembership !== undefined && (needsCv || needsTrainer);
+    };
+    return Number(getIsRedCard(b)) - Number(getIsRedCard(a));
   });
 
   const handleBookStudent = (student: User & { pendingDocumentCount?: number }) => {
@@ -284,7 +309,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
           <div className="flex items-center justify-between mb-2 text-sm text-gray-600 dark:text-gray-400">
             <div className="flex items-center gap-2">
               <UserCheck className="h-4 w-4" />
-              <span>Учеников: <strong>{filteredStudents.length}</strong></span>
+              <span>Учеников: <strong>{prioritizedStudents.length}</strong></span>
             </div>
             <button
               className={`text-xs px-2 py-0.5 rounded border transition-colors ${
@@ -303,18 +328,20 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
             <div className="flex items-center justify-center h-32">
               <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
             </div>
-          ) : filteredStudents.length === 0 ? (
+          ) : prioritizedStudents.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               {searchQuery ? "Ученики не найдены" : "Пока нет зарегистрированных учеников"}
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredStudents.map((student) => {
+              {prioritizedStudents.map((student) => {
                 const age = calculateAge((student as any).birthDate);
                 const isInactive = (student as any).isActive === false;
                 const hasPendingDocs = (student.pendingDocumentCount ?? 0) > 0;
                 const isPending = (student as any).isPendingApproval === true;
                 const isParentAccount = student.role === "parent";
+                const isParentMode = !!(student as any).isParent;
+                const hasLinkedChildren = !!(student as any).hasLinkedChildren;
                 const hasMembership = (student as any).hasMembership as boolean | undefined;
                 const hasTrainerPayment = (student as any).hasTrainerPayment as boolean | undefined;
                 const exemptMembership = (student as any).exemptMembership === true;
@@ -372,9 +399,9 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                           >
                             {student.lastName} {student.firstName} {(student as any).middleName || ""}
                           </button>
-                          {isParentAccount && (
+                          {(isParentAccount || isParentMode) && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded border bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-700">
-                              {(student as any).isAlsoStudent ? "родитель · тренируется" : "аккаунт родителя"}
+                              родитель
                             </span>
                           )}
                           {isInactive && (
@@ -463,6 +490,8 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                           variant="ghost"
                           className="text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
                           onClick={() => setStudentToDelete(student)}
+                          disabled={isParentAccount && hasLinkedChildren}
+                          title={isParentAccount && hasLinkedChildren ? "Сначала удалите или отвяжите детей" : undefined}
                           data-testid={`button-delete-student-${student.id}`}
                         >
                           <Trash2 className="h-3 w-3 mr-1" />
@@ -825,13 +854,19 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               const hasFather = s.fatherFullName || s.fatherPhone;
               const hasLegacyParent = student.parentFullName || student.parentPhone;
               const hasAny = hasMother || hasFather || hasLegacyParent;
-              const isMinor = age !== null && age < 18;
-              if (!hasAny && !isMinor) return null;
+              const under18 = studentIsUnder18(age);
+              const needsLegalRep = studentNeedsLegalRepresentative(age);
+              const ageHint = legalRepresentativeSectionHint(age);
+              if (!hasAny && !under18) return null;
               return (
                 <div className="border rounded p-3 bg-amber-50 dark:bg-amber-950/20 space-y-3">
-                  <p className="font-medium text-sm flex items-center gap-1.5">
+                  <p className="font-medium text-sm flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                     Законные представители
-                    {isMinor && <span className="text-xs font-normal text-amber-700 dark:text-amber-400">(ученик до 14 лет)</span>}
+                    {ageHint && (
+                      <span className="text-xs font-normal text-amber-700 dark:text-amber-400">
+                        ({ageHint})
+                      </span>
+                    )}
                   </p>
                   {hasMother && (
                     <div className="space-y-1">
@@ -852,13 +887,29 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                       <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
                         Законный представитель (при регистрации)
                       </p>
+                      <Field
+                        label="Подтверждение"
+                        value={student.legalRepresentativeConfirmed ? "Является законным представителем" : "Не подтверждено"}
+                      />
                       <Field label="ФИО" value={student.parentFullName || "—"} />
                       <Field label="Телефон" value={student.parentPhone || "—"} />
+                      <Field
+                        label="Статус родителя"
+                        value={`Родитель${
+                          s.parentAlsoTrainsName
+                            ? ` (${s.parentAlsoTrainsName})`
+                            : student.parentFullName
+                              ? ` (${student.parentFullName})`
+                              : ""
+                        }`}
+                      />
                     </div>
                   )}
-                  {!hasAny && isMinor && (
+                  {!hasAny && under18 && (
                     <p className="text-xs text-amber-700 dark:text-amber-400">
-                      Данные не заполнены. Родитель может добавить их в разделе «Мой профиль» в приложении.
+                      {needsLegalRep
+                        ? "Данные не заполнены. Родитель может добавить их в разделе «Мой профиль» в приложении."
+                        : "Контакт родителей не указан. Можно уточнить у ученика или попросить заполнить профиль."}
                     </p>
                   )}
                 </div>

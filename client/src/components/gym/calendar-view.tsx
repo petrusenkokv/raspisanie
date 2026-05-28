@@ -11,6 +11,7 @@ import { isSlotInWorkingHours, isWorkingDayByTemplate } from "@/lib/utils-gym";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Clock, Users, UserCheck, LogIn, UserPlus, Lock, Unlock } from "lucide-react";
+import { ConfirmedBookingHint } from "./confirmed-booking-hint";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 function minutesUntilSlotMoscow(date: string, time: string): number {
@@ -39,9 +40,10 @@ interface CalendarViewProps {
   onConfirm: (bookingId: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (timeSlotId: string) => void;
+  familyStudentIds?: string[];
 }
 
-export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: CalendarViewProps) {
+export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: CalendarViewProps) {
   const { currentView, selectedDate, schedule, getWeekDates, getMonthDates } = useGymStore();
   const { data: scheduleSettingsData } = useQuery<{
     holidays?: Holiday[];
@@ -75,6 +77,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
             <TimeSlot
               key={ts.id}
               timeSlot={ts}
+              familyStudentIds={familyStudentIds}
               onBook={onBook}
               onCancel={onCancel}
               onConfirm={onConfirm}
@@ -324,6 +327,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
     onConfirm={onConfirm}
     onLoginRequest={onLoginRequest}
     onTrainerBook={onTrainerBook}
+    familyStudentIds={familyStudentIds}
   />;
 }
 
@@ -336,9 +340,10 @@ interface WeekGridProps {
   onConfirm: (id: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (id: string) => void;
+  familyStudentIds?: string[];
 }
 
-function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: WeekGridProps) {
+function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: WeekGridProps) {
   const { currentUser, isTrainer } = useGymStore();
 
   // Collect all unique times across the week
@@ -404,6 +409,7 @@ function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLo
                     onConfirm={onConfirm}
                     onLoginRequest={onLoginRequest}
                     onTrainerBook={onTrainerBook}
+                    familyStudentIds={familyStudentIds}
                   />
                 );
               })}
@@ -425,9 +431,10 @@ interface WeekCellProps {
   onConfirm: (id: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (id: string) => void;
+  familyStudentIds?: string[];
 }
 
-function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: WeekCellProps) {
+function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: WeekCellProps) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   const { data: scheduleSettings } = useQuery<{
@@ -461,9 +468,19 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   const pendingBookings   = timeSlot.bookings.filter((b) => b.status === "pending");
   const allActive         = [...confirmedBookings, ...pendingBookings];
 
-  const userBooking = currentUser
-    ? timeSlot.bookings.find((b) => b.studentId === currentUser.id && b.status !== "cancelled")
-    : undefined;
+  const bookingStudentIds = familyStudentIds.length > 0
+    ? familyStudentIds
+    : currentUser?.id
+      ? [currentUser.id]
+      : [];
+  const familyBookings = timeSlot.bookings.filter(
+    (booking) => booking.status !== "cancelled" && bookingStudentIds.includes(booking.studentId),
+  );
+  const userBooking = familyBookings.find((b) => b.studentId === currentUser?.id) ?? familyBookings[0];
+  const isBookingForCurrentUser = !!userBooking && userBooking.studentId === currentUser?.id;
+  const bookedPersonName = userBooking
+    ? `${userBooking.student.lastName ?? ""} ${userBooking.student.firstName ?? ""}`.trim()
+    : "";
 
   const isFull    = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
@@ -488,9 +505,15 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
       {isBlocked ? (
         <span className="text-xs">—</span>
       ) : userBooking?.status === "confirmed" ? (
-        <><UserCheck className="h-3 w-3" /><span>Записан</span></>
+        <>
+          <ConfirmedBookingHint
+            iconClassName="h-3 w-3"
+            label={isBookingForCurrentUser ? "Запись подтверждена" : "Ребёнок записан"}
+          />
+          {!isBookingForCurrentUser && <span>Ребёнок</span>}
+        </>
       ) : userBooking?.status === "pending" ? (
-        <><Clock className="h-3 w-3" /><span>Заявка</span></>
+        <><Clock className="h-3 w-3" /><span>{isBookingForCurrentUser ? "Заявка" : "Ребёнок"}</span></>
       ) : (
         <><Users className="h-3 w-3" /><span>{confirmedBookings.length}/{timeSlot.maxCapacity}</span></>
       )}
@@ -621,7 +644,9 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                   <div className="flex items-center gap-2 px-2 py-1.5 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 rounded-md">
                     <Clock className="h-4 w-4 text-yellow-600 shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Заявка подана</p>
+                      <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+                        {isBookingForCurrentUser ? "Заявка подана" : `Заявка на ребёнка: ${bookedPersonName}`}
+                      </p>
                       <p className="text-xs text-yellow-600">Ожидайте подтверждения</p>
                     </div>
                   </div>
@@ -630,8 +655,12 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                   <div className="flex items-center gap-2 px-2 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-md">
                     <UserCheck className="h-4 w-4 text-green-600 shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-green-800 dark:text-green-300">Вы записаны!</p>
-                      <p className="text-xs text-green-600">Тренер подтвердил</p>
+                      <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                        {isBookingForCurrentUser ? "Вы записаны!" : `Записан ребёнок: ${bookedPersonName}`}
+                      </p>
+                      <p className="text-xs text-green-600">
+                        {isBookingForCurrentUser ? "Тренер подтвердил" : "Запись оформлена с вашего аккаунта"}
+                      </p>
                     </div>
                   </div>
                 )}

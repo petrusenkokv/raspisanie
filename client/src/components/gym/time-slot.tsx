@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ConfirmedBookingHint } from "./confirmed-booking-hint";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -31,9 +32,10 @@ interface TimeSlotProps {
   onConfirm: (bookingId: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (timeSlotId: string) => void;
+  familyStudentIds?: string[];
 }
 
-export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook }: TimeSlotProps) {
+export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: TimeSlotProps) {
   const { currentUser, isTrainer } = useGymStore();
   const { toast } = useToast();
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -55,6 +57,9 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     !isTrainer() && bookingDeadlineH > 0 && minutesUntil <= bookingDeadlineH * 60;
   const tooLateToCancel =
     !isTrainer() && cancelDeadlineH > 0 && minutesUntil <= cancelDeadlineH * 60;
+
+  const showFamilyRowActions =
+    !!currentUser && !isTrainer() && !(currentUser as any).isPendingApproval;
 
   const blockMutation = useMutation({
     mutationFn: async (blocked: boolean) => {
@@ -120,9 +125,37 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     blockReason === "template" ? "Не работает" :
     "Заблокировано";
 
-  const userBooking = timeSlot.bookings.find(
-    booking => booking.studentId === currentUser?.id && booking.status !== "cancelled"
+  const bookingStudentIds =
+    familyStudentIds.length > 0
+      ? familyStudentIds
+      : currentUser?.id
+        ? [currentUser.id]
+        : [];
+  const isParentUser = currentUser?.role === "parent" || !!(currentUser as any)?.isParent;
+  const familyBookings = timeSlot.bookings.filter(
+    (booking) =>
+      booking.status !== "cancelled" && bookingStudentIds.includes(booking.studentId),
   );
+  const userBooking =
+    familyBookings.find((booking) => booking.studentId === currentUser?.id) ??
+    familyBookings[0];
+  const bookedPersonName = userBooking
+    ? `${userBooking.student.lastName ?? ""} ${userBooking.student.firstName ?? ""}`.trim()
+    : "";
+  const isBookingForCurrentUser = !!userBooking && userBooking.studentId === currentUser?.id;
+  const familyBookedNames = familyBookings
+    .map((b) => `${b.student.lastName ?? ""} ${b.student.firstName ?? ""}`.trim())
+    .filter(Boolean);
+  const bookingOwnerTitle = !userBooking
+    ? ""
+    : isBookingForCurrentUser
+      ? "Вы записаны!"
+      : `Записан ребёнок: ${bookedPersonName}`;
+  const bookingOwnerSubtitle = !userBooking
+    ? ""
+    : isBookingForCurrentUser
+      ? "Тренер подтвердил запись"
+      : "Запись оформлена с вашего аккаунта";
 
   const confirmedBookings = timeSlot.bookings.filter(b => b.status === "confirmed");
   const pendingBookings = timeSlot.bookings.filter(b => b.status === "pending");
@@ -285,21 +318,19 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-sm min-w-0 flex-wrap">
-                        {booking.status === "confirmed"
-                          ? <UserCheck className="h-3 w-3 text-green-600 shrink-0" />
-                          : <Clock className="h-3 w-3 text-yellow-600 shrink-0" />
-                        }
+                        {booking.status === "pending" && (
+                          <Clock className="h-3 w-3 text-yellow-600 shrink-0" />
+                        )}
                         <span className="text-gray-900 dark:text-white truncate">
                           {booking.student.firstName} {booking.student.lastName}
                         </span>
                         {att ? (
                           <AttendanceBadge status={att} />
+                        ) : booking.status === "confirmed" ? (
+                          <ConfirmedBookingHint iconClassName="h-3 w-3" />
                         ) : (
-                          <Badge
-                            variant={booking.status === "confirmed" ? "default" : "secondary"}
-                            className="text-xs shrink-0"
-                          >
-                            {booking.status === "confirmed" ? "Записан" : "Заявка"}
+                          <Badge variant="secondary" className="text-xs shrink-0">
+                            Заявка
                           </Badge>
                         )}
                         {booking.status === "confirmed" && (
@@ -404,27 +435,103 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
           ) : (
             // Student view
             <div className="space-y-2">
-              {userBooking ? (
-                userBooking.status === "pending" ? (
-                  <div className="flex items-center gap-2 px-2 py-1.5 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-md">
-                    <Clock className="h-4 w-4 text-yellow-600 shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Заявка подана тренеру</p>
-                      <p className="text-xs text-yellow-600 dark:text-yellow-400">Ожидайте подтверждения</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 px-2 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-md">
-                    <UserCheck className="h-4 w-4 text-green-600 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="text-sm font-medium text-green-800 dark:text-green-300">Вы записаны!</p>
-                        <BookingPaymentBadges studentId={userBooking.studentId} dateStr={timeSlot.date} />
+              {familyBookings.length > 0 ? (
+                <div className="space-y-1.5">
+                  {familyBookings.map((booking) => {
+                    const personName = `${booking.student.firstName} ${booking.student.lastName}`.trim();
+                    const isPending = booking.status === "pending";
+                    return (
+                      <div
+                        key={booking.id}
+                        className={cn(
+                          "rounded px-2 py-1.5 border flex flex-wrap items-center justify-between gap-x-2 gap-y-1",
+                          isPending
+                            ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700"
+                            : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700",
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          {isPending && (
+                            <Clock className="h-3.5 w-3.5 text-yellow-600 shrink-0" />
+                          )}
+                          <span className="text-sm font-medium truncate text-gray-900 dark:text-white">
+                            {personName}
+                          </span>
+                          {isPending ? (
+                            <Tooltip delayDuration={0}>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className="inline-flex shrink-0 cursor-help"
+                                  tabIndex={0}
+                                  aria-label="Ожидаем подтверждения тренера"
+                                  onClick={(e) => e.stopPropagation()}
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                >
+                                  <Badge variant="secondary" className="text-[10px] h-5">
+                                    Ждём
+                                  </Badge>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="z-[100]">
+                                Ожидаем подтверждения тренера
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <ConfirmedBookingHint iconClassName="h-3 w-3" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <BookingPaymentBadges studentId={booking.studentId} dateStr={timeSlot.date} />
+                          {showFamilyRowActions && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRescheduleBooking({
+                                    id: booking.id,
+                                    studentId: booking.studentId,
+                                  });
+                                }}
+                                disabled={tooLateToCancel}
+                                className="h-6 w-6 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                                title={
+                                  tooLateToCancel
+                                    ? `Перенос закрыт менее чем за ${cancelDeadlineH} ч.`
+                                    : "Перенести запись"
+                                }
+                                aria-label={`Перенести запись: ${personName}`}
+                                data-testid={`button-reschedule-${booking.id}`}
+                              >
+                                <ArrowLeftRight className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onCancel(booking.id);
+                                }}
+                                disabled={tooLateToCancel}
+                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30"
+                                title={
+                                  tooLateToCancel
+                                    ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.`
+                                    : "Отменить запись"
+                                }
+                                aria-label={`Отменить запись: ${personName}`}
+                                data-testid={`button-cancel-${booking.id}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-xs text-green-600 dark:text-green-400">Тренер подтвердил запись</p>
-                    </div>
-                  </div>
-                )
+                    );
+                  })}
+                </div>
               ) : (
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   {timeSlot.availableSpots > 0
@@ -477,40 +584,16 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
       {!isBlocked && currentUser && !isTrainer() && !(currentUser as any).isPendingApproval && (
         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
           {userBooking ? (
-            <div className="flex gap-2 w-full">
-              {userBooking.status === "pending" && (
-                <Badge variant="secondary" className="flex-1 justify-center">
-                  Ждет подтверждения
-                </Badge>
-              )}
-              {userBooking.status === "confirmed" && (
-                <Badge variant="default" className="flex-1 justify-center">
-                  Записан
-                </Badge>
-              )}
+            isParentUser && !isFull ? (
               <Button
-                variant="outline"
                 size="sm"
-                onClick={() => setRescheduleBooking({ id: userBooking.id, studentId: userBooking.studentId })}
-                disabled={tooLateToCancel}
-                title={tooLateToCancel ? `Перенос закрыт менее чем за ${cancelDeadlineH} ч.` : "Перенести запись"}
-                data-testid={`button-reschedule-${timeSlot.id}`}
+                onClick={() => onBook(timeSlot.id)}
+                data-testid={`button-parent-book-more-${timeSlot.id}`}
+                className="w-full"
               >
-                <ArrowLeftRight className="h-3 w-3 mr-1" />
-                Перенести
+                Записать ещё
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onCancel(userBooking.id)}
-                className="text-red-600 hover:text-red-700"
-                disabled={tooLateToCancel}
-                title={tooLateToCancel ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.` : undefined}
-                data-testid={`button-cancel-${timeSlot.id}`}
-              >
-                Отменить
-              </Button>
-            </div>
+            ) : null
           ) : (
             !isFull && (
               <Button
@@ -658,19 +741,42 @@ function AttendanceButton({
 
 
 function BookingPaymentBadges({ studentId, dateStr }: { studentId: string; dateStr: string }) {
-  const { data } = useQuery<StudentPaymentStatus>({
-    queryKey: ["payment-status", studentId, dateStr],
+  const { isTrainer } = useGymStore();
+  const paymentStatusUrl = isTrainer()
+    ? `/api/trainer/students/${studentId}/payment-status?date=${encodeURIComponent(dateStr)}`
+    : `/api/student/payment-status/${studentId}?date=${encodeURIComponent(dateStr)}`;
+
+  const { data, isLoading, isError } = useQuery<StudentPaymentStatus>({
+    queryKey: ["payment-status", studentId, dateStr, isTrainer() ? "trainer" : "student"],
     queryFn: async () => {
-      const r = await apiRequest(
-        "GET",
-        `/api/trainer/students/${studentId}/payment-status?date=${encodeURIComponent(dateStr)}`,
-      );
+      const r = await apiRequest("GET", paymentStatusUrl);
       return r.json();
     },
     staleTime: 30_000,
+    retry: 2,
+    enabled: Boolean(studentId && dateStr),
   });
 
-  if (!data) return null;
+  if (isLoading) {
+    return (
+      <span className="inline-flex items-center gap-1 shrink-0" aria-hidden>
+        <span className="h-5 w-9 rounded border border-gray-200 bg-gray-100 dark:bg-gray-800 animate-pulse" />
+        <span className="h-5 w-9 rounded border border-gray-200 bg-gray-100 dark:bg-gray-800 animate-pulse" />
+      </span>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 shrink-0 text-[10px] text-gray-500"
+        title="Не удалось загрузить статус оплаты"
+      >
+        <span className="px-1 py-0.5 rounded border border-gray-300 bg-gray-50 dark:bg-gray-800">ЧВ ?</span>
+        <span className="px-1 py-0.5 rounded border border-gray-300 bg-gray-50 dark:bg-gray-800">Тр ?</span>
+      </span>
+    );
+  }
 
   const cvOk = data.hasMembership;
   const cvLabel = data.membershipKind === "monthly_cv" ? "ЧВ" : data.membershipKind === "one_time_bv" ? "БВ" : "ЧВ";
@@ -709,8 +815,10 @@ function BookingPaymentBadges({ studentId, dateStr }: { studentId: string; dateS
         <div className="text-gray-300 dark:text-gray-400">Разовая оплата на этот день</div>
       </div>
     );
+  } else if (cvOk) {
+    cvTooltipNode = <span className="text-xs">ЧВ/БВ оплачено</span>;
   } else {
-    cvTooltipNode = <span className="text-xs">ЧВ/БВ не оплачены</span>;
+    cvTooltipNode = <span className="text-xs">ЧВ/БВ не оплачено</span>;
   }
 
   return (
