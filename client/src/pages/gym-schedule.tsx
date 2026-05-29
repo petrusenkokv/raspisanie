@@ -208,8 +208,11 @@ export function GymSchedulePage() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: async (bookingId: string) => {
-      const response = await apiRequest("PUT", `/api/bookings/${bookingId}/cancel`, { cancelledBy: currentUser?.id ?? null });
+    mutationFn: async ({ bookingId, message }: { bookingId: string; message?: string }) => {
+      const response = await apiRequest("PUT", `/api/bookings/${bookingId}/cancel`, {
+        cancelledBy: currentUser?.id ?? null,
+        message: message ?? undefined,
+      });
       return response.json();
     },
     onSuccess: () => {
@@ -306,7 +309,8 @@ export function GymSchedulePage() {
     );
   };
 
-  const handleCancel = (bookingId: string) => cancelMutation.mutate(bookingId);
+  const handleCancel = (bookingId: string, message?: string) =>
+    cancelMutation.mutate({ bookingId, message });
 
   const handleLogout = async () => {
     await logoutFromServer();

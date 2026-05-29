@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmedBookingHint } from "./confirmed-booking-hint";
 import { useTrainerBookingCancel } from "./trainer-cancel-booking";
+import { useStudentBookingCancel } from "./student-cancel-booking";
 import {
   shouldShowMembershipBadge,
   shouldShowTrainerPaymentBadge,
@@ -33,7 +34,7 @@ function minutesUntilSlotMoscow(date: string, time: string): number {
 interface TimeSlotProps {
   timeSlot: TimeSlotWithBookings;
   onBook: (timeSlotId: string) => void;
-  onCancel: (bookingId: string) => void;
+  onCancel: (bookingId: string, message?: string) => void;
   onConfirm: (bookingId: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (timeSlotId: string) => void;
@@ -49,6 +50,8 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   } | null>(null);
   const { requestCancel: requestTrainerCancel, dialog: trainerCancelDialog } =
     useTrainerBookingCancel(onCancel);
+  const { requestCancel: requestStudentCancel, dialog: studentCancelDialog } =
+    useStudentBookingCancel(onCancel);
 
   const { data: scheduleSettings } = useQuery<{
     bookingDeadlineHours?: number;
@@ -553,7 +556,10 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                                 size="sm"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onCancel(booking.id);
+                                  requestStudentCancel({
+                                    bookingId: booking.id,
+                                    personName,
+                                  });
                                 }}
                                 disabled={tooLateToCancel}
                                 className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30"
@@ -717,6 +723,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
         />
       )}
       {trainerCancelDialog}
+      {studentCancelDialog}
     </>
   );
 }

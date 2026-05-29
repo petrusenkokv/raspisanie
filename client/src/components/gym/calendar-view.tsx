@@ -13,6 +13,7 @@ import { ru } from "date-fns/locale";
 import { Clock, Users, UserCheck, LogIn, UserPlus, Lock, Unlock } from "lucide-react";
 import { ConfirmedBookingHint } from "./confirmed-booking-hint";
 import { useTrainerBookingCancel } from "./trainer-cancel-booking";
+import { useStudentBookingCancel } from "./student-cancel-booking";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 function minutesUntilSlotMoscow(date: string, time: string): number {
@@ -37,7 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface CalendarViewProps {
   onBook: (timeSlotId: string) => void;
-  onCancel: (bookingId: string) => void;
+  onCancel: (bookingId: string, message?: string) => void;
   onConfirm: (bookingId: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (timeSlotId: string) => void;
@@ -337,7 +338,7 @@ interface WeekGridProps {
   dates: Date[];
   getScheduleForDate: (date: Date) => TimeSlotWithBookings[];
   onBook: (id: string) => void;
-  onCancel: (id: string) => void;
+  onCancel: (id: string, message?: string) => void;
   onConfirm: (id: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (id: string) => void;
@@ -428,7 +429,7 @@ interface WeekCellProps {
   currentUser: any;
   isTrainer: boolean;
   onBook: (id: string) => void;
-  onCancel: (id: string) => void;
+  onCancel: (id: string, message?: string) => void;
   onConfirm: (id: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (id: string) => void;
@@ -440,6 +441,8 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   const { toast } = useToast();
   const { requestCancel: requestTrainerCancel, dialog: trainerCancelDialog } =
     useTrainerBookingCancel(onCancel);
+  const { requestCancel: requestStudentCancel, dialog: studentCancelDialog } =
+    useStudentBookingCancel(onCancel);
   const { data: scheduleSettings } = useQuery<{
     bookingDeadlineHours?: number;
     cancelDeadlineHours?: number;
@@ -697,7 +700,13 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                   variant="outline"
                   size="sm"
                   className="w-full text-red-600"
-                  onClick={() => { onCancel(userBooking.id); setOpen(false); }}
+                  onClick={() => {
+                    requestStudentCancel({
+                      bookingId: userBooking.id,
+                      personName: bookedPersonName || undefined,
+                    });
+                    setOpen(false);
+                  }}
                   disabled={tooLateToCancel}
                   title={tooLateToCancel ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.` : undefined}
                 >
@@ -751,6 +760,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
       </PopoverContent>
     </Popover>
     {trainerCancelDialog}
+    {studentCancelDialog}
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useGymStore } from "@/store/gym-store";
 import type { TimeSlotWithBookings } from "@shared/schema";
+import { BookingMessageField } from "./booking-message-field";
 
 interface RescheduleDialogProps {
   open: boolean;
@@ -49,6 +50,14 @@ export function RescheduleDialog({
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<string>(() => todayLocalStr());
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!open) {
+      setMessage("");
+      setSelectedSlotId(null);
+    }
+  }, [open]);
 
   const { data: slots = [], isFetching } = useQuery<TimeSlotWithBookings[]>({
     queryKey: ["/api/schedule/day", selectedDate, "slots"],
@@ -88,9 +97,11 @@ export function RescheduleDialog({
 
   const rescheduleMutation = useMutation({
     mutationFn: async (newTimeSlotId: string) => {
+      const trimmedMessage = message.trim();
       const r = await apiRequest("POST", `/api/bookings/${bookingId}/reschedule`, {
         newTimeSlotId,
         rescheduledBy: currentUser?.id,
+        message: !isTrainer() && trimmedMessage ? trimmedMessage : undefined,
       });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
@@ -186,6 +197,14 @@ export function RescheduleDialog({
             <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded px-3 py-2">
               После переноса подтверждённая запись вернётся в статус «Заявка» и потребует повторного подтверждения тренера.
             </p>
+          )}
+
+          {!isTrainer() && (
+            <BookingMessageField
+              id="reschedule-message"
+              value={message}
+              onChange={setMessage}
+            />
           )}
         </div>
 

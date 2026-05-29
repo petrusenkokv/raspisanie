@@ -19,6 +19,10 @@ import {
   birthDateValidationError,
   calculateAgeYears,
 } from "@shared/birth-date";
+import {
+  appendBookingMessage,
+  sanitizeBookingMessage,
+} from "@shared/booking-message";
 import { moscowDateString } from "./moscow-date";
 import {
   establishSession,
@@ -1115,6 +1119,7 @@ export async function registerRoutes(
       const { id } = req.params;
       const cancelledBy =
         (req.body?.cancelledBy as string | undefined) ?? sessionUserId(req);
+      const studentMessage = sanitizeBookingMessage(req.body?.message);
 
       const existing = await storage.getBooking(id);
       if (!existing) {
@@ -1183,7 +1188,10 @@ export async function registerRoutes(
             userId: trainer.id,
             type: "booking_cancelled",
             title: "Ученик отменил запись",
-            message: `${studentName}${studentLast} отменил(а) запись: ${when}`,
+            message: appendBookingMessage(
+              `${studentName}${studentLast} отменил(а) запись: ${when}`,
+              studentMessage,
+            ),
             relatedBookingId: booking.id,
           });
         }
@@ -1211,8 +1219,9 @@ export async function registerRoutes(
   app.post("/api/bookings/:id/reschedule", async (req, res) => {
     try {
       const { id } = req.params;
-      const { newTimeSlotId, rescheduledBy: rescheduledByBody } = req.body ?? {};
+      const { newTimeSlotId, rescheduledBy: rescheduledByBody, message: messageBody } = req.body ?? {};
       if (!newTimeSlotId) return res.status(400).json({ message: "Укажите новый слот" });
+      const studentMessage = sanitizeBookingMessage(messageBody);
 
       const booking = await storage.getRawBooking(id);
       if (!booking) return res.status(404).json({ message: "Запись не найдена" });
@@ -1281,7 +1290,10 @@ export async function registerRoutes(
             userId: trainer.id,
             type: "booking_request",
             title: "Ученик перенёс запись",
-            message: `${name} перенёс запись: ${fmtSlot(oldSlot)} → ${fmtSlot(newSlot)}${rescheduled.status === "pending" ? ". Требуется подтверждение." : ""}`,
+            message: appendBookingMessage(
+              `${name} перенёс запись: ${fmtSlot(oldSlot)} → ${fmtSlot(newSlot)}${rescheduled.status === "pending" ? ". Требуется подтверждение." : ""}`,
+              studentMessage,
+            ),
             relatedBookingId: rescheduled.id,
           });
         }
