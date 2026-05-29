@@ -104,6 +104,15 @@ async function canActForStudent(req: any, studentId: string): Promise<boolean> {
   return false;
 }
 
+/** User id may appear in recurring_bookings.student_id (students, trainer self, parent-athlete). */
+function canHaveRecurringBookings(user: User | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === "student") return true;
+  if (user.role === "trainer") return true;
+  if (user.role === "parent" && user.isAlsoStudent) return true;
+  return false;
+}
+
 async function createChildUserForParent(
   parent: User,
   child: {
@@ -1977,13 +1986,13 @@ export async function registerRoutes(
       if (endDate && String(endDate) < String(startDate)) {
         return res.status(400).json({ message: "Дата окончания не может быть раньше даты начала" });
       }
-      const student = await storage.getUser(String(studentId));
-      if (!student || student.role !== "student") {
+      const target = await storage.getUser(String(studentId));
+      if (!target || !canHaveRecurringBookings(target)) {
         return res.status(404).json({ message: "Ученик не найден" });
       }
 
       const creator = trainerId ? await storage.getUser(String(trainerId)) : null;
-      const createdBy = creator?.id || studentId;
+      const createdBy = creator?.id || sessionUserId(req) || studentId;
 
       const rule = await storage.createRecurringBooking({
         studentId,
@@ -2000,14 +2009,16 @@ export async function registerRoutes(
       const horizonStr = horizon.toISOString().split("T")[0];
       const result = await storage.materializeRecurringBookings(horizonStr);
 
-      // Notify student
-      await storage.createNotification({
-        userId: studentId,
-        type: "booking_confirmed",
-        title: "Постоянная запись добавлена",
-        message: `Тренер настроил для вас постоянную запись на ${String(h).padStart(2, "0")}:00`,
-        relatedBookingId: null as any,
-      });
+      // Notify student (not for trainer's own recurring rule)
+      if (target.role === "student" || (target.role === "parent" && target.isAlsoStudent)) {
+        await storage.createNotification({
+          userId: studentId,
+          type: "booking_confirmed",
+          title: "Постоянная запись добавлена",
+          message: `Тренер настроил для вас постоянную запись на ${String(h).padStart(2, "0")}:00`,
+          relatedBookingId: null as any,
+        });
+      }
 
       res.status(201).json({ rule, materialized: result });
     } catch (error: any) {
