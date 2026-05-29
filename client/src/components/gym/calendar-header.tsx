@@ -14,7 +14,7 @@ import {
   KeyRound,
   LogOut,
   Clock,
-  Loader2,
+  Repeat,
 } from "lucide-react";
 import { useGymStore, type ViewType } from "@/store/gym-store";
 import { Badge } from "@/components/ui/badge";
@@ -73,9 +73,161 @@ function ToolButton({
   );
 }
 
+type HeaderToolbarProps = {
+  trainer: boolean;
+  isAuthenticated: boolean;
+  isPendingApproval: boolean;
+  isParent: boolean;
+  currentUser: User | null;
+  pushStatus: PushStatus;
+  pushLoading: boolean;
+  onStudentsOpen: () => void;
+  onSettingsOpen: () => void;
+  onRecurringOpen: () => void;
+  onTrainerProfileOpen: () => void;
+  onProfileOpen: () => void;
+  onParentChildrenOpen?: () => void;
+  onChangePasswordOpen: () => void;
+  onLogin: () => void;
+  onRegister: () => void;
+  onLogout: () => void;
+  onPushSubscribe: () => void;
+  onPushUnsubscribe: () => void;
+};
+
+function HeaderToolbar({
+  trainer,
+  isAuthenticated,
+  isPendingApproval,
+  isParent,
+  currentUser,
+  pushStatus,
+  pushLoading,
+  onStudentsOpen,
+  onSettingsOpen,
+  onRecurringOpen,
+  onTrainerProfileOpen,
+  onProfileOpen,
+  onParentChildrenOpen,
+  onChangePasswordOpen,
+  onLogin,
+  onRegister,
+  onLogout,
+  onPushSubscribe,
+  onPushUnsubscribe,
+}: HeaderToolbarProps) {
+  return (
+    <>
+      {isPendingApproval && (
+        <span className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1 w-full sm:w-auto justify-center sm:justify-start lg:w-auto">
+          <Clock className="h-3.5 w-3.5 flex-shrink-0" />
+          Ожидает одобрения
+        </span>
+      )}
+
+      {!isAuthenticated ? (
+        <>
+          <ToolButton onClick={onLogin} testId="button-login">
+            <LogIn className="h-4 w-4 mr-1.5" />
+            Войти
+          </ToolButton>
+          <Button
+            size="sm"
+            className="h-9 rounded-md px-3"
+            onClick={onRegister}
+            data-testid="button-register"
+          >
+            <UserPlus className="h-4 w-4 mr-1.5" />
+            Регистрация
+          </Button>
+        </>
+      ) : (
+        <>
+          {trainer && (
+            <>
+              <ToolButton onClick={onStudentsOpen} testId="button-students" title="Ученики">
+                <Users className="h-4 w-4 mr-1.5 text-blue-600" />
+                <span className="hidden sm:inline">Ученики</span>
+              </ToolButton>
+              <ToolButton onClick={onRecurringOpen} testId="button-recurring" title="Повторяющиеся записи">
+                <Repeat className="h-4 w-4 mr-1.5 text-blue-600" />
+                <span className="hidden sm:inline">Повтор</span>
+              </ToolButton>
+              <ToolButton onClick={onSettingsOpen} testId="button-schedule-settings" title="Настройки">
+                <Settings className="h-4 w-4 mr-1.5" />
+                <span className="hidden sm:inline">Настройки</span>
+              </ToolButton>
+            </>
+          )}
+          {currentUser && (
+            <>
+              {isParent && onParentChildrenOpen && (
+                <ToolButton onClick={onParentChildrenOpen} testId="button-my-children" title="Мои дети">
+                  <Baby className="h-4 w-4 mr-1.5 text-blue-600" />
+                  Мои дети
+                </ToolButton>
+              )}
+              <NotificationsPopover
+                userId={currentUser.id}
+                isTrainer={trainer}
+                pushStatus={pushStatus}
+                pushLoading={pushLoading}
+                onPushSubscribe={onPushSubscribe}
+                onPushUnsubscribe={onPushUnsubscribe}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-2 rounded-lg bg-white dark:bg-gray-900 shadow-sm flex-shrink-0"
+                    aria-label="Меню аккаунта"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200 text-sm font-semibold">
+                      {currentUser.firstName?.charAt(0) ?? "?"}
+                    </span>
+                    <span className="max-w-[7rem] truncate text-sm font-medium hidden sm:inline">
+                      {currentUser.firstName}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuLabel className="truncate">
+                    {currentUser.firstName} {currentUser.lastName ?? ""}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {trainer ? (
+                    <DropdownMenuItem onClick={onTrainerProfileOpen}>
+                      <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={onProfileOpen}>
+                      <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
+                    </DropdownMenuItem>
+                  )}
+                  {!trainer && (
+                    <DropdownMenuItem onClick={onChangePasswordOpen}>
+                      <KeyRound className="h-4 w-4 mr-2" />Сменить пароль
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={onLogout} className="text-red-600 dark:text-red-400">
+                    <LogOut className="h-4 w-4 mr-2" />Выйти
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 export interface CalendarHeaderProps {
   onStudentsOpen: () => void;
   onSettingsOpen: () => void;
+  onRecurringOpen: () => void;
   onTrainerProfileOpen: () => void;
   onProfileOpen: () => void;
   onParentChildrenOpen?: () => void;
@@ -96,6 +248,7 @@ export interface CalendarHeaderProps {
 export function CalendarHeader({
   onStudentsOpen,
   onSettingsOpen,
+  onRecurringOpen,
   onTrainerProfileOpen,
   onProfileOpen,
   onParentChildrenOpen,
@@ -181,196 +334,129 @@ export function CalendarHeader({
 
   const trainer = isTrainer();
 
+  const toolbarProps: HeaderToolbarProps = {
+    trainer,
+    isAuthenticated,
+    isPendingApproval,
+    isParent,
+    currentUser,
+    pushStatus,
+    pushLoading,
+    onStudentsOpen,
+    onSettingsOpen,
+    onRecurringOpen,
+    onTrainerProfileOpen,
+    onProfileOpen,
+    onParentChildrenOpen,
+    onChangePasswordOpen,
+    onLogin,
+    onRegister,
+    onLogout,
+    onPushSubscribe,
+    onPushUnsubscribe,
+  };
+
   return (
     <header className="border-b bg-white dark:bg-gray-900 shadow-sm">
-      {/* Date hero — главный фокус */}
-      <div className="bg-gradient-to-b from-blue-50/90 to-white dark:from-blue-950/40 dark:to-gray-900 px-3 sm:px-4 pt-3 pb-3 border-b border-blue-100/80 dark:border-blue-900/40 overflow-x-hidden">
-        <div className="flex items-center gap-2 mb-3">
-          <Calendar className="h-5 w-5 text-blue-600 flex-shrink-0" aria-hidden />
-          <h1 className="text-sm font-semibold text-gray-600 dark:text-gray-300 truncate">
-            Расписание тренировок
-          </h1>
-          {trainer && (
-            <Badge variant="secondary" className="text-xs flex-shrink-0">Тренер</Badge>
-          )}
-          {isPendingApproval && (
-            <Badge variant="outline" className="text-xs border-amber-300 text-amber-800 bg-amber-50 flex-shrink-0 ml-auto">
-              <Clock className="h-3 w-3 mr-1 inline" />
-              Ожидание
-            </Badge>
-          )}
-        </div>
-
-        <div className="space-y-3">
-          {/* Строка 1: только дата и стрелки — на узком экране не делим место с «Сегодня» */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-10 w-10 flex-shrink-0 rounded-full bg-white/80 dark:bg-gray-900/80"
-              onClick={() => navigateDate(-1)}
-              data-testid="button-prev-date"
-              aria-label="Предыдущий период"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-
-            <div className="flex-1 min-w-0 px-1 text-center overflow-hidden">
-              <p
-                className="text-base md:text-lg font-bold text-gray-900 dark:text-white leading-snug whitespace-nowrap tabular-nums"
-                title={formatDateLong(selectedDate)}
-              >
-                {formatDateLong(selectedDate, true)}
-              </p>
-            </div>
-
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-10 w-10 flex-shrink-0 rounded-full bg-white/80 dark:bg-gray-900/80"
-              onClick={() => navigateDate(1)}
-              data-testid="button-next-date"
-              aria-label="Следующий период"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </Button>
+      <div className="max-w-4xl mx-auto px-3 sm:px-4">
+        {/* Верх: заголовок + действия — компактно по центру на широком экране */}
+        <div className="flex flex-col items-center gap-3 py-3 border-b border-gray-100 dark:border-gray-800 md:flex-row md:flex-wrap md:justify-center md:gap-x-5 md:gap-y-2">
+          <div className="flex items-center gap-2 min-w-0 justify-center md:justify-start">
+            <Calendar className="h-5 w-5 text-blue-600 flex-shrink-0" aria-hidden />
+            <h1 className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+              Расписание тренировок
+            </h1>
+            {trainer && (
+              <Badge variant="secondary" className="text-xs flex-shrink-0">Тренер</Badge>
+            )}
+            {isPendingApproval && (
+              <Badge variant="outline" className="text-xs border-amber-300 text-amber-800 bg-amber-50 flex-shrink-0">
+                <Clock className="h-3 w-3 mr-1 inline" />
+                Ожидание
+              </Badge>
+            )}
           </div>
 
-          {/* Строка 2: «Сегодня» и День / Неделя / Месяц */}
-          <div className="flex flex-col items-stretch gap-2 w-full max-w-md mx-auto md:max-w-none md:flex-row md:flex-wrap md:justify-center">
-            <Button
-              variant={isOnToday ? "secondary" : "default"}
-              size="sm"
-              onClick={goToToday}
-              disabled={isOnToday}
-              className="h-9 rounded-full px-3 w-full md:w-auto shrink-0"
-              data-testid="button-today"
-            >
-              <CalendarDays className="h-4 w-4 mr-1.5 shrink-0" />
-              <span className="text-sm">Сегодня</span>
-            </Button>
-            <div className="grid grid-cols-3 gap-1 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-900 p-0.5 shadow-sm md:inline-flex md:w-auto md:gap-0">
-              {(Object.keys(VIEW_LABELS) as ViewType[]).map((view) => (
-                <Button
-                  key={view}
-                  variant={currentView === view ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => handleViewChange(view)}
-                  className={cn(
-                    "h-8 rounded-md px-2 text-xs md:text-sm min-w-0 w-full md:w-auto !whitespace-normal",
-                    currentView !== view && "text-gray-600 dark:text-gray-400",
-                  )}
-                  data-testid={`button-view-${view}`}
-                >
-                  {VIEW_LABELS[view]}
-                </Button>
-              ))}
-            </div>
+          <div className="hidden md:flex flex-wrap items-center justify-center gap-2">
+            <HeaderToolbar {...toolbarProps} />
           </div>
         </div>
-      </div>
 
-      {/* Панель действий — одна строка справа */}
-      <div className="mx-3 sm:mx-4 my-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/50 px-3 py-2 shadow-sm">
-        <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 w-full">
-          {isPendingApproval && (
-            <span className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1 mr-auto sm:mr-0 order-first sm:order-none w-full sm:w-auto justify-center sm:justify-start">
-              <Clock className="h-3.5 w-3.5 flex-shrink-0" />
-              Ожидает одобрения
-            </span>
-          )}
-
-          {!isAuthenticated ? (
-            <>
-              <ToolButton onClick={onLogin} testId="button-login">
-                <LogIn className="h-4 w-4 mr-1.5" />
-                Войти
-              </ToolButton>
+        {/* Навигация по дате — одна группа по центру */}
+        <div className="py-3 bg-gradient-to-b from-blue-50/60 to-transparent dark:from-blue-950/30 rounded-b-lg">
+          <div className="flex flex-col items-center gap-3 md:flex-row md:flex-wrap md:justify-center md:gap-x-3 md:gap-y-2">
+            <div className="flex items-center gap-2 w-full max-w-md md:w-auto md:max-w-none">
               <Button
-                size="sm"
-                className="h-9 rounded-md px-3"
-                onClick={onRegister}
-                data-testid="button-register"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 flex-shrink-0 rounded-full bg-white/80 dark:bg-gray-900/80"
+                onClick={() => navigateDate(-1)}
+                data-testid="button-prev-date"
+                aria-label="Предыдущий период"
               >
-                <UserPlus className="h-4 w-4 mr-1.5" />
-                Регистрация
+                <ChevronLeft className="h-5 w-5" />
               </Button>
-            </>
-          ) : (
-            <>
-              {trainer && (
-                <>
-                  <ToolButton onClick={onStudentsOpen} testId="button-students" title="Ученики">
-                    <Users className="h-4 w-4 mr-1.5 text-blue-600" />
-                    Ученики
-                  </ToolButton>
-                  <ToolButton onClick={onSettingsOpen} testId="button-schedule-settings" title="Настройки">
-                    <Settings className="h-4 w-4 mr-1.5" />
-                    Настройки
-                  </ToolButton>
-                </>
-              )}
-              {currentUser && (
-                <>
-                  {isParent && onParentChildrenOpen && (
-                    <ToolButton onClick={onParentChildrenOpen} testId="button-my-children" title="Мои дети">
-                      <Baby className="h-4 w-4 mr-1.5 text-blue-600" />
-                      Мои дети
-                    </ToolButton>
-                  )}
-                  <NotificationsPopover
-                    userId={currentUser.id}
-                    isTrainer={trainer}
-                    pushStatus={pushStatus}
-                    pushLoading={pushLoading}
-                    onPushSubscribe={onPushSubscribe}
-                    onPushUnsubscribe={onPushUnsubscribe}
-                  />
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 gap-2 rounded-lg bg-white dark:bg-gray-900 shadow-sm flex-shrink-0"
-                        aria-label="Меню аккаунта"
-                      >
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200 text-sm font-semibold">
-                          {currentUser.firstName?.charAt(0) ?? "?"}
-                        </span>
-                        <span className="max-w-[7rem] truncate text-sm font-medium">
-                          {currentUser.firstName}
-                        </span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-52">
-                      <DropdownMenuLabel className="truncate">
-                        {currentUser.firstName} {currentUser.lastName ?? ""}
-                      </DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {trainer ? (
-                        <DropdownMenuItem onClick={onTrainerProfileOpen}>
-                          <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem onClick={onProfileOpen}>
-                          <UserCircle2 className="h-4 w-4 mr-2" />Мой профиль
-                        </DropdownMenuItem>
-                      )}
-                      {!trainer && (
-                        <DropdownMenuItem onClick={onChangePasswordOpen}>
-                          <KeyRound className="h-4 w-4 mr-2" />Сменить пароль
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={onLogout} className="text-red-600 dark:text-red-400">
-                        <LogOut className="h-4 w-4 mr-2" />Выйти
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </>
-              )}
-            </>
-          )}
+
+              <div className="flex-1 min-w-0 px-1 text-center md:flex-none md:min-w-[12rem] lg:min-w-[16rem]">
+                <p
+                  className="text-base md:text-lg font-bold text-gray-900 dark:text-white leading-snug tabular-nums max-md:whitespace-nowrap"
+                  title={formatDateLong(selectedDate)}
+                >
+                  <span className="md:hidden">{formatDateLong(selectedDate, true)}</span>
+                  <span className="hidden md:inline">{formatDateLong(selectedDate, false)}</span>
+                </p>
+              </div>
+
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 flex-shrink-0 rounded-full bg-white/80 dark:bg-gray-900/80"
+                onClick={() => navigateDate(1)}
+                data-testid="button-next-date"
+                aria-label="Следующий период"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <div className="flex flex-col items-stretch gap-2 w-full max-w-md md:w-auto md:flex-row md:items-center md:gap-2">
+              <Button
+                variant={isOnToday ? "secondary" : "default"}
+                size="sm"
+                onClick={goToToday}
+                disabled={isOnToday}
+                className="h-9 rounded-full px-3 w-full md:w-auto shrink-0"
+                data-testid="button-today"
+              >
+                <CalendarDays className="h-4 w-4 mr-1.5 shrink-0" />
+                <span className="text-sm">Сегодня</span>
+              </Button>
+              <div className="grid grid-cols-3 gap-1 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-900 p-0.5 shadow-sm md:inline-flex md:w-auto md:gap-0">
+                {(Object.keys(VIEW_LABELS) as ViewType[]).map((view) => (
+                  <Button
+                    key={view}
+                    variant={currentView === view ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => handleViewChange(view)}
+                    className={cn(
+                      "h-8 rounded-md px-2 text-xs md:text-sm min-w-0 w-full md:w-auto",
+                      currentView !== view && "text-gray-600 dark:text-gray-400",
+                    )}
+                    data-testid={`button-view-${view}`}
+                  >
+                    {VIEW_LABELS[view]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Панель действий — только на узком экране */}
+        <div className="md:hidden pb-3">
+          <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/50 px-2 py-2 shadow-sm">
+            <HeaderToolbar {...toolbarProps} />
+          </div>
         </div>
       </div>
     </header>

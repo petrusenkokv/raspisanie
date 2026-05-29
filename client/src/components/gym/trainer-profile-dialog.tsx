@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -41,10 +42,14 @@ export function TrainerProfileDialog({ open, onOpenChange }: TrainerProfileDialo
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
+  const [exemptMembership, setExemptMembership] = useState(false);
+  const [exemptTrainerPayment, setExemptTrainerPayment] = useState(false);
 
   useEffect(() => {
     if (open && currentUser) {
       setPhone(formatPhoneDisplay(currentUser.phone ?? ""));
+      setExemptMembership((currentUser as { exemptMembership?: boolean }).exemptMembership === true);
+      setExemptTrainerPayment((currentUser as { exemptTrainerPayment?: boolean }).exemptTrainerPayment === true);
     }
     if (!open) {
       setOldPassword("");
@@ -52,6 +57,34 @@ export function TrainerProfileDialog({ open, onOpenChange }: TrainerProfileDialo
       setRepeatPassword("");
     }
   }, [open, currentUser]);
+
+  const exemptMutation = useMutation({
+    mutationFn: async (payload: { exemptMembership?: boolean; exemptTrainerPayment?: boolean }) => {
+      const res = await apiRequest("PATCH", "/api/trainer/profile", payload);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Ошибка сохранения");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (currentUser && data.user) {
+        setUser({ ...currentUser, ...data.user });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", title: "Не удалось сохранить", description: error.message });
+    },
+  });
+
+  const handleExemptToggle = (
+    field: "exemptMembership" | "exemptTrainerPayment",
+    next: boolean,
+  ) => {
+    if (field === "exemptMembership") setExemptMembership(next);
+    else setExemptTrainerPayment(next);
+    exemptMutation.mutate({ [field]: next });
+  };
 
   const phoneMutation = useMutation({
     mutationFn: async () => {
@@ -175,6 +208,34 @@ export function TrainerProfileDialog({ open, onOpenChange }: TrainerProfileDialo
               {phoneMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Сохранить номер
             </Button>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+              Записи в расписании
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Если вы записываетесь на тренировки как участник, отметки оплаты в слотах можно скрыть.
+              Роль тренера скрывает их по умолчанию.
+            </p>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <Checkbox
+                checked={exemptMembership}
+                disabled={exemptMutation.isPending}
+                onCheckedChange={(v) => handleExemptToggle("exemptMembership", !!v)}
+              />
+              <span className="text-sm leading-tight">Не показывать членский взнос (ЧВ/БВ)</span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <Checkbox
+                checked={exemptTrainerPayment}
+                disabled={exemptMutation.isPending}
+                onCheckedChange={(v) => handleExemptToggle("exemptTrainerPayment", !!v)}
+              />
+              <span className="text-sm leading-tight">Не показывать оплату тренеру</span>
+            </label>
           </div>
 
           <Separator />

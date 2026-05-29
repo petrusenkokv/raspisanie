@@ -679,7 +679,10 @@ export class MemStorage implements IStorage {
       student: {
         firstName: student.firstName,
         lastName: student.lastName || "",
-        phone: student.phone
+        phone: student.phone,
+        role: student.role,
+        exemptMembership: student.exemptMembership ?? false,
+        exemptTrainerPayment: student.exemptTrainerPayment ?? false,
       },
       timeSlot
     };
@@ -700,7 +703,10 @@ export class MemStorage implements IStorage {
           student: {
             firstName: student.firstName,
             lastName: student.lastName || "",
-            phone: student.phone
+            phone: student.phone,
+            role: student.role,
+            exemptMembership: student.exemptMembership ?? false,
+            exemptTrainerPayment: student.exemptTrainerPayment ?? false,
           },
           timeSlot
         };
@@ -729,7 +735,10 @@ export class MemStorage implements IStorage {
           student: {
             firstName: student.firstName,
             lastName: student.lastName || "",
-            phone: student.phone
+            phone: student.phone,
+            role: student.role,
+            exemptMembership: student.exemptMembership ?? false,
+            exemptTrainerPayment: student.exemptTrainerPayment ?? false,
           },
           timeSlot
         };

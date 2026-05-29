@@ -60,6 +60,22 @@ export function studentNeedsLegalRepresentative(age: number | null): boolean {
   return age !== null && age < 14;
 }
 
+type PaymentBadgeStudent = {
+  role?: string;
+  exemptMembership?: boolean | null;
+  exemptTrainerPayment?: boolean | null;
+};
+
+export function shouldShowMembershipBadge(student: PaymentBadgeStudent): boolean {
+  if (student.role === "trainer") return false;
+  return student.exemptMembership !== true;
+}
+
+export function shouldShowTrainerPaymentBadge(student: PaymentBadgeStudent): boolean {
+  if (student.role === "trainer") return false;
+  return student.exemptTrainerPayment !== true;
+}
+
 export function todayLocalStr(): string {
   const d = new Date();
   const y = d.getFullYear();

@@ -15,6 +15,10 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmedBookingHint } from "./confirmed-booking-hint";
+import {
+  shouldShowMembershipBadge,
+  shouldShowTrainerPaymentBadge,
+} from "@/lib/utils-gym";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -334,7 +338,12 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                           </Badge>
                         )}
                         {booking.status === "confirmed" && (
-                          <BookingPaymentBadges studentId={booking.studentId} dateStr={timeSlot.date} />
+                          <BookingPaymentBadges
+                            studentId={booking.studentId}
+                            dateStr={timeSlot.date}
+                            showMembership={shouldShowMembershipBadge(booking.student)}
+                            showTrainerPayment={shouldShowTrainerPaymentBadge(booking.student)}
+                          />
                         )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -740,7 +749,19 @@ function AttendanceButton({
 }
 
 
-function BookingPaymentBadges({ studentId, dateStr }: { studentId: string; dateStr: string }) {
+function BookingPaymentBadges({
+  studentId,
+  dateStr,
+  showMembership = true,
+  showTrainerPayment = true,
+}: {
+  studentId: string;
+  dateStr: string;
+  showMembership?: boolean;
+  showTrainerPayment?: boolean;
+}) {
+  if (!showMembership && !showTrainerPayment) return null;
+
   const { isTrainer } = useGymStore();
   const paymentStatusUrl = isTrainer()
     ? `/api/trainer/students/${studentId}/payment-status?date=${encodeURIComponent(dateStr)}`
@@ -823,45 +844,49 @@ function BookingPaymentBadges({ studentId, dateStr }: { studentId: string; dateS
 
   return (
     <span className="inline-flex items-center gap-1 shrink-0">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border cursor-help ${
-              !cvOk
-                ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
-                : cvDaysLeft !== null && cvDaysLeft <= 3
-                ? "bg-orange-100 text-orange-700 border-orange-400 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700"
-                : "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
-            }`}
-            data-testid={`badge-payment-cv-${studentId}`}
-          >
-            <Wallet className="h-2.5 w-2.5" />
-            {cvOk ? (
-              <>
-                {cvLabel}
-                {cvDaysLeft !== null && cvDaysLeft <= 3 && (
-                  <span className="ml-0.5">·{cvDaysLeft}д</span>
-                )}
-              </>
-            ) : (
-              "ЧВ ✗"
-            )}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-xs">{cvTooltipNode}</TooltipContent>
-      </Tooltip>
-      <span
-        className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border ${
-          trainerOk
-            ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
-            : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
-        }`}
-        title={trainerOk ? "Оплата тренеру есть" : "Нет оплаты тренеру"}
-        data-testid={`badge-payment-trainer-${studentId}`}
-      >
-        <Dumbbell className="h-2.5 w-2.5" />
-        {trainerOk ? trainerLabel : "✗"}
-      </span>
+      {showMembership && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border cursor-help ${
+                !cvOk
+                  ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+                  : cvDaysLeft !== null && cvDaysLeft <= 3
+                  ? "bg-orange-100 text-orange-700 border-orange-400 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700"
+                  : "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+              }`}
+              data-testid={`badge-payment-cv-${studentId}`}
+            >
+              <Wallet className="h-2.5 w-2.5" />
+              {cvOk ? (
+                <>
+                  {cvLabel}
+                  {cvDaysLeft !== null && cvDaysLeft <= 3 && (
+                    <span className="ml-0.5">·{cvDaysLeft}д</span>
+                  )}
+                </>
+              ) : (
+                "ЧВ ✗"
+              )}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-xs">{cvTooltipNode}</TooltipContent>
+        </Tooltip>
+      )}
+      {showTrainerPayment && (
+        <span
+          className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border ${
+            trainerOk
+              ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+              : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+          }`}
+          title={trainerOk ? "Оплата тренеру есть" : "Нет оплаты тренеру"}
+          data-testid={`badge-payment-trainer-${studentId}`}
+        >
+          <Dumbbell className="h-2.5 w-2.5" />
+          {trainerOk ? trainerLabel : "✗"}
+        </span>
+      )}
     </span>
   );
 }

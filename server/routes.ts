@@ -651,10 +651,19 @@ export async function registerRoutes(
   app.patch("/api/trainer/profile", requireTrainer, async (req, res) => {
     try {
       const userId = sessionUserId(req);
-      const { phone } = req.body;
+      const { phone, exemptMembership, exemptTrainerPayment } = req.body;
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ message: "Пользователь не найден" });
       if (user.role !== "trainer") return res.status(403).json({ message: "Доступ только для тренера" });
+
+      const profileUpdates: Record<string, unknown> = {};
+      if (exemptMembership !== undefined) profileUpdates.exemptMembership = !!exemptMembership;
+      if (exemptTrainerPayment !== undefined) profileUpdates.exemptTrainerPayment = !!exemptTrainerPayment;
+      if (Object.keys(profileUpdates).length > 0) {
+        const updated = await storage.updateUser(userId, profileUpdates);
+        const { password: _pw, ...safeUser } = updated as any;
+        return res.json({ user: safeUser });
+      }
 
       if (phone !== undefined) {
         // Validate phone format

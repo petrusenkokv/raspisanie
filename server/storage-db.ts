@@ -18,7 +18,7 @@ import {
   type MembershipPayment, type MembershipPaymentInput,
   type TrainerPayment, type TrainerPaymentInput, type TrainerPaymentWithUsage,
   type StudentPaymentStatus,
-  type TimeSlotWithBookings, type BookingWithDetails, type DaySchedule,
+  type TimeSlotWithBookings, type BookingWithDetails, type DaySchedule, type ScheduleBookingStudent,
   type BroadcastLog,
   type ParentChild,
   type InsertParentChild,
@@ -47,6 +47,24 @@ const sickPeriods = pgTable("sick_periods", {
 
 function localDateStr(d: Date): string {
   return moscowDateString(d);
+}
+
+function bookingStudentFromUser(u: {
+  firstName: string;
+  lastName: string | null;
+  phone: string;
+  role: string;
+  exemptMembership: boolean | null;
+  exemptTrainerPayment: boolean | null;
+}): ScheduleBookingStudent {
+  return {
+    firstName: u.firstName,
+    lastName: u.lastName || "",
+    phone: u.phone,
+    role: u.role as ScheduleBookingStudent["role"],
+    exemptMembership: u.exemptMembership ?? false,
+    exemptTrainerPayment: u.exemptTrainerPayment ?? false,
+  };
 }
 
 function isoWeekday(date: Date): number {
@@ -509,7 +527,7 @@ export class DbStorage implements IStorage {
       .where(eq(bookings.id, id));
     if (!rows[0]) return undefined;
     const { bookings: b, users: u, time_slots: ts } = rows[0];
-    return { ...b, student: { firstName: u.firstName, lastName: u.lastName || "", phone: u.phone }, timeSlot: normalizeSlot(ts) };
+    return { ...b, student: bookingStudentFromUser(u), timeSlot: normalizeSlot(ts) };
   }
 
   async getRawBooking(id: string): Promise<Booking | undefined> {
@@ -524,7 +542,7 @@ export class DbStorage implements IStorage {
       .where(eq(bookings.studentId, studentId));
     return rows.map(r => ({
       ...r.bookings,
-      student: { firstName: r.users.firstName, lastName: r.users.lastName || "", phone: r.users.phone },
+      student: bookingStudentFromUser(r.users),
       timeSlot: normalizeSlot(r.time_slots),
     }));
   }
@@ -536,7 +554,7 @@ export class DbStorage implements IStorage {
       .where(eq(bookings.timeSlotId, timeSlotId));
     return rows.map(r => ({
       ...r.bookings,
-      student: { firstName: r.users.firstName, lastName: r.users.lastName || "", phone: r.users.phone },
+      student: bookingStudentFromUser(r.users),
       timeSlot: normalizeSlot(r.time_slots),
     }));
   }

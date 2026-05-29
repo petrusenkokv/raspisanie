@@ -13,6 +13,7 @@ import { BroadcastDialog } from "@/components/gym/broadcast-dialog";
 import { ProfileDialog } from "@/components/gym/profile-dialog";
 import { ParentChildrenDialog } from "@/components/gym/parent-children-dialog";
 import { ParentBookDialog } from "@/components/gym/parent-book-dialog";
+import { RecurringBookingsDialog } from "@/components/gym/recurring-bookings-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useGymStore, validateStoredUser, logoutFromServer } from "@/store/gym-store";
@@ -38,6 +39,7 @@ export function GymSchedulePage() {
   const [welcomeDialogOpen, setWelcomeDialogOpen] = useState(false);
   const [parentChildrenOpen, setParentChildrenOpen] = useState(false);
   const [parentBookOpen, setParentBookOpen] = useState(false);
+  const [recurringOpen, setRecurringOpen] = useState(false);
   const [parentBookSlotId, setParentBookSlotId] = useState<string | null>(null);
   const [parentBookedStudentIds, setParentBookedStudentIds] = useState<string[]>([]);
   const {
@@ -315,6 +317,7 @@ export function GymSchedulePage() {
       <CalendarHeader
         onStudentsOpen={() => setStudentsPanelOpen(true)}
         onSettingsOpen={() => setSettingsOpen(true)}
+        onRecurringOpen={() => setRecurringOpen(true)}
         onTrainerProfileOpen={() => setTrainerProfileOpen(true)}
         onProfileOpen={() => setProfileOpen(true)}
         onParentChildrenOpen={() => setParentChildrenOpen(true)}
@@ -369,6 +372,7 @@ export function GymSchedulePage() {
         firstName={currentUser?.firstName}
       />
       <StudentsPanel open={studentsPanelOpen} onOpenChange={setStudentsPanelOpen} />
+      <RecurringBookingsDialog open={recurringOpen} onOpenChange={setRecurringOpen} />
       <BookStudentDialog
         open={trainerBookDialogOpen}
         onOpenChange={(open) => { setTrainerBookDialogOpen(open); if (!open) setSelectedTimeSlotId(null); }}
