@@ -341,8 +341,16 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                           <BookingPaymentBadges
                             studentId={booking.studentId}
                             dateStr={timeSlot.date}
-                            showMembership={shouldShowMembershipBadge(booking.student)}
-                            showTrainerPayment={shouldShowTrainerPaymentBadge(booking.student)}
+                            showMembership={shouldShowMembershipBadge(
+                              booking.student,
+                              booking.studentId,
+                              currentUser?.id,
+                            )}
+                            showTrainerPayment={shouldShowTrainerPaymentBadge(
+                              booking.student,
+                              booking.studentId,
+                              currentUser?.id,
+                            )}
                           />
                         )}
                       </div>
@@ -760,8 +768,7 @@ function BookingPaymentBadges({
   showMembership?: boolean;
   showTrainerPayment?: boolean;
 }) {
-  if (!showMembership && !showTrainerPayment) return null;
-
+  const showAny = showMembership || showTrainerPayment;
   const { isTrainer } = useGymStore();
   const paymentStatusUrl = isTrainer()
     ? `/api/trainer/students/${studentId}/payment-status?date=${encodeURIComponent(dateStr)}`
@@ -775,8 +782,10 @@ function BookingPaymentBadges({
     },
     staleTime: 30_000,
     retry: 2,
-    enabled: Boolean(studentId && dateStr),
+    enabled: Boolean(studentId && dateStr && showAny),
   });
+
+  if (!showAny) return null;
 
   if (isLoading) {
     return (

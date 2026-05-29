@@ -29,6 +29,7 @@ export function GymSchedulePage() {
   const [authModalMode, setAuthModalMode] = useState<"login" | "register">("login");
   const [studentsPanelOpen, setStudentsPanelOpen] = useState(false);
   const [trainerBookDialogOpen, setTrainerBookDialogOpen] = useState(false);
+  const [trainerBookSelfMode, setTrainerBookSelfMode] = useState(false);
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<string | null>(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [trainerProfileOpen, setTrainerProfileOpen] = useState(false);
@@ -317,7 +318,11 @@ export function GymSchedulePage() {
       <CalendarHeader
         onStudentsOpen={() => setStudentsPanelOpen(true)}
         onSettingsOpen={() => setSettingsOpen(true)}
-        onRecurringOpen={() => setRecurringOpen(true)}
+        onMyTrainingOpen={() => {
+          setSelectedTimeSlotId(null);
+          setTrainerBookSelfMode(true);
+          setTrainerBookDialogOpen(true);
+        }}
         onTrainerProfileOpen={() => setTrainerProfileOpen(true)}
         onProfileOpen={() => setProfileOpen(true)}
         onParentChildrenOpen={() => setParentChildrenOpen(true)}
@@ -350,6 +355,7 @@ export function GymSchedulePage() {
             onLoginRequest={(mode = "login") => { setAuthModalMode(mode); setAuthModalOpen(true); }}
             onTrainerBook={(timeSlotId) => {
               setSelectedTimeSlotId(timeSlotId);
+              setTrainerBookSelfMode(false);
               setTrainerBookDialogOpen(true);
             }}
             familyStudentIds={familyStudentIds}
@@ -375,8 +381,15 @@ export function GymSchedulePage() {
       <RecurringBookingsDialog open={recurringOpen} onOpenChange={setRecurringOpen} />
       <BookStudentDialog
         open={trainerBookDialogOpen}
-        onOpenChange={(open) => { setTrainerBookDialogOpen(open); if (!open) setSelectedTimeSlotId(null); }}
+        onOpenChange={(open) => {
+          setTrainerBookDialogOpen(open);
+          if (!open) {
+            setSelectedTimeSlotId(null);
+            setTrainerBookSelfMode(false);
+          }
+        }}
         preselectedTimeSlotId={selectedTimeSlotId}
+        forceSelfMode={trainerBookSelfMode}
       />
       <ChangePasswordDialog
         open={changePasswordOpen || !!(currentUser as any)?.mustChangePassword}

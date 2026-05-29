@@ -60,18 +60,30 @@ export function studentNeedsLegalRepresentative(age: number | null): boolean {
   return age !== null && age < 14;
 }
 
-type PaymentBadgeStudent = {
+export type PaymentBadgeStudent = {
+  id?: string;
   role?: string;
   exemptMembership?: boolean | null;
   exemptTrainerPayment?: boolean | null;
 };
 
-export function shouldShowMembershipBadge(student: PaymentBadgeStudent): boolean {
+/** Скрыть отметки оплаты: тренер в слоте, своя запись, или флаги освобождения. */
+export function shouldShowMembershipBadge(
+  student: PaymentBadgeStudent,
+  bookingStudentId?: string,
+  viewerUserId?: string | null,
+): boolean {
+  if (bookingStudentId && viewerUserId && bookingStudentId === viewerUserId) return false;
   if (student.role === "trainer") return false;
   return student.exemptMembership !== true;
 }
 
-export function shouldShowTrainerPaymentBadge(student: PaymentBadgeStudent): boolean {
+export function shouldShowTrainerPaymentBadge(
+  student: PaymentBadgeStudent,
+  bookingStudentId?: string,
+  viewerUserId?: string | null,
+): boolean {
+  if (bookingStudentId && viewerUserId && bookingStudentId === viewerUserId) return false;
   if (student.role === "trainer") return false;
   return student.exemptTrainerPayment !== true;
 }

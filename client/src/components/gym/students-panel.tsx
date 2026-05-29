@@ -261,28 +261,17 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
           <SheetHeader className="pb-4">
             <SheetTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-blue-600" />
-              Список учеников
+              Ученики
             </SheetTitle>
           </SheetHeader>
 
-          <div className="grid grid-cols-3 gap-2 mb-3">
+          <div className="grid grid-cols-2 gap-2 mb-3">
             <Button
               onClick={() => setAddDialogOpen(true)}
               data-testid="button-add-student"
             >
               <UserPlus className="h-4 w-4 mr-2" />
               Добавить
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSelectedStudent(null);
-                setBookingDialogOpen(true);
-              }}
-              data-testid="button-book-any-student"
-            >
-              <Calendar className="h-4 w-4 mr-2" />
-              Записать
             </Button>
             <Button
               variant="outline"

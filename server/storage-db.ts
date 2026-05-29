@@ -206,7 +206,14 @@ export class DbStorage implements IStorage {
         password: "12345",
         mustChangePassword: false,
         isActive: true,
+        exemptMembership: true,
+        exemptTrainerPayment: true,
       });
+    } else if (trainer.role === "trainer" && (!trainer.exemptMembership || !trainer.exemptTrainerPayment)) {
+      await db.update(users).set({
+        exemptMembership: true,
+        exemptTrainerPayment: true,
+      }).where(eq(users.id, trainer.id));
     }
     // Ensure default documents exist
     const docs = await db.select().from(documents);

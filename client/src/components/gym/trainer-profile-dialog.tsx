@@ -217,8 +217,8 @@ export function TrainerProfileDialog({ open, onOpenChange }: TrainerProfileDialo
               Записи в расписании
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Если вы записываетесь на тренировки как участник, отметки оплаты в слотах можно скрыть.
-              Роль тренера скрывает их по умолчанию.
+              Для вашей записи в расписании отметки ЧВ и оплаты тренеру скрыты автоматически.
+              Чекбоксы ниже сохраняют настройку в профиле (на случай смены логики или учётной записи).
             </p>
             <label className="flex items-start gap-2 cursor-pointer">
               <Checkbox

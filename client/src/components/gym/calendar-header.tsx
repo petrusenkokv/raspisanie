@@ -14,7 +14,7 @@ import {
   KeyRound,
   LogOut,
   Clock,
-  Repeat,
+  Dumbbell,
 } from "lucide-react";
 import { useGymStore, type ViewType } from "@/store/gym-store";
 import { Badge } from "@/components/ui/badge";
@@ -83,7 +83,7 @@ type HeaderToolbarProps = {
   pushLoading: boolean;
   onStudentsOpen: () => void;
   onSettingsOpen: () => void;
-  onRecurringOpen: () => void;
+  onMyTrainingOpen: () => void;
   onTrainerProfileOpen: () => void;
   onProfileOpen: () => void;
   onParentChildrenOpen?: () => void;
@@ -105,7 +105,7 @@ function HeaderToolbar({
   pushLoading,
   onStudentsOpen,
   onSettingsOpen,
-  onRecurringOpen,
+  onMyTrainingOpen,
   onTrainerProfileOpen,
   onProfileOpen,
   onParentChildrenOpen,
@@ -148,10 +148,6 @@ function HeaderToolbar({
               <ToolButton onClick={onStudentsOpen} testId="button-students" title="Ученики">
                 <Users className="h-4 w-4 mr-1.5 text-blue-600" />
                 <span className="hidden sm:inline">Ученики</span>
-              </ToolButton>
-              <ToolButton onClick={onRecurringOpen} testId="button-recurring" title="Повторяющиеся записи">
-                <Repeat className="h-4 w-4 mr-1.5 text-blue-600" />
-                <span className="hidden sm:inline">Повтор</span>
               </ToolButton>
               <ToolButton onClick={onSettingsOpen} testId="button-schedule-settings" title="Настройки">
                 <Settings className="h-4 w-4 mr-1.5" />
@@ -210,6 +206,11 @@ function HeaderToolbar({
                       <KeyRound className="h-4 w-4 mr-2" />Сменить пароль
                     </DropdownMenuItem>
                   )}
+                  {trainer && (
+                    <DropdownMenuItem onClick={onMyTrainingOpen}>
+                      <Dumbbell className="h-4 w-4 mr-2" />Моя тренировка
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={onLogout} className="text-red-600 dark:text-red-400">
                     <LogOut className="h-4 w-4 mr-2" />Выйти
@@ -227,7 +228,7 @@ function HeaderToolbar({
 export interface CalendarHeaderProps {
   onStudentsOpen: () => void;
   onSettingsOpen: () => void;
-  onRecurringOpen: () => void;
+  onMyTrainingOpen: () => void;
   onTrainerProfileOpen: () => void;
   onProfileOpen: () => void;
   onParentChildrenOpen?: () => void;
@@ -248,7 +249,7 @@ export interface CalendarHeaderProps {
 export function CalendarHeader({
   onStudentsOpen,
   onSettingsOpen,
-  onRecurringOpen,
+  onMyTrainingOpen,
   onTrainerProfileOpen,
   onProfileOpen,
   onParentChildrenOpen,
@@ -344,7 +345,7 @@ export function CalendarHeader({
     pushLoading,
     onStudentsOpen,
     onSettingsOpen,
-    onRecurringOpen,
+    onMyTrainingOpen,
     onTrainerProfileOpen,
     onProfileOpen,
     onParentChildrenOpen,

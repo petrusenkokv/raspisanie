@@ -13,6 +13,7 @@ import { Calendar, UserCheck, User as UserIcon, Loader2, Search, AlertTriangle, 
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { ToastAction } from "@/components/ui/toast";
+import { RecurringBookingsPanel } from "./recurring-bookings-panel";
 
 type StudentWithConsent = User & { pendingDocumentCount?: number };
 
@@ -32,13 +33,15 @@ interface BookStudentDialogProps {
   onOpenChange: (open: boolean) => void;
   preselectedTimeSlotId?: string | null;
   preselectedStudent?: User | null;
+  forceSelfMode?: boolean;
 }
 
 export function BookStudentDialog({
   open,
   onOpenChange,
   preselectedTimeSlotId,
-  preselectedStudent
+  preselectedStudent,
+  forceSelfMode = false,
 }: BookStudentDialogProps) {
   const { currentUser, schedule } = useGymStore();
   const { toast } = useToast();
@@ -54,12 +57,16 @@ export function BookStudentDialog({
       setSelectedDate(todayLocalStr());
       setSelectedTimeSlotId("");
     }
+    if (open && forceSelfMode) {
+      setBookingForSelf(true);
+      setSelectedStudentId("");
+    }
     if (!open) {
       setBookingForSelf(false);
       setSelectedStudentId("");
       setSearchQuery("");
     }
-  }, [open, preselectedTimeSlotId]);
+  }, [open, preselectedTimeSlotId, forceSelfMode]);
 
   const { data: students = [] } = useQuery<StudentWithConsent[]>({
     queryKey: ["/api/trainer/students"],
@@ -227,10 +234,11 @@ export function BookStudentDialog({
   const canConfirm = bookingForSelf
     ? !!(preselectedTimeSlotId || selectedTimeSlotId)
     : !!(preselectedStudent || selectedStudentId) && !!(preselectedTimeSlotId || selectedTimeSlotId);
+  const hasSelectedSlot = !!(preselectedTimeSlotId || selectedTimeSlotId);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-blue-600" />
@@ -240,7 +248,7 @@ export function BookStudentDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {!preselectedStudent && (
+          {!preselectedStudent && !forceSelfMode && (
             <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
               <button
                 type="button"
@@ -280,13 +288,15 @@ export function BookStudentDialog({
               </div>
             </div>
           ) : bookingForSelf ? (
-            <div className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg">
-              <Dumbbell className="h-5 w-5 text-emerald-600 shrink-0" />
-              <div>
-                <p className="font-semibold text-gray-900 dark:text-white">
-                  {currentUser?.firstName} {currentUser?.lastName}
-                </p>
-                <p className="text-sm text-emerald-600 dark:text-emerald-400">Тренер — запись для себя</p>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg">
+                <Dumbbell className="h-5 w-5 text-emerald-600 shrink-0" />
+                <div>
+                  <p className="font-semibold text-gray-900 dark:text-white">
+                    {currentUser?.firstName} {currentUser?.lastName}
+                  </p>
+                  <p className="text-sm text-emerald-600 dark:text-emerald-400">Тренер — запись для себя</p>
+                </div>
               </div>
             </div>
           ) : (
@@ -387,6 +397,10 @@ export function BookStudentDialog({
                 </div>
               )}
             </>
+          )}
+
+          {bookingForSelf && hasSelectedSlot && currentUser?.id && (
+            <RecurringBookingsPanel studentId={currentUser.id} />
           )}
 
           <div className="flex gap-2 pt-2">
