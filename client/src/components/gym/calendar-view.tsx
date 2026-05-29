@@ -488,10 +488,17 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
 
   const isFull    = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
+  const occupiedCount = allActive.length;
 
   // Cell colour
   const cellClass = isBlocked
     ? "bg-gray-200 dark:bg-gray-700 text-gray-400"
+    : isTrainer
+    ? isFull
+      ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300"
+      : occupiedCount > 0
+        ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 ring-1 ring-green-400"
+        : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 hover:bg-green-100"
     : userBooking?.status === "confirmed"
     ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 ring-1 ring-green-400"
     : userBooking?.status === "pending"
@@ -508,6 +515,13 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
     >
       {isBlocked ? (
         <span className="text-xs">—</span>
+      ) : isTrainer ? (
+        <>
+          <Users className="h-3 w-3 shrink-0" />
+          <span>
+            {occupiedCount}/{timeSlot.maxCapacity}
+          </span>
+        </>
       ) : userBooking?.status === "confirmed" ? (
         <>
           <ConfirmedBookingHint
