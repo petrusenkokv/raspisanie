@@ -335,21 +335,22 @@ export function NotificationsPopover({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-80 p-0"
+        collisionPadding={12}
+        className="w-[min(100vw-1.5rem,20rem)] sm:w-80 p-0"
         data-testid="popover-notifications"
       >
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b">
-          <div className="font-semibold text-sm">Уведомления</div>
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2 px-4 py-3 border-b sm:flex-row sm:items-center sm:justify-between">
+          <div className="font-semibold text-sm shrink-0">Уведомления</div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {unreadCount > 0 && (
               <button
                 type="button"
                 onClick={() => markAllReadMutation.mutate()}
                 disabled={markAllReadMutation.isPending}
-                className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50"
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 whitespace-nowrap shrink-0"
                 data-testid="button-mark-all-read"
               >
-                <CheckCheck className="h-3 w-3" />
+                <CheckCheck className="h-3 w-3 shrink-0" />
                 Прочитать все
               </button>
             )}
@@ -358,11 +359,11 @@ export function NotificationsPopover({
                 type="button"
                 onClick={() => clearReadMutation.mutate()}
                 disabled={clearReadMutation.isPending}
-                className="text-xs text-gray-500 hover:text-red-600 hover:underline flex items-center gap-1 disabled:opacity-50"
+                className="text-xs text-gray-500 hover:text-red-600 hover:underline flex items-center gap-1 disabled:opacity-50 whitespace-nowrap shrink-0"
                 data-testid="button-clear-read"
                 title="Удалить все прочитанные"
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="h-3 w-3 shrink-0" />
                 Очистить
               </button>
             )}
@@ -377,7 +378,7 @@ export function NotificationsPopover({
           <div className="max-h-96 overflow-y-auto overscroll-contain">
             {groups.map((group) => (
               <div key={group.key} data-testid={`group-${group.key}`}>
-                <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/80 backdrop-blur px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b">
+                <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/80 backdrop-blur px-4 py-1.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400 border-b">
                   {group.label}
                 </div>
                 <ul className="divide-y">
@@ -504,8 +505,8 @@ export function NotificationsPopover({
 
         {pushStatus && pushStatus !== "unsupported" && onPushSubscribe && onPushUnsubscribe && (
           <div className="border-t px-4 py-3 bg-gray-50 dark:bg-gray-900/50">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
-              Push в браузере
+            <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+              Уведомления в браузере
             </p>
             <Button
               type="button"

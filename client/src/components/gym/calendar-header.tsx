@@ -120,20 +120,27 @@ export function CalendarHeader({
     isTrainer,
   } = useGymStore();
 
-  const formatDateLong = (date: Date) => {
+  const formatDateLong = (date: Date, compact = false) => {
     if (currentView === "week") {
       const weekDates = useGymStore.getState().getWeekDates(date);
       const start = weekDates[0];
       const end = weekDates[6];
+      if (compact) {
+        const m = String(start.getMonth() + 1).padStart(2, "0");
+        return `${start.getDate()}–${end.getDate()}.${m}.${start.getFullYear()}`;
+      }
       return `${start.getDate()}–${end.getDate()} ${start.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}`;
     }
     if (currentView === "month") {
-      return date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+      return date.toLocaleDateString("ru-RU", {
+        month: compact ? "short" : "long",
+        year: "numeric",
+      });
     }
     return date.toLocaleDateString("ru-RU", {
-      weekday: "long",
+      weekday: compact ? "short" : "long",
       day: "numeric",
-      month: "long",
+      month: compact ? "short" : "long",
       year: "numeric",
     });
   };
@@ -194,48 +201,55 @@ export function CalendarHeader({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-10 w-10 flex-shrink-0 rounded-full bg-white/80 dark:bg-gray-900/80"
-            onClick={() => navigateDate(-1)}
-            data-testid="button-prev-date"
-            aria-label="Предыдущий период"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
+        <div className="space-y-3">
+          {/* Строка 1: только дата и стрелки — на узком экране не делим место с «Сегодня» */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 flex-shrink-0 rounded-full bg-white/80 dark:bg-gray-900/80"
+              onClick={() => navigateDate(-1)}
+              data-testid="button-prev-date"
+              aria-label="Предыдущий период"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
 
-          <div className="flex-1 min-w-0 text-center">
-            <p className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white leading-tight capitalize">
-              {formatDateLong(selectedDate)}
-            </p>
+            <div className="flex-1 min-w-0 px-1 text-center">
+              <p className="sm:hidden text-base font-bold text-gray-900 dark:text-white leading-snug whitespace-nowrap">
+                {formatDateLong(selectedDate, true)}
+              </p>
+              <p className="hidden sm:block text-lg md:text-xl font-bold text-gray-900 dark:text-white leading-tight">
+                {formatDateLong(selectedDate)}
+              </p>
+            </div>
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 flex-shrink-0 rounded-full bg-white/80 dark:bg-gray-900/80"
+              onClick={() => navigateDate(1)}
+              data-testid="button-next-date"
+              aria-label="Следующий период"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
           </div>
 
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-10 w-10 flex-shrink-0 rounded-full bg-white/80 dark:bg-gray-900/80"
-            onClick={() => navigateDate(1)}
-            data-testid="button-next-date"
-            aria-label="Следующий период"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </Button>
-
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Строка 2: «Сегодня» и День / Неделя / Месяц */}
+          <div className="flex flex-col items-stretch gap-2 max-w-sm mx-auto w-full sm:flex-row sm:flex-wrap sm:justify-center sm:max-w-none">
             <Button
               variant={isOnToday ? "secondary" : "default"}
               size="sm"
               onClick={goToToday}
               disabled={isOnToday}
-              className="h-10 rounded-full px-3 sm:px-4"
+              className="h-9 rounded-full px-3 w-full sm:w-auto shrink-0"
               data-testid="button-today"
             >
-              <CalendarDays className="h-4 w-4 sm:mr-1.5" />
+              <CalendarDays className="h-4 w-4 mr-1.5 shrink-0" />
               <span className="text-sm">Сегодня</span>
             </Button>
-            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-900 p-0.5 shadow-sm">
+            <div className="grid grid-cols-3 gap-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-900 p-0.5 shadow-sm sm:inline-flex sm:gap-0">
               {(Object.keys(VIEW_LABELS) as ViewType[]).map((view) => (
                 <Button
                   key={view}
@@ -243,7 +257,7 @@ export function CalendarHeader({
                   size="sm"
                   onClick={() => handleViewChange(view)}
                   className={cn(
-                    "h-8 rounded-md px-2.5 sm:px-3 text-xs sm:text-sm",
+                    "h-8 rounded-md px-1.5 sm:px-3 text-xs sm:text-sm min-w-0 w-full sm:w-auto",
                     currentView !== view && "text-gray-600 dark:text-gray-400",
                   )}
                   data-testid={`button-view-${view}`}
