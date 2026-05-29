@@ -419,7 +419,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                       </div>
                     </div>
                     {showAttendance && (
-                      <div className="flex flex-wrap gap-1 pt-1 border-t border-gray-100 dark:border-gray-800">
+                      <div className="flex flex-nowrap gap-0.5 md:flex-wrap md:gap-1 pt-1 border-t border-gray-100 dark:border-gray-800">
                         <AttendanceButton
                           label="Пришёл"
                           icon={<UserCheck className="h-3 w-3" />}
@@ -774,10 +774,12 @@ function AttendanceButton({
       onClick={onClick}
       disabled={disabled}
       data-testid={testId}
-      className={`flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded border transition disabled:opacity-50 ${colors[color]}`}
+      aria-label={label}
+      title={label}
+      className={`flex items-center justify-center gap-1 text-[11px] font-medium h-7 w-7 p-0 md:h-auto md:w-auto md:px-1.5 md:py-0.5 rounded border transition disabled:opacity-50 shrink-0 ${colors[color]}`}
     >
       {icon}
-      <span>{label}</span>
+      <span className="hidden md:inline">{label}</span>
     </button>
   );
 }
