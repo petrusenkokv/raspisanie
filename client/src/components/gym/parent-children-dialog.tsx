@@ -23,6 +23,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useGymStore } from "@/store/gym-store";
 import type { User } from "@shared/schema";
+import { birthDateValidationError, todayLocalStr } from "@shared/birth-date";
 
 type ChildForm = {
   id?: string;
@@ -147,6 +148,11 @@ export function ParentChildrenDialog({
         title: "Подтвердите законного представителя",
         description: "Поставьте галочку, что вы являетесь законным представителем ребёнка.",
       });
+      return;
+    }
+    const childBirthErr = birthDateValidationError(editing.birthDate, "child");
+    if (childBirthErr) {
+      toast({ variant: "destructive", title: childBirthErr });
       return;
     }
     upsertMutation.mutate({
@@ -283,6 +289,7 @@ export function ParentChildrenDialog({
               <Label>Дата рождения</Label>
               <Input
                 type="date"
+                max={todayLocalStr()}
                 value={editing.birthDate}
                 onChange={(e) => setEditing((s) => ({ ...s, birthDate: e.target.value }))}
               />

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, timestamp, boolean, integer, time, date, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { birthDateValidationError } from "./birth-date";
 
 // Users table (students and trainer)
 export const users = pgTable("users", {
@@ -240,7 +241,15 @@ export const updateStudentProfileSchema = z.object({
   firstName: z.string().trim().min(1, "Укажите имя"),
   lastName: z.string().trim().min(1, "Укажите фамилию"),
   middleName: z.string().trim().nullable().optional(),
-  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата должна быть в формате YYYY-MM-DD"),
+  birthDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Дата должна быть в формате YYYY-MM-DD")
+    .superRefine((val, ctx) => {
+      const err = birthDateValidationError(val, "optional");
+      if (err) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: err });
+      }
+    }),
   phone: z.string().trim().min(10, "Укажите корректный телефон"),
   // Legacy single-representative field (used by self-registration)
   parentFullName: z.string().trim().nullable().optional(),

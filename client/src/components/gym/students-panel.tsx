@@ -44,6 +44,8 @@ import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Tr
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
+  birthDateAgeSuffix,
+  birthDateValidationError,
   calculateAge,
   legalRepresentativeSectionHint,
   studentIsUnder18,
@@ -247,6 +249,13 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     if (newStudent.phone.replace(/\D/g, "").length < 10) {
       toast({ title: "Укажите корректный телефон", variant: "destructive" });
       return;
+    }
+    if (newStudent.birthDate) {
+      const birthErr = birthDateValidationError(newStudent.birthDate, "optional");
+      if (birthErr) {
+        toast({ title: birthErr, variant: "destructive" });
+        return;
+      }
     }
     addMutation.mutate({
       ...newStudent,
@@ -540,6 +549,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
               <Input
                 id="new-birthDate"
                 type="date"
+                max={todayLocalStr()}
                 value={newStudent.birthDate}
                 onChange={(e) => setNewStudent({ ...newStudent, birthDate: e.target.value })}
               />
@@ -833,7 +843,11 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
             <Field label="Телефон" value={student.phone} />
             <Field
               label="Дата рождения"
-              value={student.birthDate ? `${format(new Date(student.birthDate), "d MMMM yyyy", { locale: ru })}${age !== null ? ` (${age} лет)` : ""}` : "—"}
+              value={
+                student.birthDate
+                  ? `${format(new Date(student.birthDate), "d MMMM yyyy", { locale: ru })}${birthDateAgeSuffix(student.birthDate)}`
+                  : "—"
+              }
             />
             <Field label="Заметки тренера" value={student.trainerNotes || "—"} multiline />
             <PaymentExemptSection studentId={student.id} student={student} />
@@ -947,7 +961,12 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
             </div>
             <div>
               <Label>Дата рождения</Label>
-              <Input type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
+              <Input
+                type="date"
+                max={todayLocalStr()}
+                value={form.birthDate}
+                onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
+              />
             </div>
             <div>
               <Label>Заметки тренера</Label>
@@ -997,7 +1016,19 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditing(false)}>Отмена</Button>
-              <Button onClick={() => updateMutation.mutate(form)} disabled={updateMutation.isPending}>
+              <Button
+                onClick={() => {
+                  if (form.birthDate) {
+                    const birthErr = birthDateValidationError(form.birthDate, "optional");
+                    if (birthErr) {
+                      toast({ title: birthErr, variant: "destructive" });
+                      return;
+                    }
+                  }
+                  updateMutation.mutate(form);
+                }}
+                disabled={updateMutation.isPending}
+              >
                 {updateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Сохранить
               </Button>

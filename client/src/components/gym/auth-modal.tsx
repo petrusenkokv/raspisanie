@@ -11,22 +11,16 @@ import { Loader2, UserPlus, LogIn, CheckCircle, MessageSquare, Plus, Trash2 } fr
 import { useQuery } from "@tanstack/react-query";
 import { type Document } from "@shared/schema";
 import { DocumentViewDialog } from "./document-view-dialog";
+import {
+  birthDateValidationError,
+  calculateAgeYears,
+  todayLocalStr,
+} from "@shared/birth-date";
 
 interface AuthModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialMode?: "login" | "register";
-}
-
-function calculateAge(birthDate: string): number | null {
-  if (!birthDate) return null;
-  const b = new Date(birthDate);
-  if (isNaN(b.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - b.getFullYear();
-  const m = today.getMonth() - b.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
-  return age;
 }
 
 export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthModalProps) {
@@ -80,7 +74,8 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
     enabled: open && (mode === "welcome" || mode === "welcome_trainer_msg" || pendingShowWelcome),
   });
 
-  const selfAge = useMemo(() => calculateAge(selfBirthDate), [selfBirthDate]);
+  const selfAge = useMemo(() => calculateAgeYears(selfBirthDate), [selfBirthDate]);
+  const maxBirthDate = todayLocalStr();
   const selfIsMinor = selfAge !== null && selfAge < 14;
 
   useEffect(() => {
@@ -220,8 +215,9 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
           toast({ variant: "destructive", title: "Заполните имя и фамилию" });
           return;
         }
-        if (!selfBirthDate) {
-          toast({ variant: "destructive", title: "Укажите дату рождения" });
+        const selfBirthErr = birthDateValidationError(selfBirthDate, "student-self");
+        if (selfBirthErr) {
+          toast({ variant: "destructive", title: selfBirthErr });
           return;
         }
         const response = await apiRequest("POST", "/api/auth/register", {
@@ -252,14 +248,18 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
           return;
         }
         for (let i = 0; i < validChildren.length; i++) {
-          if (!validChildren[i].birthDate) {
-            toast({ variant: "destructive", title: `Укажите дату рождения ребёнка ${i + 1}` });
+          const childBirthErr = birthDateValidationError(validChildren[i].birthDate, "child");
+          if (childBirthErr) {
+            toast({ variant: "destructive", title: `Ребёнок ${i + 1}: ${childBirthErr}` });
             return;
           }
         }
-        if (registerSelf && !selfBirthDate) {
-          toast({ variant: "destructive", title: "Укажите вашу дату рождения" });
-          return;
+        if (registerSelf) {
+          const adultBirthErr = birthDateValidationError(selfBirthDate, "adult");
+          if (adultBirthErr) {
+            toast({ variant: "destructive", title: adultBirthErr });
+            return;
+          }
         }
         if (!legalRepresentativeConfirmed) {
           toast({
@@ -523,6 +523,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                         <Label>Дата рождения</Label>
                         <Input
                           type="date"
+                          max={maxBirthDate}
                           value={selfBirthDate}
                           onChange={(e) => setSelfBirthDate(e.target.value)}
                           disabled={loading}
@@ -620,6 +621,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                             <Label>Дата рождения</Label>
                             <Input
                               type="date"
+                              max={maxBirthDate}
                               value={row.birthDate}
                               onChange={(e) => {
                                 const v = e.target.value;

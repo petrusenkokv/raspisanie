@@ -15,6 +15,10 @@ import {
   updateStudentProfileSchema
 } from "@shared/schema";
 import { z } from "zod";
+import {
+  birthDateValidationError,
+  calculateAgeYears,
+} from "@shared/birth-date";
 import { moscowDateString } from "./moscow-date";
 import {
   establishSession,
@@ -36,17 +40,6 @@ function normalizePhone(input: string): string | null {
   else if (digits.length === 11 && digits.startsWith("8")) digits = "7" + digits.slice(1);
   if (digits.length !== 11 || !digits.startsWith("7")) return null;
   return digits;
-}
-
-function calculateAgeYears(birthDate: string | null | undefined): number | null {
-  if (!birthDate) return null;
-  const b = new Date(birthDate);
-  if (isNaN(b.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - b.getFullYear();
-  const m = today.getMonth() - b.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
-  return age;
 }
 
 async function pushNotifyUser(userId: string, title: string, body: string) {
@@ -274,7 +267,12 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Пользователь с таким телефоном уже существует" });
       }
 
-      // Check age and parent info
+      const birthErr = birthDateValidationError(birthDate, "student-self");
+      if (birthErr) {
+        return res.status(400).json({ message: birthErr });
+      }
+
+      // Check age and parent info (under 14 should not reach here — blocked above)
       const age = calculateAgeYears(birthDate);
       let normalizedParentPhone: string | null = null;
       if (age !== null && age < 14) {
@@ -374,11 +372,9 @@ export async function registerRoutes(
 
       const alsoStudent = !!isAlsoStudent;
       if (alsoStudent) {
-        const age = calculateAgeYears(birthDate);
-        if (age !== null && age < 14) {
-          return res.status(400).json({
-            message: "До 14 лет регистрация только как законный представитель ребёнка",
-          });
+        const adultBirthErr = birthDateValidationError(birthDate, "adult");
+        if (adultBirthErr) {
+          return res.status(400).json({ message: adultBirthErr });
         }
       }
 
@@ -420,6 +416,10 @@ export async function registerRoutes(
         const c = childList[i];
         if (!c?.firstName || !c?.lastName) {
           return res.status(400).json({ message: `Заполните имя и фамилию ребёнка ${i + 1}` });
+        }
+        const childBirthErr = birthDateValidationError(c.birthDate, "child");
+        if (childBirthErr) {
+          return res.status(400).json({ message: `Ребёнок ${i + 1}: ${childBirthErr}` });
         }
         const childUser = await createChildUserForParent(
           parent,
@@ -798,6 +798,10 @@ export async function registerRoutes(
       if (legalRepresentativeConfirmed !== true) {
         return res.status(400).json({ message: "Подтвердите, что Вы — законный представитель ребёнка" });
       }
+      const childBirthErr = birthDateValidationError(birthDate, "child");
+      if (childBirthErr) {
+        return res.status(400).json({ message: childBirthErr });
+      }
       const existingChildren = await storage.getChildrenByParent(parent.id);
       const child = await createChildUserForParent(
         parent,
@@ -833,7 +837,13 @@ export async function registerRoutes(
       if (firstName !== undefined) updates.firstName = String(firstName).trim();
       if (lastName !== undefined) updates.lastName = String(lastName).trim();
       if (middleName !== undefined) updates.middleName = middleName ? String(middleName).trim() : null;
-      if (birthDate !== undefined) updates.birthDate = birthDate || null;
+      if (birthDate !== undefined) {
+        const childBirthErr = birthDateValidationError(birthDate, birthDate ? "child" : "optional");
+        if (childBirthErr) {
+          return res.status(400).json({ message: childBirthErr });
+        }
+        updates.birthDate = birthDate || null;
+      }
       if (parentFullName !== undefined) updates.parentFullName = parentFullName ? String(parentFullName).trim() : null;
       if (parentPhone !== undefined) {
         const np = parentPhone ? normalizePhone(parentPhone) : null;
@@ -1402,7 +1412,13 @@ export async function registerRoutes(
       if (firstName !== undefined) updates.firstName = String(firstName).trim();
       if (lastName !== undefined) updates.lastName = lastName ? String(lastName).trim() : null;
       if (middleName !== undefined) updates.middleName = middleName ? String(middleName).trim() : null;
-      if (birthDate !== undefined) updates.birthDate = birthDate || null;
+      if (birthDate !== undefined) {
+        const birthErr = birthDateValidationError(birthDate, birthDate ? "optional" : "optional");
+        if (birthErr) {
+          return res.status(400).json({ message: birthErr });
+        }
+        updates.birthDate = birthDate || null;
+      }
       if (trainerNotes !== undefined) updates.trainerNotes = trainerNotes ? String(trainerNotes) : null;
       if (exemptMembership !== undefined) updates.exemptMembership = !!exemptMembership;
       if (exemptTrainerPayment !== undefined) updates.exemptTrainerPayment = !!exemptTrainerPayment;
@@ -1439,6 +1455,13 @@ export async function registerRoutes(
       const existing = await storage.getUserByPhone(normalizedPhone);
       if (existing) {
         return res.status(400).json({ message: "Ученик с таким телефоном уже существует" });
+      }
+
+      if (birthDate) {
+        const birthErr = birthDateValidationError(birthDate, "optional");
+        if (birthErr) {
+          return res.status(400).json({ message: birthErr });
+        }
       }
 
       const accepted = new Set<string>(Array.isArray(consentDocumentIds) ? consentDocumentIds : []);

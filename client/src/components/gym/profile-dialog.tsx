@@ -16,7 +16,7 @@ import { useGymStore } from "@/store/gym-store";
 import { updateStudentProfileSchema, type User as UserType } from "@shared/schema";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { calculateAge, todayLocalStr, formatDateDMY } from "@/lib/utils-gym";
+import { birthDateAgeSuffix, calculateAge, todayLocalStr, formatDateDMY } from "@/lib/utils-gym";
 
 type FormValues = typeof updateStudentProfileSchema._type;
 
@@ -253,7 +253,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                   icon={<CalendarDays className="h-4 w-4" />}
                   label="Дата рождения"
                   value={user?.birthDate
-                    ? `${formatDateDMY(user.birthDate)}${viewAge !== null ? ` (${viewAge} лет)` : ""}`
+                    ? `${formatDateDMY(user.birthDate)}${birthDateAgeSuffix(user.birthDate)}`
                     : undefined}
                 />
                 <InfoRow icon={<Phone className="h-4 w-4" />} label="Телефон" value={user?.phone} />
@@ -318,7 +318,13 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                       <FormItem>
                         <FormLabel>Дата рождения *</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} value={field.value ?? ""} className="block" />
+                          <Input
+                            type="date"
+                            max={todayLocalStr()}
+                            {...field}
+                            value={field.value ?? ""}
+                            className="block"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

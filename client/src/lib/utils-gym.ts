@@ -1,4 +1,12 @@
 import type { WeeklyTemplate } from "@shared/schema";
+import { calculateAgeYears } from "@shared/birth-date";
+
+export {
+  todayLocalStr,
+  birthDateAgeSuffix,
+  birthDateValidationError,
+} from "@shared/birth-date";
+export type { BirthDateValidationKind } from "@shared/birth-date";
 
 export function isoWeekdayFromDateStr(dateStr: string): number {
   const w = new Date(`${dateStr}T12:00:00`).getDay();
@@ -34,14 +42,7 @@ export function isSlotInWorkingHours(
 }
 
 export function calculateAge(birthDate: string | null | undefined): number | null {
-  if (!birthDate) return null;
-  const b = new Date(birthDate);
-  if (isNaN(b.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - b.getFullYear();
-  const m = today.getMonth() - b.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
-  return age;
+  return calculateAgeYears(birthDate);
 }
 
 /** Подпись к блоку «Законные представители» в карточке ученика. */
@@ -86,14 +87,6 @@ export function shouldShowTrainerPaymentBadge(
   if (bookingStudentId && viewerUserId && bookingStudentId === viewerUserId) return false;
   if (student.role === "trainer") return false;
   return student.exemptTrainerPayment !== true;
-}
-
-export function todayLocalStr(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${mo}-${day}`;
 }
 
 export function formatDateDMY(dateStr: string | null | undefined): string {
