@@ -122,6 +122,16 @@ export const recurringBookings = pgTable("recurring_bookings", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+/** Skipped dates for a recurring rule (single occurrence cancelled or rescheduled). */
+export const recurringBookingExceptions = pgTable("recurring_booking_exceptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recurringBookingId: varchar("recurring_booking_id")
+    .notNull()
+    .references(() => recurringBookings.id, { onDelete: "cascade" }),
+  date: text("date").notNull(), // YYYY-MM-DD
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Bookings table
 export const bookings = pgTable("bookings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -433,6 +443,8 @@ export type UserConsent = typeof userConsents.$inferSelect;
 export type StudentWithConsents = User & { consents: (UserConsent & { document: Document })[] };
 export type InsertRecurringBooking = z.infer<typeof insertRecurringBookingSchema>;
 export type RecurringBooking = typeof recurringBookings.$inferSelect;
+export type RecurringBookingException = typeof recurringBookingExceptions.$inferSelect;
+export type RecurringBookingWithExceptions = RecurringBooking & { exceptions: string[] };
 export type Holiday = typeof holidays.$inferSelect;
 export type InsertHoliday = z.infer<typeof insertHolidaySchema>;
 export type MembershipPayment = typeof membershipPayments.$inferSelect;

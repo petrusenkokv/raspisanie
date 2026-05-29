@@ -2,14 +2,14 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Calendar, Loader2, Trash2 } from "lucide-react";
+import { Calendar, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { todayLocalStr } from "@/lib/utils-gym";
-import type { RecurringBooking } from "@shared/schema";
+import type { RecurringBookingWithExceptions } from "@shared/schema";
 
 const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
@@ -20,7 +20,7 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
   const [startDate, setStartDate] = useState<string>(todayLocalStr());
   const [endDate, setEndDate] = useState<string>("");
 
-  const { data: rules = [], isLoading } = useQuery<RecurringBooking[]>({
+  const { data: rules = [], isLoading } = useQuery<RecurringBookingWithExceptions[]>({
     queryKey: ["/api/trainer/recurring", studentId],
     queryFn: async () => {
       const r = await apiRequest("GET", `/api/trainer/recurring/${studentId}`);
@@ -59,7 +59,20 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/recurring", studentId] });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
-      toast({ title: "Правило удалено", description: "Будущие записи отменены" });
+      toast({ title: "Правило удалено", description: "Все будущие записи по правилу отменены" });
+    },
+    onError: (e: Error) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async ({ ruleId, date }: { ruleId: string; date: string }) => {
+      const r = await apiRequest("DELETE", `/api/trainer/recurring/${ruleId}/exceptions/${date}`);
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/recurring", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      toast({ title: "Дата восстановлена", description: "Занятие снова будет создаваться по правилу" });
     },
     onError: (e: Error) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
   });
@@ -70,11 +83,17 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
     );
   };
 
+  const futureExceptions = (exceptions: string[]) =>
+    exceptions.filter((d) => d >= todayLocalStr()).sort();
+
   return (
     <div className="border rounded-lg p-3 space-y-3">
       <p className="font-medium text-sm flex items-center gap-2">
         <Calendar className="h-4 w-4" />
         Повторяющиеся записи
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Отмена или перенос одного занятия в расписании не удаляет правило — эта дата пропускается автоматически.
       </p>
 
       {isLoading ? (
@@ -85,46 +104,71 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
         <p className="text-xs text-gray-500">Нет регулярных тренировок</p>
       ) : (
         <div className="space-y-2">
-          {rules.map((r) => (
-            <div
-              key={r.id}
-              className="flex items-start justify-between gap-2 text-xs bg-gray-50 dark:bg-gray-800 rounded p-2"
-            >
-              <div className="space-y-1">
-                <div>
-                  <span className="font-medium">
-                    {r.weekdays
-                      .slice()
-                      .sort()
-                      .map((d) => WEEKDAY_LABELS[d - 1])
-                      .join(", ")}
-                  </span>{" "}
-                  в {String(r.hour).padStart(2, "0")}:00
-                </div>
-                <div className="text-gray-500">
-                  с {format(new Date(r.startDate), "d MMM yyyy", { locale: ru })}
-                  {r.endDate
-                    ? ` по ${format(new Date(r.endDate), "d MMM yyyy", { locale: ru })}`
-                    : " (бессрочно)"}
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0 text-red-600 hover:bg-red-50"
-                onClick={() => {
-                  if (confirm("Удалить правило? Все будущие записи будут отменены.")) {
-                    deleteMutation.mutate(r.id);
-                  }
-                }}
-                disabled={deleteMutation.isPending}
-                data-testid={`button-delete-recurring-${r.id}`}
-                aria-label="Удалить правило"
+          {rules.map((r) => {
+            const skipped = futureExceptions(r.exceptions ?? []);
+            return (
+              <div
+                key={r.id}
+                className="flex items-start justify-between gap-2 text-xs bg-gray-50 dark:bg-gray-800 rounded p-2"
               >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-          ))}
+                <div className="space-y-1 min-w-0 flex-1">
+                  <div>
+                    <span className="font-medium">
+                      {r.weekdays
+                        .slice()
+                        .sort()
+                        .map((d) => WEEKDAY_LABELS[d - 1])
+                        .join(", ")}
+                    </span>{" "}
+                    в {String(r.hour).padStart(2, "0")}:00
+                  </div>
+                  <div className="text-gray-500">
+                    с {format(new Date(r.startDate), "d MMM yyyy", { locale: ru })}
+                    {r.endDate
+                      ? ` по ${format(new Date(r.endDate), "d MMM yyyy", { locale: ru })}`
+                      : " (бессрочно)"}
+                  </div>
+                  {skipped.length > 0 && (
+                    <div className="pt-1 space-y-1">
+                      <p className="text-amber-700 dark:text-amber-400 font-medium">Пропущенные даты:</p>
+                      {skipped.map((date) => (
+                        <div key={date} className="flex items-center justify-between gap-2">
+                          <span>{format(new Date(`${date}T12:00:00`), "d MMM yyyy", { locale: ru })}</span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-blue-600 hover:bg-blue-50"
+                            onClick={() => restoreMutation.mutate({ ruleId: r.id, date })}
+                            disabled={restoreMutation.isPending}
+                            aria-label={`Вернуть ${date} в расписание`}
+                          >
+                            <RotateCcw className="h-3 w-3 mr-1" />
+                            Вернуть
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0 text-red-600 hover:bg-red-50 shrink-0"
+                  onClick={() => {
+                    if (confirm("Удалить правило? Все будущие записи будут отменены.")) {
+                      deleteMutation.mutate(r.id);
+                    }
+                  }}
+                  disabled={deleteMutation.isPending}
+                  data-testid={`button-delete-recurring-${r.id}`}
+                  aria-label="Удалить правило"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -207,4 +251,4 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
       </div>
     </div>
   );
-}
+};

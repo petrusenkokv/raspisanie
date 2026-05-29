@@ -113,6 +113,9 @@ export interface IStorage {
   getRecurringBooking(id: string): Promise<RecurringBooking | undefined>;
   createRecurringBooking(rule: InsertRecurringBooking): Promise<RecurringBooking>;
   deleteRecurringBooking(id: string): Promise<{ cancelledCount: number }>;
+  getRecurringBookingExceptions(recurringBookingId: string): Promise<string[]>;
+  addRecurringBookingException(recurringBookingId: string, date: string): Promise<void>;
+  removeRecurringBookingException(recurringBookingId: string, date: string): Promise<void>;
   materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }>;
 
   // Slot blocking
@@ -236,6 +239,8 @@ export class MemStorage implements IStorage {
   private documents: Map<string, Document> = new Map();
   private consents: Map<string, UserConsent> = new Map();
   private recurringBookings: Map<string, RecurringBooking> = new Map();
+  /** Keys: `${recurringBookingId}:${YYYY-MM-DD}` */
+  private recurringBookingExceptions: Set<string> = new Set();
   private holidays: Map<string, Holiday> = new Map();
   private membershipPayments: Map<string, MembershipPayment> = new Map();
   private trainerPayments: Map<string, TrainerPayment> = new Map();
@@ -826,11 +831,19 @@ export class MemStorage implements IStorage {
       byRole === "student" && booking.status === "confirmed" ? "pending" : booking.status;
     const newConfirmedAt = newStatus === "pending" ? null : booking.confirmedAt;
 
+    if (booking.recurringBookingId) {
+      const oldSlot = this.timeSlots.get(booking.timeSlotId);
+      if (oldSlot) {
+        await this.addRecurringBookingException(booking.recurringBookingId, oldSlot.date);
+      }
+    }
+
     const updated: Booking = {
       ...booking,
       timeSlotId: newTimeSlotId,
       status: newStatus as Booking["status"],
       confirmedAt: newConfirmedAt,
+      recurringBookingId: booking.recurringBookingId ? null : booking.recurringBookingId,
     };
     this.bookings.set(bookingId, updated);
     return updated;
@@ -839,6 +852,13 @@ export class MemStorage implements IStorage {
   async cancelBooking(id: string): Promise<Booking> {
     const booking = this.bookings.get(id);
     if (!booking) throw new Error("Запись не найдена");
+
+    if (booking.recurringBookingId) {
+      const slot = this.timeSlots.get(booking.timeSlotId);
+      if (slot) {
+        await this.addRecurringBookingException(booking.recurringBookingId, slot.date);
+      }
+    }
 
     // If this booking had consumed a trainer session, refund it
     let consumedId = booking.consumedTrainerPaymentId ?? null;
@@ -1490,7 +1510,26 @@ export class MemStorage implements IStorage {
       }
     }
     this.recurringBookings.delete(id);
+    for (const key of Array.from(this.recurringBookingExceptions)) {
+      if (key.startsWith(`${id}:`)) this.recurringBookingExceptions.delete(key);
+    }
     return { cancelledCount: cancelled };
+  }
+
+  async getRecurringBookingExceptions(recurringBookingId: string): Promise<string[]> {
+    const prefix = `${recurringBookingId}:`;
+    return Array.from(this.recurringBookingExceptions)
+      .filter((key) => key.startsWith(prefix))
+      .map((key) => key.slice(prefix.length))
+      .sort();
+  }
+
+  async addRecurringBookingException(recurringBookingId: string, date: string): Promise<void> {
+    this.recurringBookingExceptions.add(`${recurringBookingId}:${date}`);
+  }
+
+  async removeRecurringBookingException(recurringBookingId: string, date: string): Promise<void> {
+    this.recurringBookingExceptions.delete(`${recurringBookingId}:${date}`);
   }
 
   async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
@@ -1507,13 +1546,17 @@ export class MemStorage implements IStorage {
         const wd = isoWeekday(d);
         if (!rule.weekdays.includes(wd)) continue;
         const dateStr = localDateStr(d);
+        if (this.recurringBookingExceptions.has(`${rule.id}:${dateStr}`)) {
+          skipped++;
+          continue;
+        }
         const slot = this.ensureSlot(dateStr, rule.hour);
         if (slot.isBlocked) { skipped++; continue; }
-        // Already has a booking for this rule on this slot?
-        const existingForRule = Array.from(this.bookings.values()).find(b =>
-          b.recurringBookingId === rule.id && b.timeSlotId === slot.id && b.status !== "cancelled"
+        // Already materialized for this rule on this slot (incl. cancelled)?
+        const anyForRule = Array.from(this.bookings.values()).find(
+          (b) => b.recurringBookingId === rule.id && b.timeSlotId === slot.id,
         );
-        if (existingForRule) continue;
+        if (anyForRule) continue;
         // Student already has a booking that day?
         const studentSlotIdsThatDay = new Set(
           Array.from(this.timeSlots.values()).filter(s => s.date === dateStr).map(s => s.id)

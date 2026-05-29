@@ -234,17 +234,27 @@ export function BookStudentDialog({
   const canConfirm = bookingForSelf
     ? !!(preselectedTimeSlotId || selectedTimeSlotId)
     : !!(preselectedStudent || selectedStudentId) && !!(preselectedTimeSlotId || selectedTimeSlotId);
-  const hasSelectedSlot = !!(preselectedTimeSlotId || selectedTimeSlotId);
+
+  const isSelfTrainingMode = bookingForSelf || forceSelfMode;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-blue-600" />
-            Запись на тренировку
-          </DialogTitle>
-          <DialogDescription>Запишите ученика или себя на свободный слот.</DialogDescription>
+          {isSelfTrainingMode ? (
+            <DialogTitle className="flex items-center gap-2">
+              <Dumbbell className="h-5 w-5 text-emerald-600" />
+              Тренировка — {currentUser?.firstName ?? "тренер"}
+            </DialogTitle>
+          ) : (
+            <>
+              <DialogTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-blue-600" />
+                Запись на тренировку
+              </DialogTitle>
+              <DialogDescription>Запишите ученика или себя на свободный слот.</DialogDescription>
+            </>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -288,17 +298,9 @@ export function BookStudentDialog({
               </div>
             </div>
           ) : bookingForSelf ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg">
-                <Dumbbell className="h-5 w-5 text-emerald-600 shrink-0" />
-                <div>
-                  <p className="font-semibold text-gray-900 dark:text-white">
-                    {currentUser?.firstName} {currentUser?.lastName}
-                  </p>
-                  <p className="text-sm text-emerald-600 dark:text-emerald-400">Тренер — запись для себя</p>
-                </div>
-              </div>
-            </div>
+            currentUser?.id ? (
+              <RecurringBookingsPanel studentId={currentUser.id} />
+            ) : null
           ) : (
             <div className="space-y-2">
               <Label>Выберите ученика</Label>
@@ -397,10 +399,6 @@ export function BookStudentDialog({
                 </div>
               )}
             </>
-          )}
-
-          {bookingForSelf && hasSelectedSlot && currentUser?.id && (
-            <RecurringBookingsPanel studentId={currentUser.id} />
           )}
 
           <div className="flex gap-2 pt-2">

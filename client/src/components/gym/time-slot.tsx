@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, CircleSlash, Heart, AlarmClock, ArrowLeftRight } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, CircleSlash, Heart, AlarmClock, ArrowLeftRight, Repeat } from "lucide-react";
 import { RescheduleDialog } from "./reschedule-dialog";
 import { Input } from "@/components/ui/input";
 import { type TimeSlotWithBookings, type AttendanceStatus, type StudentPaymentStatus } from "@shared/schema";
@@ -340,6 +340,21 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                             Заявка
                           </Badge>
                         )}
+                        {booking.recurringBookingId && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                className="inline-flex shrink-0 text-muted-foreground"
+                                aria-label="Повторяющаяся запись"
+                              >
+                                <Repeat className="h-3 w-3" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="text-xs max-w-[220px]">
+                              Запись из правила повторяющихся тренировок. Отмена — только на этот день.
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                         {booking.status === "confirmed" && (
                           <BookingPaymentBadges
                             studentId={booking.studentId}
@@ -392,6 +407,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                               slotDate: timeSlot.date,
                               slotTime: timeSlot.time,
                               isPast: showAttendance,
+                              isRecurring: !!booking.recurringBookingId,
                             })
                           }
                           className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"

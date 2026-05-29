@@ -617,6 +617,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                         slotDate: timeSlot.date,
                         slotTime: timeSlot.time,
                         isPast,
+                        isRecurring: !!booking.recurringBookingId,
                       });
                     }}
                     title={isPast ? "Удалить прошедшую запись" : "Удалить запись"}

@@ -1963,7 +1963,13 @@ export async function registerRoutes(
     try {
       const { studentId } = req.params;
       const rules = await storage.getRecurringBookingsByStudent(studentId);
-      res.json(rules);
+      const withExceptions = await Promise.all(
+        rules.map(async (rule) => ({
+          ...rule,
+          exceptions: await storage.getRecurringBookingExceptions(rule.id),
+        })),
+      );
+      res.json(withExceptions);
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Не удалось получить правила" });
     }
@@ -2083,6 +2089,23 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ message: error?.message || "Не удалось удалить праздник" });
+    }
+  });
+
+  app.delete("/api/trainer/recurring/:ruleId/exceptions/:date", async (req, res) => {
+    try {
+      const { ruleId, date } = req.params;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+        return res.status(400).json({ message: "Некорректная дата" });
+      }
+      const rule = await storage.getRecurringBooking(ruleId);
+      if (!rule) return res.status(404).json({ message: "Правило не найдено" });
+      await storage.removeRecurringBookingException(ruleId, date);
+      await storage.materializeRecurringBookings(date);
+      broadcast({ type: "schedule_update" });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось восстановить дату" });
     }
   });
 

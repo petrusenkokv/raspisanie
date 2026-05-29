@@ -3,7 +3,7 @@ import { eq, and, or, ne, asc, desc, inArray, gte, lte, lt, sql as drizzleSql } 
 import { pgTable, varchar, text, timestamp } from "drizzle-orm/pg-core";
 import {
   users, documents, userConsents, parentChildren, timeSlots, trainerSettings,
-  holidays, recurringBookings, bookings, membershipPayments, trainerPayments, notifications,
+  holidays, recurringBookings, recurringBookingExceptions, bookings, membershipPayments, trainerPayments, notifications,
   type User, type InsertUser,
   type TimeSlot, type InsertTimeSlot,
   type Booking, type InsertBooking,
@@ -602,6 +602,16 @@ export class DbStorage implements IStorage {
   async cancelBooking(id: string): Promise<Booking> {
     const booking = await this.getRawBooking(id);
     if (!booking) throw new Error("Запись не найдена");
+
+    if (booking.recurringBookingId) {
+      const slot = await this.getTimeSlotById(booking.timeSlotId);
+      if (slot) {
+        const dateStr =
+          typeof slot.date === "object" ? localDateStr(slot.date as Date) : String(slot.date);
+        await this.addRecurringBookingException(booking.recurringBookingId, dateStr);
+      }
+    }
+
     if (booking.consumedTrainerPaymentId) {
       await this.refundTrainerSession(booking.consumedTrainerPaymentId);
     }
@@ -632,7 +642,22 @@ export class DbStorage implements IStorage {
 
     const newStatus = byRole === "student" && booking.status === "confirmed" ? "pending" : booking.status;
     const newConfirmedAt = newStatus === "pending" ? null : booking.confirmedAt;
-    return this.updateBooking(bookingId, { timeSlotId: newTimeSlotId, status: newStatus as Booking["status"], confirmedAt: newConfirmedAt });
+
+    if (booking.recurringBookingId) {
+      const oldSlot = await this.getTimeSlotById(booking.timeSlotId);
+      if (oldSlot) {
+        const dateStr =
+          typeof oldSlot.date === "object" ? localDateStr(oldSlot.date as Date) : String(oldSlot.date);
+        await this.addRecurringBookingException(booking.recurringBookingId, dateStr);
+      }
+    }
+
+    return this.updateBooking(bookingId, {
+      timeSlotId: newTimeSlotId,
+      status: newStatus as Booking["status"],
+      confirmedAt: newConfirmedAt,
+      recurringBookingId: booking.recurringBookingId ? null : booking.recurringBookingId,
+    });
   }
 
   async markAttendance(bookingId: string, status: AttendanceStatus | null, note: string | null): Promise<Booking> {
@@ -905,6 +930,40 @@ export class DbStorage implements IStorage {
     return { cancelledCount: cancelled };
   }
 
+  async getRecurringBookingExceptions(recurringBookingId: string): Promise<string[]> {
+    const rows = await db
+      .select({ date: recurringBookingExceptions.date })
+      .from(recurringBookingExceptions)
+      .where(eq(recurringBookingExceptions.recurringBookingId, recurringBookingId))
+      .orderBy(asc(recurringBookingExceptions.date));
+    return rows.map((r) => r.date);
+  }
+
+  async addRecurringBookingException(recurringBookingId: string, date: string): Promise<void> {
+    const existing = await db
+      .select({ id: recurringBookingExceptions.id })
+      .from(recurringBookingExceptions)
+      .where(
+        and(
+          eq(recurringBookingExceptions.recurringBookingId, recurringBookingId),
+          eq(recurringBookingExceptions.date, date),
+        ),
+      );
+    if (existing.length > 0) return;
+    await db.insert(recurringBookingExceptions).values({ recurringBookingId, date });
+  }
+
+  async removeRecurringBookingException(recurringBookingId: string, date: string): Promise<void> {
+    await db
+      .delete(recurringBookingExceptions)
+      .where(
+        and(
+          eq(recurringBookingExceptions.recurringBookingId, recurringBookingId),
+          eq(recurringBookingExceptions.date, date),
+        ),
+      );
+  }
+
   async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
     const settings = await this.loadSettings();
     const rules = await db.select().from(recurringBookings);
@@ -920,13 +979,23 @@ export class DbStorage implements IStorage {
         const wd = isoWeekday(d);
         if (!rule.weekdays.includes(wd)) continue;
         const dateStr = localDateStr(d);
+        const excepted = await db
+          .select({ id: recurringBookingExceptions.id })
+          .from(recurringBookingExceptions)
+          .where(
+            and(
+              eq(recurringBookingExceptions.recurringBookingId, rule.id),
+              eq(recurringBookingExceptions.date, dateStr),
+            ),
+          );
+        if (excepted.length > 0) { skipped++; continue; }
         const slot = await this.ensureSlot(dateStr, rule.hour, settings);
         if (slot.isBlocked) { skipped++; continue; }
-        // Already has a booking for this rule on this slot?
-        const existingForRule = await db.select().from(bookings).where(
-          and(eq(bookings.recurringBookingId, rule.id), eq(bookings.timeSlotId, slot.id), ne(bookings.status, "cancelled"))
+        // Already materialized for this rule on this slot (incl. cancelled)?
+        const anyForRule = await db.select().from(bookings).where(
+          and(eq(bookings.recurringBookingId, rule.id), eq(bookings.timeSlotId, slot.id)),
         );
-        if (existingForRule.length > 0) continue;
+        if (anyForRule.length > 0) continue;
         // Student already booked that day?
         const daySlots = await db.select().from(timeSlots).where(eq(timeSlots.date, dateStr));
         const daySlotIds = daySlots.map(s => s.id);

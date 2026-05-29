@@ -18,13 +18,14 @@ export type TrainerCancelBookingTarget = {
   slotDate: string;
   slotTime: string;
   isPast: boolean;
+  isRecurring?: boolean;
 };
 
 export function useTrainerBookingCancel(onCancel: (bookingId: string) => void) {
   const [target, setTarget] = useState<TrainerCancelBookingTarget | null>(null);
 
   const requestCancel = (next: TrainerCancelBookingTarget) => {
-    if (next.isPast) {
+    if (next.isPast || next.isRecurring) {
       setTarget(next);
       return;
     }
@@ -35,7 +36,9 @@ export function useTrainerBookingCancel(onCancel: (bookingId: string) => void) {
     <AlertDialog open={!!target} onOpenChange={(open) => !open && setTarget(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Удалить прошедшую запись?</AlertDialogTitle>
+          <AlertDialogTitle>
+            {target?.isPast ? "Удалить прошедшую запись?" : "Отменить запись?"}
+          </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
@@ -47,10 +50,20 @@ export function useTrainerBookingCancel(onCancel: (bookingId: string) => void) {
                   ? format(new Date(`${target.slotDate}T00:00:00`), "d MMMM yyyy", { locale: ru })
                   : ""}
               </p>
-              <p>
-                Тренировка уже прошла. Запись будет удалена из расписания (отменена).
-                Проверьте, что выбрали правильного ученика и время — отменить действие будет нельзя.
-              </p>
+              {target?.isPast ? (
+                <p>
+                  Тренировка уже прошла. Запись будет удалена из расписания (отменена).
+                  Проверьте, что выбрали правильного ученика и время — отменить действие будет нельзя.
+                </p>
+              ) : target?.isRecurring ? (
+                <p>
+                  Это занятие из повторяющегося правила. Будет отменено только на эту дату — правило
+                  продолжит работать на другие дни. При необходимости дату можно вернуть в блоке
+                  «Повторяющиеся записи».
+                </p>
+              ) : (
+                <p>Запись будет отменена.</p>
+              )}
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
