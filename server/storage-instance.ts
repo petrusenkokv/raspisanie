@@ -37,10 +37,17 @@ async function initStorage() {
   }
 }
 
-void initStorage().catch((err) => {
+const storageInitPromise = initStorage().catch((err) => {
   console.error("[storage] Failed to initialize database storage, fallback to in-memory:", err);
   storage = new MemStorage();
 });
+
+/** Wait until DB storage (and seed migrations) are ready — call before handling API traffic. */
+export async function ensureStorageReady(): Promise<void> {
+  await storageInitPromise;
+}
+
+void storageInitPromise;
 
 if (!process.env.DATABASE_URL) {
   console.log("[storage] DATABASE_URL not set — using in-memory storage");

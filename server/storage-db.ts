@@ -119,6 +119,26 @@ function normalizeSlot(s: TimeSlot): TimeSlot {
 export class DbStorage implements IStorage {
   private settingsCache: TrainerSettings | null = null;
   private broadcastLogs: Map<string, BroadcastLog> = new Map();
+  private recurringExceptionsSchemaReady = false;
+
+  private async ensureRecurringExceptionsSchema(): Promise<void> {
+    if (this.recurringExceptionsSchemaReady) return;
+    try {
+      await db.execute(drizzleSql`
+        CREATE TABLE IF NOT EXISTS recurring_booking_exceptions (
+          id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+          recurring_booking_id varchar NOT NULL REFERENCES recurring_bookings(id) ON DELETE CASCADE,
+          date text NOT NULL,
+          created_at timestamp DEFAULT now()
+        )
+      `);
+      await db.execute(drizzleSql`
+        CREATE UNIQUE INDEX IF NOT EXISTS recurring_booking_exceptions_rule_date
+        ON recurring_booking_exceptions (recurring_booking_id, date)
+      `);
+    } catch { /* ignore */ }
+    this.recurringExceptionsSchemaReady = true;
+  }
 
   // ======================== SETTINGS ========================
 
@@ -191,6 +211,20 @@ export class DbStorage implements IStorage {
           created_at timestamp DEFAULT now(),
           UNIQUE(parent_id, child_id)
         )
+      `);
+    } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`
+        CREATE TABLE IF NOT EXISTS recurring_booking_exceptions (
+          id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+          recurring_booking_id varchar NOT NULL REFERENCES recurring_bookings(id) ON DELETE CASCADE,
+          date text NOT NULL,
+          created_at timestamp DEFAULT now()
+        )
+      `);
+      await db.execute(drizzleSql`
+        CREATE UNIQUE INDEX IF NOT EXISTS recurring_booking_exceptions_rule_date
+        ON recurring_booking_exceptions (recurring_booking_id, date)
       `);
     } catch { /* ignore */ }
 
@@ -931,6 +965,7 @@ export class DbStorage implements IStorage {
   }
 
   async getRecurringBookingExceptions(recurringBookingId: string): Promise<string[]> {
+    await this.ensureRecurringExceptionsSchema();
     const rows = await db
       .select({ date: recurringBookingExceptions.date })
       .from(recurringBookingExceptions)
@@ -940,6 +975,7 @@ export class DbStorage implements IStorage {
   }
 
   async addRecurringBookingException(recurringBookingId: string, date: string): Promise<void> {
+    await this.ensureRecurringExceptionsSchema();
     const existing = await db
       .select({ id: recurringBookingExceptions.id })
       .from(recurringBookingExceptions)
@@ -954,6 +990,7 @@ export class DbStorage implements IStorage {
   }
 
   async removeRecurringBookingException(recurringBookingId: string, date: string): Promise<void> {
+    await this.ensureRecurringExceptionsSchema();
     await db
       .delete(recurringBookingExceptions)
       .where(
@@ -965,6 +1002,7 @@ export class DbStorage implements IStorage {
   }
 
   async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
+    await this.ensureRecurringExceptionsSchema();
     const settings = await this.loadSettings();
     const rules = await db.select().from(recurringBookings);
     let created = 0;

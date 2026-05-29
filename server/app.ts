@@ -4,6 +4,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { startReminderScheduler } from "./reminders";
 import { moscowDateString } from "./moscow-date";
 import { setupSession } from "./auth";
+import { ensureStorageReady } from "./storage-instance";
 
 type AppOptions = {
   serveClient?: boolean;
@@ -12,6 +13,8 @@ type AppOptions = {
 };
 
 export async function createApp(options: AppOptions = {}) {
+  await ensureStorageReady();
+
   const app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
