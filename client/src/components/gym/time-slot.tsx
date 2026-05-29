@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmedBookingHint } from "./confirmed-booking-hint";
+import { useTrainerBookingCancel } from "./trainer-cancel-booking";
 import {
   shouldShowMembershipBadge,
   shouldShowTrainerPaymentBadge,
@@ -46,6 +47,8 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const [rescheduleBooking, setRescheduleBooking] = useState<{
     id: string; studentId: string;
   } | null>(null);
+  const { requestCancel: requestTrainerCancel, dialog: trainerCancelDialog } =
+    useTrainerBookingCancel(onCancel);
 
   const { data: scheduleSettings } = useQuery<{
     bookingDeadlineHours?: number;
@@ -379,18 +382,24 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                             <ArrowLeftRight className="h-3 w-3" />
                           </Button>
                         )}
-                        {!showAttendance && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onCancel(booking.id)}
-                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                            title="Удалить запись"
-                            data-testid={`button-trainer-cancel-${booking.id}`}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            requestTrainerCancel({
+                              bookingId: booking.id,
+                              studentName: `${booking.student.firstName} ${booking.student.lastName ?? ""}`.trim(),
+                              slotDate: timeSlot.date,
+                              slotTime: timeSlot.time,
+                              isPast: showAttendance,
+                            })
+                          }
+                          className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          title={showAttendance ? "Удалить прошедшую запись" : "Удалить запись"}
+                          data-testid={`button-trainer-cancel-${booking.id}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
                       </div>
                     </div>
                     {showAttendance && (
@@ -691,6 +700,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
           currentTime={timeSlot.time}
         />
       )}
+      {trainerCancelDialog}
     </>
   );
 }

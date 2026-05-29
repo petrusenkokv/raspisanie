@@ -12,6 +12,7 @@ import { format, isSameDay, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Clock, Users, UserCheck, LogIn, UserPlus, Lock, Unlock } from "lucide-react";
 import { ConfirmedBookingHint } from "./confirmed-booking-hint";
+import { useTrainerBookingCancel } from "./trainer-cancel-booking";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 function minutesUntilSlotMoscow(date: string, time: string): number {
@@ -437,6 +438,8 @@ interface WeekCellProps {
 function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: WeekCellProps) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
+  const { requestCancel: requestTrainerCancel, dialog: trainerCancelDialog } =
+    useTrainerBookingCancel(onCancel);
   const { data: scheduleSettings } = useQuery<{
     bookingDeadlineHours?: number;
     cancelDeadlineHours?: number;
@@ -447,6 +450,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   const bookingDeadlineH = scheduleSettings?.bookingDeadlineHours ?? 0;
   const cancelDeadlineH = scheduleSettings?.cancelDeadlineHours ?? 0;
   const minutesUntil = minutesUntilSlotMoscow(timeSlot.date, timeSlot.time);
+  const isPast = minutesUntil < -60;
   const tooLateToBook =
     !isTrainer && bookingDeadlineH > 0 && minutesUntil <= bookingDeadlineH * 60;
   const tooLateToCancel =
@@ -551,6 +555,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   }
 
   return (
+    <>
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{cellContent}</PopoverTrigger>
       <PopoverContent className="w-72 p-4" side="bottom" align="center">
@@ -604,8 +609,17 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                     variant="ghost"
                     size="sm"
                     className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
-                    onClick={() => { onCancel(booking.id); setOpen(false); }}
-                    title="Отменить"
+                    onClick={() => {
+                      setOpen(false);
+                      requestTrainerCancel({
+                        bookingId: booking.id,
+                        studentName: `${booking.student.firstName} ${booking.student.lastName ?? ""}`.trim(),
+                        slotDate: timeSlot.date,
+                        slotTime: timeSlot.time,
+                        isPast,
+                      });
+                    }}
+                    title={isPast ? "Удалить прошедшую запись" : "Удалить запись"}
                   >
                     ✕
                   </Button>
@@ -721,5 +735,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
         )}
       </PopoverContent>
     </Popover>
+    {trainerCancelDialog}
+    </>
   );
 }
