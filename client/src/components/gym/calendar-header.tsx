@@ -184,7 +184,7 @@ export function CalendarHeader({
   return (
     <header className="border-b bg-white dark:bg-gray-900 shadow-sm">
       {/* Date hero — главный фокус */}
-      <div className="bg-gradient-to-b from-blue-50/90 to-white dark:from-blue-950/40 dark:to-gray-900 px-3 sm:px-4 pt-3 pb-3 border-b border-blue-100/80 dark:border-blue-900/40">
+      <div className="bg-gradient-to-b from-blue-50/90 to-white dark:from-blue-950/40 dark:to-gray-900 px-3 sm:px-4 pt-3 pb-3 border-b border-blue-100/80 dark:border-blue-900/40 overflow-x-hidden">
         <div className="flex items-center gap-2 mb-3">
           <Calendar className="h-5 w-5 text-blue-600 flex-shrink-0" aria-hidden />
           <h1 className="text-sm font-semibold text-gray-600 dark:text-gray-300 truncate">
@@ -215,12 +215,12 @@ export function CalendarHeader({
               <ChevronLeft className="h-5 w-5" />
             </Button>
 
-            <div className="flex-1 min-w-0 px-1 text-center">
-              <p className="sm:hidden text-base font-bold text-gray-900 dark:text-white leading-snug whitespace-nowrap">
+            <div className="flex-1 min-w-0 px-1 text-center overflow-hidden">
+              <p
+                className="text-base md:text-lg font-bold text-gray-900 dark:text-white leading-snug whitespace-nowrap tabular-nums"
+                title={formatDateLong(selectedDate)}
+              >
                 {formatDateLong(selectedDate, true)}
-              </p>
-              <p className="hidden sm:block text-lg md:text-xl font-bold text-gray-900 dark:text-white leading-tight">
-                {formatDateLong(selectedDate)}
               </p>
             </div>
 
@@ -237,19 +237,19 @@ export function CalendarHeader({
           </div>
 
           {/* Строка 2: «Сегодня» и День / Неделя / Месяц */}
-          <div className="flex flex-col items-stretch gap-2 max-w-sm mx-auto w-full sm:flex-row sm:flex-wrap sm:justify-center sm:max-w-none">
+          <div className="flex flex-col items-stretch gap-2 w-full max-w-md mx-auto md:max-w-none md:flex-row md:flex-wrap md:justify-center">
             <Button
               variant={isOnToday ? "secondary" : "default"}
               size="sm"
               onClick={goToToday}
               disabled={isOnToday}
-              className="h-9 rounded-full px-3 w-full sm:w-auto shrink-0"
+              className="h-9 rounded-full px-3 w-full md:w-auto shrink-0"
               data-testid="button-today"
             >
               <CalendarDays className="h-4 w-4 mr-1.5 shrink-0" />
               <span className="text-sm">Сегодня</span>
             </Button>
-            <div className="grid grid-cols-3 gap-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-900 p-0.5 shadow-sm sm:inline-flex sm:gap-0">
+            <div className="grid grid-cols-3 gap-1 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-900 p-0.5 shadow-sm md:inline-flex md:w-auto md:gap-0">
               {(Object.keys(VIEW_LABELS) as ViewType[]).map((view) => (
                 <Button
                   key={view}
@@ -257,7 +257,7 @@ export function CalendarHeader({
                   size="sm"
                   onClick={() => handleViewChange(view)}
                   className={cn(
-                    "h-8 rounded-md px-1.5 sm:px-3 text-xs sm:text-sm min-w-0 w-full sm:w-auto",
+                    "h-8 rounded-md px-2 text-xs md:text-sm min-w-0 w-full md:w-auto !whitespace-normal",
                     currentView !== view && "text-gray-600 dark:text-gray-400",
                   )}
                   data-testid={`button-view-${view}`}
@@ -272,7 +272,7 @@ export function CalendarHeader({
 
       {/* Панель действий — одна строка справа */}
       <div className="mx-3 sm:mx-4 my-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/50 px-3 py-2 shadow-sm">
-        <div className="flex flex-wrap items-center justify-end gap-1.5 w-full">
+        <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 w-full">
           {isPendingApproval && (
             <span className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1 mr-auto sm:mr-0 order-first sm:order-none w-full sm:w-auto justify-center sm:justify-start">
               <Clock className="h-3.5 w-3.5 flex-shrink-0" />

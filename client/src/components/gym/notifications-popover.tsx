@@ -334,14 +334,15 @@ export function NotificationsPopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        align="end"
-        collisionPadding={12}
-        className="w-[min(100vw-1.5rem,20rem)] sm:w-80 p-0"
+        align="center"
+        side="bottom"
+        collisionPadding={16}
+        className="w-[calc(100vw-2rem)] max-w-sm sm:w-80 p-0 z-[100]"
         data-testid="popover-notifications"
       >
-        <div className="flex flex-col gap-2 px-4 py-3 border-b sm:flex-row sm:items-center sm:justify-between">
-          <div className="font-semibold text-sm shrink-0">Уведомления</div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex flex-col gap-2 px-4 py-3 border-b">
+          <div className="font-semibold text-base shrink-0">Уведомления</div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
             {unreadCount > 0 && (
               <button
                 type="button"
