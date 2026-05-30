@@ -274,8 +274,8 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                     store.setCurrentView("day");
                   }}
                 >
-                  <div className="flex flex-col h-full">
-                    <div className="flex items-center justify-between gap-1">
+                  <div className="relative flex flex-col h-full">
+                    <div className="flex items-center justify-between gap-1 shrink-0 relative z-10">
                       <span className={`text-sm font-medium ${
                         isTrainerClosed
                           ? "text-gray-500 dark:text-gray-400 line-through"
@@ -324,16 +324,16 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                       </div>
                     )}
                     {openSlots.length > 0 && viewerIsGuest && (
-                      <div className="flex-1 flex flex-col justify-end items-center text-center">
-                        <div
-                          className={`text-xs font-medium truncate w-full ${
+                      <div className="absolute inset-0 flex items-center justify-center px-1 pointer-events-none">
+                        <span
+                          className={`text-xs font-medium text-center leading-tight ${
                             openSlots.some((ts) => ts.availableSpots > 0)
                               ? "text-green-600 dark:text-green-400"
                               : "text-red-500 dark:text-red-400"
                           }`}
                         >
                           {monthDayGuestLabel(openSlots)}
-                        </div>
+                        </span>
                       </div>
                     )}
                     {isTrainerClosed && (
