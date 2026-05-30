@@ -23,8 +23,11 @@ import {
 } from "@/lib/utils-gym";
 import {
   getStudentSlotAvailability,
+  getStudentSlotFillLevel,
   studentAvailabilityHint,
   studentSlotBadgeText,
+  dayCardStudentFillClasses,
+  dayCardGuestNeutralClasses,
 } from "@/lib/slot-availability-ui";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -191,14 +194,27 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     full: "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800",
     "almost-full": "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800",
     available: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800",
-    neutral: "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700",
   };
 
   const status = getSlotStatus();
   const isGuest = !currentUser;
   const studentAvailability = getStudentSlotAvailability(isBlocked, isFull);
-  const cardStatusStyle =
-    isGuest && !isBlocked ? statusStyles.neutral : statusStyles[status];
+  const studentFillLevel = getStudentSlotFillLevel(
+    isBlocked,
+    isFull,
+    allActiveBookings.length,
+  );
+  const cardStatusStyle = (() => {
+    if (isGuest && !isBlocked) return dayCardGuestNeutralClasses;
+    if (isTrainer()) return statusStyles[status];
+    if (userBooking?.status === "pending") {
+      return "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800";
+    }
+    if (userBooking?.status === "confirmed") {
+      return "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800";
+    }
+    return dayCardStudentFillClasses[studentFillLevel];
+  })();
 
   const handleCardClick = () => {
     if (!currentUser && !isBlocked && !isFull) {

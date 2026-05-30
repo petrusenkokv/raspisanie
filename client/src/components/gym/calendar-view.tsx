@@ -14,6 +14,13 @@ import {
   studentAvailabilityHint,
   studentSlotBadgeText,
   getStudentSlotAvailability,
+  getStudentSlotFillLevel,
+  weekCellStudentFillClasses,
+  weekCellGuestAvailableClasses,
+  weekCellGuestFullClasses,
+  guestWeekCellLabel,
+  monthDayGuestLabel,
+  monthDayGuestTooltip,
 } from "@/lib/slot-availability-ui";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -113,6 +120,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
           ? [currentUser.id]
           : [];
     const viewerIsTrainer = isTrainer();
+    const viewerIsGuest = !currentUser && !viewerIsTrainer;
 
     // Build a sorted list of holiday dates for fast period lookup.
     const holidayMap = new Map(holidays.map((h) => [h.date, h]));
@@ -237,11 +245,15 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                     {openSlots.length === 1 ? "слоте" : openSlots.length < 5 ? "слотах" : "слотах"}
                   </div>
                 );
-              } else if (openSlots.length > 0 && currentUser) {
+              } else if (openSlots.length > 0 && currentUser && !viewerIsTrainer) {
                 tooltipNode = (
                   <div className="text-xs">
                     {monthDayStudentTooltip(openSlots, monthFamilyIds)}
                   </div>
+                );
+              } else if (openSlots.length > 0 && viewerIsGuest) {
+                tooltipNode = (
+                  <div className="text-xs">{monthDayGuestTooltip(openSlots)}</div>
                 );
               }
 
@@ -308,6 +320,19 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                       <div className="flex-1 flex flex-col justify-end">
                         <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                           {monthDayStudentLabel(openSlots, monthFamilyIds)}
+                        </div>
+                      </div>
+                    )}
+                    {openSlots.length > 0 && viewerIsGuest && (
+                      <div className="flex-1 flex flex-col justify-end items-center text-center">
+                        <div
+                          className={`text-xs font-medium truncate w-full ${
+                            openSlots.some((ts) => ts.availableSpots > 0)
+                              ? "text-green-600 dark:text-green-400"
+                              : "text-red-500 dark:text-red-400"
+                          }`}
+                        >
+                          {monthDayGuestLabel(openSlots)}
                         </div>
                       </div>
                     )}
@@ -522,12 +547,15 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   const isBlocked = timeSlot.isBlocked;
   const occupiedCount = allActive.length;
   const studentAvailability = getStudentSlotAvailability(isBlocked, isFull);
+  const studentFillLevel = getStudentSlotFillLevel(isBlocked, isFull, occupiedCount);
 
   // Cell colour
   const cellClass = isBlocked
-    ? "bg-gray-200 dark:bg-gray-700 text-gray-400"
+    ? weekCellStudentFillClasses.blocked
     : isGuest
-      ? "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700"
+      ? isFull
+        ? weekCellGuestFullClasses
+        : weekCellGuestAvailableClasses
     : isTrainer
     ? isFull
       ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300"
@@ -538,15 +566,19 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
     ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 ring-1 ring-green-400"
     : userBooking?.status === "pending"
     ? "bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300 ring-1 ring-yellow-400"
-    : isFull
-    ? "bg-red-50 dark:bg-red-900/20 text-red-400"
-    : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 hover:bg-green-100";
+    : weekCellStudentFillClasses[studentFillLevel];
 
   const cellContent = (
     <button
       className={`w-full h-9 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${cellClass}`}
       onClick={() => setOpen(true)}
       disabled={isBlocked && !isTrainer}
+      aria-label={
+        isGuest && !isBlocked
+          ? `Записаться на ${timeSlot.time.slice(0, 5)}`
+          : undefined
+      }
+      title={isGuest && !isBlocked ? "Нажмите, чтобы войти и записаться" : undefined}
     >
       {isBlocked ? (
         <span className="text-xs">—</span>
@@ -568,7 +600,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
       ) : userBooking?.status === "pending" ? (
         <><Clock className="h-3 w-3" /><span>{isBookingForCurrentUser ? "Заявка" : "Ребёнок"}</span></>
       ) : isGuest ? (
-        <span className="text-[10px]">·</span>
+        <span>{guestWeekCellLabel(isFull)}</span>
       ) : (
         <span>{studentSlotBadgeText(studentAvailability)}</span>
       )}
