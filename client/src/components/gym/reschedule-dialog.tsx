@@ -183,9 +183,15 @@ export function RescheduleDialog({
                       }`}
                     >
                       <span>{s.time.slice(0, 5)}</span>
-                      <Badge variant="secondary" className="text-xs px-1 py-0">
-                        {free}/{s.maxCapacity}
-                      </Badge>
+                      {isTrainer() ? (
+                        <Badge variant="secondary" className="text-xs px-1 py-0">
+                          {free}/{s.maxCapacity}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs px-1 py-0">
+                          Можно
+                        </Badge>
+                      )}
                     </button>
                   );
                 })}

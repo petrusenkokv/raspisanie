@@ -21,6 +21,11 @@ import {
   shouldShowMembershipBadge,
   shouldShowTrainerPaymentBadge,
 } from "@/lib/utils-gym";
+import {
+  getStudentSlotAvailability,
+  studentAvailabilityHint,
+  studentSlotBadgeText,
+} from "@/lib/slot-availability-ui";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -174,7 +179,10 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const getSlotStatus = () => {
     if (isBlocked) return "blocked";
     if (isFull) return "full";
-    if (timeSlot.availableSpots === 1) return "almost-full";
+    if (isTrainer()) {
+      if (timeSlot.availableSpots === 1) return "almost-full";
+      return "available";
+    }
     return "available";
   };
 
@@ -182,10 +190,15 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     blocked: "bg-gray-200 dark:bg-gray-700 border-gray-300",
     full: "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800",
     "almost-full": "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800",
-    available: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+    available: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800",
+    neutral: "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700",
   };
 
   const status = getSlotStatus();
+  const isGuest = !currentUser;
+  const studentAvailability = getStudentSlotAvailability(isBlocked, isFull);
+  const cardStatusStyle =
+    isGuest && !isBlocked ? statusStyles.neutral : statusStyles[status];
 
   const handleCardClick = () => {
     if (!currentUser && !isBlocked && !isFull) {
@@ -203,7 +216,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
       className={cn(
         "p-4 transition-all duration-200 hover:shadow-md",
         !currentUser && !isBlocked && !isFull && "cursor-pointer",
-        statusStyles[status],
+        cardStatusStyle,
         userBooking && "ring-2 ring-blue-500"
       )}
       onClick={handleCardClick}
@@ -218,21 +231,31 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
         </div>
 
         <div className="flex items-center gap-2">
-          <Badge
-            variant={status === "available" ? "default" : "secondary"}
-            className="text-xs"
-          >
-            {status === "blocked" ? blockedLabel :
-             status === "full" ? "Занято" :
-             status === "almost-full" ? "Почти полно" : "Свободно"}
-          </Badge>
-
-          {!isBlocked && !isTrainer() && (
-            <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
-              <Users className="h-3 w-3" />
-              <span>{confirmedBookings.length}/{timeSlot.maxCapacity}</span>
-            </div>
+          {(isTrainer() || currentUser) && (
+            <Badge
+              variant={
+                isTrainer()
+                  ? status === "available"
+                    ? "default"
+                    : "secondary"
+                  : studentAvailability === "available"
+                    ? "default"
+                    : "secondary"
+              }
+              className="text-xs"
+            >
+              {isTrainer()
+                ? status === "blocked"
+                  ? blockedLabel
+                  : status === "full"
+                    ? "Занято"
+                    : status === "almost-full"
+                      ? "Почти полно"
+                      : "Свободно"
+                : studentSlotBadgeText(studentAvailability, blockedLabel)}
+            </Badge>
           )}
+
           {!isBlocked && isTrainer() && (
             <Popover open={capPopoverOpen} onOpenChange={(o) => {
               setCapPopoverOpen(o);
@@ -582,9 +605,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                 </div>
               ) : (
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {timeSlot.availableSpots > 0
-                    ? `Свободных мест: ${timeSlot.availableSpots}`
-                    : "Мест не осталось"}
+                  {studentAvailabilityHint(isFull)}
                 </p>
               )}
             </div>
