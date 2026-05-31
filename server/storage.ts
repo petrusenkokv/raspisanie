@@ -180,6 +180,13 @@ function localDateStr(d: Date): string {
   return moscowDateString(d);
 }
 
+function slotHourFromTime(t: string): number {
+  const norm = t ? t.slice(0, 5) : t;
+  const fromColon = parseInt(norm.slice(0, 2), 10);
+  if (!Number.isNaN(fromColon)) return fromColon;
+  return parseInt(norm, 10);
+}
+
 function isoWeekday(date: Date): number {
   // Mon=1 .. Sun=7
   const w = date.getDay();
@@ -342,6 +349,7 @@ export class MemStorage implements IStorage {
     const isHoliday = Array.from(this.holidays.values()).some(h => h.date === date);
     const capacity = resolveCapacity(this.settings.weeklyTemplate, this.settings.defaultCapacity, date);
     for (let hour = startH; hour < endH; hour++) {
+      if (this.findSlotsAtHour(date, hour).length > 0) continue;
       const timeSlotId = randomUUID();
       const working = isWorkingHour(this.settings.weeklyTemplate, date, hour);
       let blockReason: string | null = null;
@@ -1397,6 +1405,7 @@ export class MemStorage implements IStorage {
     if (!hasAny) {
       this.generateTimeSlotsForDate(date);
     }
+    this.dedupeTimeSlotsForDate(date);
     const timeSlots = await this.getTimeSlotsByDate(date);
     return {
       date,
@@ -1436,13 +1445,96 @@ export class MemStorage implements IStorage {
   }
 
   // ----- Recurring bookings -----
+  private findSlotsAtHour(date: string, hour: number): TimeSlot[] {
+    return Array.from(this.timeSlots.values()).filter(
+      s => s.date === date && slotHourFromTime(s.time) === hour,
+    );
+  }
+
+  private dedupeTimeSlotsForDate(date: string): void {
+    const slotsForDay = Array.from(this.timeSlots.values()).filter(s => s.date === date);
+    const byHour = new Map<number, TimeSlot[]>();
+    for (const slot of slotsForDay) {
+      const hour = slotHourFromTime(slot.time);
+      const list = byHour.get(hour) ?? [];
+      list.push(slot);
+      byHour.set(hour, list);
+    }
+
+    for (const group of Array.from(byHour.values())) {
+      if (group.length <= 1) continue;
+
+      const scored = group.map((slot: TimeSlot) => {
+        const slotBookings = Array.from(this.bookings.values()).filter(b => b.timeSlotId === slot.id);
+        const confirmed = slotBookings.filter(b => b.status === "confirmed").length;
+        const active = slotBookings.filter(b => b.status !== "cancelled").length;
+        return { slot, confirmed, active };
+      });
+
+      scored.sort((a: { confirmed: number; active: number; slot: TimeSlot }, b: { confirmed: number; active: number; slot: TimeSlot }) => {
+        if (b.confirmed !== a.confirmed) return b.confirmed - a.confirmed;
+        if (b.active !== a.active) return b.active - a.active;
+        if (a.slot.isBlocked !== b.slot.isBlocked) return a.slot.isBlocked ? 1 : -1;
+        const aCreated = a.slot.createdAt?.getTime() ?? 0;
+        const bCreated = b.slot.createdAt?.getTime() ?? 0;
+        return aCreated - bCreated;
+      });
+
+      const keeper = scored[0].slot;
+      for (const { slot: dup } of scored.slice(1)) {
+        this.mergeDuplicateSlotInto(keeper.id, dup.id);
+      }
+    }
+  }
+
+  private mergeDuplicateSlotInto(keeperId: string, dupId: string): void {
+    const keeper = this.timeSlots.get(keeperId);
+    if (!keeper) return;
+
+    for (const [bid, b] of Array.from(this.bookings.entries())) {
+      if (b.timeSlotId !== dupId || b.status === "cancelled") continue;
+      this.bookings.set(bid, { ...b, timeSlotId: keeperId });
+    }
+
+    const dupBookingIds = Array.from(this.bookings.entries())
+      .filter(([, b]) => b.timeSlotId === dupId)
+      .map(([id]) => id);
+    for (const bid of dupBookingIds) {
+      for (const [nid, n] of Array.from(this.notifications.entries())) {
+        if (n.relatedBookingId === bid) {
+          this.notifications.set(nid, { ...n, relatedBookingId: null });
+        }
+      }
+      this.bookings.delete(bid);
+    }
+
+    const dup = this.timeSlots.get(dupId);
+    if (dup) {
+      const confirmedOnKeeper = Array.from(this.bookings.values()).filter(
+        b => b.timeSlotId === keeperId && b.status === "confirmed",
+      ).length;
+      this.timeSlots.set(keeperId, {
+        ...keeper,
+        maxCapacity: Math.max(keeper.maxCapacity, dup.maxCapacity, confirmedOnKeeper),
+        isManualCapacity: keeper.isManualCapacity || dup.isManualCapacity,
+      });
+    }
+
+    this.timeSlots.delete(dupId);
+  }
+
   private findSlot(date: string, hour: number): TimeSlot | undefined {
-    const time = `${String(hour).padStart(2, "0")}:00`;
-    return Array.from(this.timeSlots.values()).find(s => s.date === date && (s.time === time || s.time === time + ":00"));
+    const slots = this.findSlotsAtHour(date, hour);
+    return slots[0];
   }
 
   private ensureSlot(date: string, hour: number): TimeSlot {
-    let slot = this.findSlot(date, hour);
+    let slots = this.findSlotsAtHour(date, hour);
+    if (slots.length > 1) {
+      this.dedupeTimeSlotsForDate(date);
+      slots = this.findSlotsAtHour(date, hour);
+    }
+    let slot = slots[0];
     if (!slot) {
       const id = randomUUID();
       const isHoliday = Array.from(this.holidays.values()).some(h => h.date === date);
@@ -1784,6 +1876,8 @@ export class MemStorage implements IStorage {
           this.timeSlots.set(s.id, { ...s, maxCapacity: target });
         }
       }
+
+      this.dedupeTimeSlotsForDate(date);
     }
 
     return { settings: await this.getTrainerSettings(), cancelledCount: cancelled.length };

@@ -112,6 +112,13 @@ function normalizeTime(t: string): string {
   return t ? t.slice(0, 5) : t;
 }
 
+function slotHourFromTime(t: string): number {
+  const norm = normalizeTime(t);
+  const fromColon = parseInt(norm.slice(0, 2), 10);
+  if (!Number.isNaN(fromColon)) return fromColon;
+  return parseInt(norm, 10);
+}
+
 function normalizeSlot(s: TimeSlot): TimeSlot {
   return { ...s, time: normalizeTime(s.time), date: typeof s.date === 'object' ? localDateStr(s.date as any) : String(s.date) };
 }
@@ -511,16 +518,93 @@ export class DbStorage implements IStorage {
     return rows.map(normalizeSlot);
   }
 
+  private async findSlotsAtHour(date: string, hour: number): Promise<TimeSlot[]> {
+    const rows = await db.select().from(timeSlots).where(eq(timeSlots.date, date));
+    return rows.filter(s => slotHourFromTime(s.time) === hour).map(normalizeSlot);
+  }
+
+  /** Merge duplicate slots for the same date/hour (keeps the one with bookings). */
+  private async dedupeTimeSlotsForDate(date: string): Promise<void> {
+    const rows = await db.select().from(timeSlots).where(eq(timeSlots.date, date));
+    const byHour = new Map<number, TimeSlot[]>();
+    for (const raw of rows) {
+      const s = normalizeSlot(raw);
+      const hour = slotHourFromTime(s.time);
+      const list = byHour.get(hour) ?? [];
+      list.push(s);
+      byHour.set(hour, list);
+    }
+
+    for (const group of Array.from(byHour.values())) {
+      if (group.length <= 1) continue;
+
+      const scored = await Promise.all(group.map(async (slot: TimeSlot) => {
+        const confirmed = await db.select().from(bookings).where(
+          and(eq(bookings.timeSlotId, slot.id), eq(bookings.status, "confirmed")),
+        );
+        const active = await db.select().from(bookings).where(
+          and(eq(bookings.timeSlotId, slot.id), ne(bookings.status, "cancelled")),
+        );
+        return { slot, confirmed: confirmed.length, active: active.length };
+      }));
+
+      scored.sort((a, b) => {
+        if (b.confirmed !== a.confirmed) return b.confirmed - a.confirmed;
+        if (b.active !== a.active) return b.active - a.active;
+        if (a.slot.isBlocked !== b.slot.isBlocked) return a.slot.isBlocked ? 1 : -1;
+        const aCreated = a.slot.createdAt?.getTime() ?? 0;
+        const bCreated = b.slot.createdAt?.getTime() ?? 0;
+        return aCreated - bCreated;
+      });
+
+      const keeper = scored[0].slot;
+      for (const { slot: dup } of scored.slice(1)) {
+        await this.mergeDuplicateSlotInto(keeper.id, dup.id);
+      }
+    }
+  }
+
+  private async mergeDuplicateSlotInto(keeperId: string, dupId: string): Promise<void> {
+    const keeperRows = await db.select().from(timeSlots).where(eq(timeSlots.id, keeperId));
+    const keeper = keeperRows[0];
+    if (!keeper) return;
+
+    const dupBookings = await db.select().from(bookings).where(eq(bookings.timeSlotId, dupId));
+    for (const b of dupBookings) {
+      if (b.status === "cancelled") continue;
+      await db.update(bookings).set({ timeSlotId: keeperId }).where(eq(bookings.id, b.id));
+    }
+
+    const dupBookingIds = dupBookings.map(b => b.id);
+    if (dupBookingIds.length > 0) {
+      await db.update(notifications).set({ relatedBookingId: null }).where(inArray(notifications.relatedBookingId, dupBookingIds));
+      await db.delete(bookings).where(eq(bookings.timeSlotId, dupId));
+    }
+
+    const dupRows = await db.select().from(timeSlots).where(eq(timeSlots.id, dupId));
+    const dup = dupRows[0];
+    if (dup) {
+      const confirmedOnKeeper = (await db.select().from(bookings).where(
+        and(eq(bookings.timeSlotId, keeperId), eq(bookings.status, "confirmed")),
+      )).length;
+      const mergedCapacity = Math.max(keeper.maxCapacity, dup.maxCapacity, confirmedOnKeeper);
+      await db.update(timeSlots).set({
+        maxCapacity: mergedCapacity,
+        isManualCapacity: keeper.isManualCapacity || dup.isManualCapacity,
+      }).where(eq(timeSlots.id, keeperId));
+    }
+
+    await db.delete(timeSlots).where(eq(timeSlots.id, dupId));
+  }
+
   private async generateTimeSlotsForDate(date: string, settings: TrainerSettings): Promise<void> {
     const holidayRows = await db.select().from(holidays).where(eq(holidays.date, date));
     const isHoliday = holidayRows.length > 0;
     const capacity = resolveCapacity(settings.weeklyTemplate, settings.defaultCapacity, date);
     for (let hour = settings.dayStartHour; hour < settings.dayEndHour; hour++) {
-      const timeStr = `${hour.toString().padStart(2, "0")}:00`;
-      const existing = await db.select().from(timeSlots).where(
-        and(eq(timeSlots.date, date), or(eq(timeSlots.time, timeStr), eq(timeSlots.time, timeStr + ":00")))
-      );
+      const existing = await this.findSlotsAtHour(date, hour);
       if (existing.length > 0) continue;
+      const timeStr = `${hour.toString().padStart(2, "0")}:00`;
       const working = isWorkingHour(settings.weeklyTemplate, date, hour);
       let blockReason: string | null = null;
       if (isHoliday) blockReason = "holiday";
@@ -538,10 +622,12 @@ export class DbStorage implements IStorage {
 
   private async ensureSlot(date: string, hour: number, settings: TrainerSettings): Promise<TimeSlot> {
     const timeStr = `${String(hour).padStart(2, "0")}:00`;
-    const existing = await db.select().from(timeSlots).where(
-      and(eq(timeSlots.date, date), or(eq(timeSlots.time, timeStr), eq(timeSlots.time, timeStr + ":00")))
-    );
-    if (existing.length > 0) return normalizeSlot(existing[0]);
+    let existing = await this.findSlotsAtHour(date, hour);
+    if (existing.length > 1) {
+      await this.dedupeTimeSlotsForDate(date);
+      existing = await this.findSlotsAtHour(date, hour);
+    }
+    if (existing.length > 0) return existing[0];
     const holidayRows = await db.select().from(holidays).where(eq(holidays.date, date));
     const isHoliday = holidayRows.length > 0;
     const working = isWorkingHour(settings.weeklyTemplate, date, hour);
@@ -883,6 +969,7 @@ export class DbStorage implements IStorage {
     if (existing.length === 0) {
       await this.generateTimeSlotsForDate(date, settings);
     }
+    await this.dedupeTimeSlotsForDate(date);
     const slotRows = await db.select().from(timeSlots).where(eq(timeSlots.date, date)).orderBy(asc(timeSlots.time));
     const enriched = await Promise.all(slotRows.map(s => this.enrichSlot(normalizeSlot(s))));
     return { date, timeSlots: enriched };
@@ -1227,6 +1314,8 @@ export class DbStorage implements IStorage {
         const target = Math.max(newCapacity, confirmedCount);
         if (s.maxCapacity !== target) await db.update(timeSlots).set({ maxCapacity: target }).where(eq(timeSlots.id, s.id));
       }
+
+      await this.dedupeTimeSlotsForDate(dateStr);
     }
 
     return { settings: next, cancelledCount: cancelled.length };

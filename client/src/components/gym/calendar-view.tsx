@@ -414,6 +414,21 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
   />;
 }
 
+const normalizeSlotTime = (time: string) => (time.length >= 5 ? time.slice(0, 5) : time);
+
+const pickSlotForTime = (slots: TimeSlotWithBookings[], time: string): TimeSlotWithBookings | undefined => {
+  const norm = normalizeSlotTime(time);
+  const matching = slots.filter((s) => normalizeSlotTime(s.time) === norm);
+  if (matching.length === 0) return undefined;
+  if (matching.length === 1) return matching[0];
+  return matching.sort((a, b) => {
+    const aConfirmed = a.bookings.filter((x) => x.status === "confirmed").length;
+    const bConfirmed = b.bookings.filter((x) => x.status === "confirmed").length;
+    if (bConfirmed !== aConfirmed) return bConfirmed - aConfirmed;
+    return b.bookings.length - a.bookings.length;
+  })[0];
+};
+
 // ─── Compact week timetable ────────────────────────────────────────────────────
 interface WeekGridProps {
   dates: Date[];
@@ -434,7 +449,7 @@ function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLo
   // Collect all unique times across the week
   const allTimes = useMemo(() => {
     const times = new Set<string>();
-    dates.forEach((d) => getScheduleForDate(d).forEach((ts) => times.add(ts.time)));
+    dates.forEach((d) => getScheduleForDate(d).forEach((ts) => times.add(normalizeSlotTime(ts.time))));
     return Array.from(times).sort();
   }, [dates, getScheduleForDate]);
 
@@ -488,7 +503,7 @@ function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLo
               {/* Slot cells */}
               {dates.map((date) => {
                 const slots = getScheduleForDate(date);
-                const ts = slots.find((s) => s.time === time);
+                const ts = pickSlotForTime(slots, time);
                 if (!ts) {
                   return (
                     <div
