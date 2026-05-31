@@ -217,15 +217,18 @@ export function monthDayStudentTooltip(
   return hasAvailable ? "Можно записаться" : "Все занято";
 }
 
-/** Week grid: ученик — зелёный / оранжевый / красный по загрузке (без цифр). */
+/** Week grid: ученик — зелёный / оранжевый / синий / красный / серый (без цифр). */
 export const weekCellStudentFillClasses: Record<StudentSlotFillLevel, string> = {
-  blocked: "bg-gray-200 dark:bg-gray-700 text-gray-400",
+  blocked:
+    "bg-gray-200 dark:bg-gray-700 text-gray-400 ring-1 ring-inset ring-gray-300 dark:ring-gray-600",
   empty:
     "bg-green-50 dark:bg-green-900/25 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/40 ring-1 ring-inset ring-green-200 dark:ring-green-800",
   partial:
     "bg-amber-50 dark:bg-amber-900/25 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 ring-1 ring-inset ring-amber-300 dark:ring-amber-700",
-  full: "bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-300",
+  full: "bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-300 ring-1 ring-inset ring-red-200 dark:ring-red-800",
 };
+
+export const weekCellStudentBookedClasses = monthCellStudentFillClasses.booked;
 
 /** Week grid: гость — зелёный «Можно», красный «Занято». */
 export const weekCellGuestAvailableClasses = weekCellStudentFillClasses.empty;

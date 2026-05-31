@@ -3,6 +3,7 @@ import { useGymStore } from "@/store/gym-store";
 import { TimeSlot } from "./time-slot";
 import { MonthDayCellHint } from "./month-day-cell-hint";
 import { MonthCalendarLegend } from "./month-calendar-legend";
+import { CalendarCellHint, type CalendarCellHintLevel } from "./calendar-cell-hint";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -22,14 +23,13 @@ import {
   weekCellStudentFillClasses,
   weekCellGuestAvailableClasses,
   weekCellGuestFullClasses,
-  guestWeekCellLabel,
+  weekCellStudentBookedClasses,
   monthCellStudentFillClasses,
   monthCellGuestFillClasses,
 } from "@/lib/slot-availability-ui";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Clock, Users, UserCheck, LogIn, UserPlus, Lock, Unlock } from "lucide-react";
-import { ConfirmedBookingHint } from "./confirmed-booking-hint";
 import { useTrainerBookingCancel } from "./trainer-cancel-booking";
 import { useStudentBookingCancel } from "./student-cancel-booking";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -423,6 +423,7 @@ interface WeekGridProps {
 
 function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: WeekGridProps) {
   const { currentUser, isTrainer } = useGymStore();
+  const weekdayLabels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] as const;
 
   // Collect all unique times across the week
   const allTimes = useMemo(() => {
@@ -432,21 +433,22 @@ function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLo
   }, [dates, getScheduleForDate]);
 
   return (
-    <div className="overflow-x-auto -mx-4 px-4">
-      <div className="min-w-[500px]">
+    <div>
+      <div className="overflow-x-auto -mx-4 px-4">
+        <div className="min-w-[500px]">
         {/* Header row */}
         <div className="grid gap-1 mb-1" style={{ gridTemplateColumns: `60px repeat(${dates.length}, 1fr)` }}>
           <div /> {/* time column placeholder */}
-          {dates.map((date) => {
+          {dates.map((date, dayIndex) => {
             const isToday = isSameDay(date, new Date());
             return (
               <div key={date.toISOString()} className={`text-center py-2 rounded-lg ${
                 isToday ? "bg-blue-100 dark:bg-blue-900/30" : "bg-gray-50 dark:bg-gray-800"
               }`}>
-                <div className={`text-xs font-medium uppercase tracking-wide ${
+                <div className={`text-xs font-semibold ${
                   isToday ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"
                 }`}>
-                  {format(date, "EEE", { locale: ru })}
+                  {weekdayLabels[dayIndex]}
                 </div>
                 <div className={`text-sm font-bold ${
                   isToday ? "text-blue-700 dark:text-blue-300" : "text-gray-800 dark:text-white"
@@ -495,11 +497,28 @@ function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLo
           ))}
         </div>
       </div>
+      </div>
+      {!isTrainer() && <MonthCalendarLegend />}
     </div>
   );
 }
 
 // ─── Single compact cell with popover ─────────────────────────────────────────
+function getWeekSlotHintLevel(
+  isBlocked: boolean,
+  isGuest: boolean,
+  isFull: boolean,
+  occupiedCount: number,
+  hasFamilyBooking: boolean,
+): CalendarCellHintLevel {
+  if (isBlocked) return "blocked";
+  if (hasFamilyBooking) return "booked";
+  if (isGuest) return isFull ? "guest-full" : "guest-empty";
+  if (isFull) return "full";
+  if (occupiedCount > 0) return "partial";
+  return "empty";
+}
+
 interface WeekCellProps {
   timeSlot: TimeSlotWithBookings;
   currentUser: any;
@@ -572,6 +591,14 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   const occupiedCount = allActive.length;
   const studentAvailability = getStudentSlotAvailability(isBlocked, isFull);
   const studentFillLevel = getStudentSlotFillLevel(isBlocked, isFull, occupiedCount);
+  const hasFamilyBooking = familyBookings.length > 0;
+  const hintLevel = getWeekSlotHintLevel(
+    isBlocked,
+    isGuest,
+    isFull,
+    occupiedCount,
+    hasFamilyBooking,
+  );
 
   // Cell colour
   const cellClass = isBlocked
@@ -586,11 +613,20 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
       : occupiedCount > 0
         ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 ring-1 ring-green-400"
         : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 hover:bg-green-100"
-    : userBooking?.status === "confirmed"
-    ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 ring-1 ring-green-400"
-    : userBooking?.status === "pending"
-    ? "bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300 ring-1 ring-yellow-400"
+    : hasFamilyBooking
+    ? weekCellStudentBookedClasses
     : weekCellStudentFillClasses[studentFillLevel];
+
+  const hintAriaLabel =
+    hintLevel === "blocked"
+      ? "Закрыто"
+      : hintLevel === "booked"
+        ? "Ваша запись"
+        : hintLevel === "guest-empty" || hintLevel === "empty"
+          ? "Записаться"
+          : hintLevel === "partial"
+            ? "Мало мест"
+            : "Занято";
 
   const cellContent = (
     <button
@@ -598,35 +634,21 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
       onClick={() => setOpen(true)}
       disabled={isBlocked && !isTrainer}
       aria-label={
-        isGuest && !isBlocked
-          ? `Записаться на ${timeSlot.time.slice(0, 5)}`
+        !isTrainer
+          ? `${hintAriaLabel}, ${timeSlot.time.slice(0, 5)}`
           : undefined
       }
       title={isGuest && !isBlocked ? "Нажмите, чтобы войти и записаться" : undefined}
     >
-      {isBlocked ? (
-        <span className="text-xs">—</span>
-      ) : isTrainer ? (
+      {isTrainer ? (
         <>
           <Users className="h-3 w-3 shrink-0" />
           <span>
             {occupiedCount}/{timeSlot.maxCapacity}
           </span>
         </>
-      ) : userBooking?.status === "confirmed" ? (
-        <>
-          <ConfirmedBookingHint
-            iconClassName="h-3 w-3"
-            label={isBookingForCurrentUser ? "Запись подтверждена" : "Ребёнок записан"}
-          />
-          {!isBookingForCurrentUser && <span>Ребёнок</span>}
-        </>
-      ) : userBooking?.status === "pending" ? (
-        <><Clock className="h-3 w-3" /><span>{isBookingForCurrentUser ? "Заявка" : "Ребёнок"}</span></>
-      ) : isGuest ? (
-        <span>{guestWeekCellLabel(isFull)}</span>
       ) : (
-        <span>{studentSlotBadgeText(studentAvailability)}</span>
+        <CalendarCellHint fillLevel={hintLevel} layout="week" />
       )}
     </button>
   );
