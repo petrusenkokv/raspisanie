@@ -41,6 +41,56 @@ export function guestWeekCellLabel(isFull: boolean): string {
   return isFull ? "Занято" : "Можно";
 }
 
+export type MonthDayFillLevel = "booked" | "empty" | "partial" | "full";
+
+export function getMonthDayStudentFillLevel(
+  openSlots: TimeSlotWithBookings[],
+  familyStudentIds: string[],
+): MonthDayFillLevel {
+  const hasFamilyBooking = openSlots.some((ts) =>
+    ts.bookings.some(
+      (b) =>
+        (b.status === "confirmed" || b.status === "pending") &&
+        familyStudentIds.includes(b.studentId),
+    ),
+  );
+  if (hasFamilyBooking) return "booked";
+  const hasAvailable = openSlots.some((ts) => ts.availableSpots > 0);
+  if (!hasAvailable) return "full";
+  const totalBooked = openSlots.reduce(
+    (sum, ts) =>
+      sum +
+      ts.bookings.filter((b) => b.status === "confirmed" || b.status === "pending").length,
+    0,
+  );
+  if (totalBooked === 0) return "empty";
+  return "partial";
+}
+
+export function getMonthDayGuestFillLevel(
+  openSlots: TimeSlotWithBookings[],
+): "empty" | "full" {
+  const hasAvailable = openSlots.some((ts) => ts.availableSpots > 0);
+  return hasAvailable ? "empty" : "full";
+}
+
+/** Month grid: цвет ячейки без текста (ученик / родитель). */
+export const monthCellStudentFillClasses: Record<MonthDayFillLevel, string> = {
+  booked:
+    "bg-blue-50 dark:bg-blue-900/30 ring-1 ring-inset ring-blue-300 dark:ring-blue-700 hover:bg-blue-100/80 dark:hover:bg-blue-900/40",
+  empty:
+    "bg-green-50 dark:bg-green-900/25 ring-1 ring-inset ring-green-200 dark:ring-green-800 hover:bg-green-100 dark:hover:bg-green-900/40",
+  partial:
+    "bg-amber-50 dark:bg-amber-900/25 ring-1 ring-inset ring-amber-300 dark:ring-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40",
+  full: "bg-red-50 dark:bg-red-900/20 ring-1 ring-inset ring-red-200 dark:ring-red-800 hover:bg-red-100/80 dark:hover:bg-red-900/30",
+};
+
+/** Month grid: гость — только зелёный / красный. */
+export const monthCellGuestFillClasses: Record<"empty" | "full", string> = {
+  empty: monthCellStudentFillClasses.empty,
+  full: monthCellStudentFillClasses.full,
+};
+
 export function monthDayGuestLabel(openSlots: TimeSlotWithBookings[]): string {
   if (openSlots.length === 0) return "";
   const hasAvailable = openSlots.some((ts) => ts.availableSpots > 0);

@@ -6,17 +6,25 @@ interface BookingMessageFieldProps {
   id: string;
   value: string;
   onChange: (value: string) => void;
+  label?: string;
+  placeholder?: string;
 }
 
-export function BookingMessageField({ id, value, onChange }: BookingMessageFieldProps) {
+export function BookingMessageField({
+  id,
+  value,
+  onChange,
+  label = "Комментарий (необязательно)",
+  placeholder = "Заболел, не приду",
+}: BookingMessageFieldProps) {
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id}>Сообщение для тренера (необязательно)</Label>
+      <Label htmlFor={id}>{label}</Label>
       <Textarea
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value.slice(0, BOOKING_MESSAGE_MAX_LENGTH))}
-        placeholder="Например: заболел, не смогу прийти"
+        placeholder={placeholder}
         rows={2}
         maxLength={BOOKING_MESSAGE_MAX_LENGTH}
         className="resize-none text-sm"

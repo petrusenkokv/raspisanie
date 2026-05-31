@@ -9,18 +9,20 @@ import { Button } from "@/components/ui/button";
 import { type TimeSlotWithBookings, type Holiday, type WeeklyTemplate } from "@shared/schema";
 import { isSlotInWorkingHours, isWorkingDayByTemplate } from "@/lib/utils-gym";
 import {
-  monthDayStudentLabel,
   monthDayStudentTooltip,
+  monthDayGuestTooltip,
   studentAvailabilityHint,
   studentSlotBadgeText,
   getStudentSlotAvailability,
   getStudentSlotFillLevel,
+  getMonthDayStudentFillLevel,
+  getMonthDayGuestFillLevel,
   weekCellStudentFillClasses,
   weekCellGuestAvailableClasses,
   weekCellGuestFullClasses,
   guestWeekCellLabel,
-  monthDayGuestLabel,
-  monthDayGuestTooltip,
+  monthCellStudentFillClasses,
+  monthCellGuestFillClasses,
 } from "@/lib/slot-availability-ui";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -257,6 +259,23 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 );
               }
 
+              const monthStudentFill =
+                openSlots.length > 0 &&
+                !isTrainerClosed &&
+                !isTemplateDayOff &&
+                currentUser &&
+                !viewerIsTrainer
+                  ? getMonthDayStudentFillLevel(openSlots, monthFamilyIds)
+                  : null;
+              const monthGuestFill =
+                openSlots.length > 0 &&
+                !isTrainerClosed &&
+                !isTemplateDayOff &&
+                viewerIsGuest
+                  ? getMonthDayGuestFillLevel(openSlots)
+                  : null;
+              const monthColorFill = monthStudentFill ?? monthGuestFill;
+
               const cardContent = (
                 <Card
                   className={`p-2 h-20 cursor-pointer transition-colors ${
@@ -264,9 +283,19 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                       ? "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
                       : isTemplateDayOff
                         ? "bg-gray-50/80 dark:bg-gray-900/40 hover:bg-gray-100 dark:hover:bg-gray-800"
-                        : "hover:bg-gray-50 dark:hover:bg-gray-800"
+                        : monthStudentFill
+                          ? monthCellStudentFillClasses[monthStudentFill]
+                          : monthGuestFill
+                            ? monthCellGuestFillClasses[monthGuestFill]
+                            : "hover:bg-gray-50 dark:hover:bg-gray-800"
                   } ${
-                    isToday && !isTrainerClosed ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200" : ""
+                    isToday && !isTrainerClosed && !monthColorFill
+                      ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200"
+                      : ""
+                  } ${
+                    isToday && !isTrainerClosed && monthColorFill
+                      ? "ring-1 ring-blue-400 dark:ring-blue-500"
+                      : ""
                   } ${isSelected ? "ring-2 ring-blue-500" : ""}`}
                   onClick={() => {
                     const store = useGymStore.getState();
@@ -314,26 +343,6 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                             />
                           </div>
                         )}
-                      </div>
-                    )}
-                    {openSlots.length > 0 && !viewerIsTrainer && currentUser && (
-                      <div className="flex-1 flex flex-col justify-end">
-                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {monthDayStudentLabel(openSlots, monthFamilyIds)}
-                        </div>
-                      </div>
-                    )}
-                    {openSlots.length > 0 && viewerIsGuest && (
-                      <div className="absolute inset-0 flex items-center justify-center px-1 pointer-events-none">
-                        <span
-                          className={`text-xs font-medium text-center leading-tight ${
-                            openSlots.some((ts) => ts.availableSpots > 0)
-                              ? "text-green-600 dark:text-green-400"
-                              : "text-red-500 dark:text-red-400"
-                          }`}
-                        >
-                          {monthDayGuestLabel(openSlots)}
-                        </span>
                       </div>
                     )}
                     {isTrainerClosed && (

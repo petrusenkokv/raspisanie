@@ -47,12 +47,8 @@ export function useStudentBookingCancel(
           <AlertDialogDescription asChild>
             <div className="space-y-3 text-sm text-muted-foreground">
               {target?.personName ? (
-                <p>
-                  Запись:{" "}
-                  <span className="font-medium text-foreground">{target.personName}</span>
-                </p>
+                <p className="font-medium text-foreground">{target.personName}</p>
               ) : null}
-              <p>Запись будет отменена. Тренер получит уведомление.</p>
               <BookingMessageField
                 id="student-cancel-message"
                 value={message}
@@ -62,12 +58,12 @@ export function useStudentBookingCancel(
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Оставить запись</AlertDialogCancel>
+          <AlertDialogCancel>Назад</AlertDialogCancel>
           <AlertDialogAction
             className="bg-red-600 hover:bg-red-700"
             onClick={handleConfirm}
           >
-            Да, отменить
+            Отменить
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
