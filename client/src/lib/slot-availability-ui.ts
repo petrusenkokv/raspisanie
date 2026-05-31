@@ -103,6 +103,86 @@ export function monthDayGuestTooltip(openSlots: TimeSlotWithBookings[]): string 
   return hasAvailable ? "Можно записаться" : "Все занято";
 }
 
+export function getMonthFamilyBookingTimes(
+  openSlots: TimeSlotWithBookings[],
+  familyStudentIds: string[],
+  max = 2,
+): string[] {
+  const times: string[] = [];
+  for (const ts of openSlots) {
+    const hasBooking = ts.bookings.some(
+      (b) =>
+        (b.status === "confirmed" || b.status === "pending") &&
+        familyStudentIds.includes(b.studentId),
+    );
+    if (hasBooking) times.push(ts.time.slice(0, 5));
+  }
+  return Array.from(new Set(times)).sort().slice(0, max);
+}
+
+export function getMonthOpenSlotTimesPreview(
+  openSlots: TimeSlotWithBookings[],
+  max = 3,
+): string[] {
+  return openSlots
+    .filter((ts) => ts.availableSpots > 0)
+    .map((ts) => ts.time.slice(0, 5))
+    .sort()
+    .slice(0, max);
+}
+
+export function monthDayStudentHint(fill: MonthDayFillLevel): {
+  shortLabel: string;
+  labelClass: string;
+  timeClass: string;
+} {
+  switch (fill) {
+    case "booked":
+      return {
+        shortLabel: "Ваша запись",
+        labelClass: "text-blue-700 dark:text-blue-300",
+        timeClass: "text-blue-800 dark:text-blue-200",
+      };
+    case "empty":
+      return {
+        shortLabel: "Записаться",
+        labelClass: "text-green-700 dark:text-green-300",
+        timeClass: "text-green-800 dark:text-green-200",
+      };
+    case "partial":
+      return {
+        shortLabel: "Мало мест",
+        labelClass: "text-amber-800 dark:text-amber-300",
+        timeClass: "text-amber-900 dark:text-amber-200",
+      };
+    case "full":
+      return {
+        shortLabel: "Занято",
+        labelClass: "text-red-600 dark:text-red-400",
+        timeClass: "",
+      };
+  }
+}
+
+export function monthDayGuestHint(fill: "guest-empty" | "guest-full"): {
+  shortLabel: string;
+  labelClass: string;
+  timeClass: string;
+} {
+  if (fill === "guest-full") {
+    return {
+      shortLabel: "Занято",
+      labelClass: "text-red-600 dark:text-red-400",
+      timeClass: "",
+    };
+  }
+  return {
+    shortLabel: "Записаться",
+    labelClass: "text-green-700 dark:text-green-300",
+    timeClass: "text-green-800 dark:text-green-200",
+  };
+}
+
 export function monthDayStudentLabel(
   openSlots: TimeSlotWithBookings[],
   familyStudentIds: string[],

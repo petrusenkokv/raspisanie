@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useGymStore } from "@/store/gym-store";
 import { TimeSlot } from "./time-slot";
+import { MonthDayCellHint } from "./month-day-cell-hint";
+import { MonthCalendarLegend } from "./month-calendar-legend";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -187,7 +189,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
           <div key={wi} className="grid grid-cols-7 gap-1">
             {week.map((date, di) => {
               if (!date) {
-                return <div key={`empty-${wi}-${di}`} className="h-20" />;
+                return <div key={`empty-${wi}-${di}`} className="h-20 sm:h-[5.25rem]" />;
               }
               const slots = getScheduleForDate(date);
               const openSlots = slots.filter((ts) => !ts.isBlocked);
@@ -278,7 +280,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
 
               const cardContent = (
                 <Card
-                  className={`p-2 h-20 cursor-pointer transition-colors ${
+                  className={`p-2 h-20 sm:h-[5.25rem] cursor-pointer transition-colors ${
                     isTrainerClosed
                       ? "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
                       : isTemplateDayOff
@@ -345,6 +347,20 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                         )}
                       </div>
                     )}
+                    {monthColorFill && monthStudentFill && (
+                      <MonthDayCellHint
+                        openSlots={openSlots}
+                        fillLevel={monthStudentFill}
+                        familyStudentIds={monthFamilyIds}
+                      />
+                    )}
+                    {monthColorFill && monthGuestFill && (
+                      <MonthDayCellHint
+                        openSlots={openSlots}
+                        fillLevel={monthGuestFill === "empty" ? "guest-empty" : "guest-full"}
+                        familyStudentIds={[]}
+                      />
+                    )}
                     {isTrainerClosed && (
                       <div className="flex-1 flex flex-col justify-end">
                         <div className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate">
@@ -377,6 +393,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
             })}
           </div>
         ))}
+        {!viewerIsTrainer && <MonthCalendarLegend />}
       </div>
     );
   }
