@@ -1,4 +1,4 @@
-import { CircleSlash, UserCheck, Users } from "lucide-react";
+import { CircleSlash, Lock, UserCheck, Users } from "lucide-react";
 
 const LEGEND_ITEMS = [
   {
@@ -24,6 +24,12 @@ const LEGEND_ITEMS = [
     icon: CircleSlash,
     iconClass: "text-red-500 dark:text-red-400",
     bgClass: "bg-red-50 ring-1 ring-red-200 dark:bg-red-900/25 dark:ring-red-800",
+  },
+  {
+    label: "Закрыто",
+    icon: Lock,
+    iconClass: "text-gray-500 dark:text-gray-400",
+    bgClass: "bg-gray-200 ring-1 ring-gray-300 dark:bg-gray-700 dark:ring-gray-600",
   },
 ] as const;
 
