@@ -291,10 +291,17 @@ export function CalendarHeader({
         year: "numeric",
       });
     }
+    if (compact) {
+      const weekday = date.toLocaleDateString("ru-RU", { weekday: "short" });
+      const day = date.getDate();
+      const month = date.getMonth() + 1;
+      const year = date.getFullYear();
+      return `${weekday}, ${String(day).padStart(2, "0")}.${String(month).padStart(2, "0")}.${year}`;
+    }
     return date.toLocaleDateString("ru-RU", {
-      weekday: compact ? "short" : "long",
+      weekday: "long",
       day: "numeric",
-      month: compact ? "short" : "long",
+      month: "long",
       year: "numeric",
     });
   };
@@ -400,7 +407,7 @@ export function CalendarHeader({
 
               <div className="flex-1 min-w-0 px-1 text-center md:flex-none md:min-w-[12rem] lg:min-w-[16rem]">
                 <p
-                  className="text-base md:text-lg font-bold text-gray-900 dark:text-white leading-snug tabular-nums max-md:whitespace-nowrap"
+                  className="text-base md:text-lg font-bold text-gray-900 dark:text-white leading-snug tabular-nums truncate"
                   title={formatDateLong(selectedDate)}
                 >
                   <span className="md:hidden">{formatDateLong(selectedDate, true)}</span>
@@ -440,7 +447,7 @@ export function CalendarHeader({
                     size="sm"
                     onClick={() => handleViewChange(view)}
                     className={cn(
-                      "h-8 rounded-md px-2 text-xs md:text-sm min-w-0 w-full md:w-auto",
+                      "h-8 rounded-md px-2 text-xs md:text-sm min-w-0 w-full md:w-auto notranslate",
                       currentView !== view && "text-gray-600 dark:text-gray-400",
                     )}
                     data-testid={`button-view-${view}`}

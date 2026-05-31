@@ -258,7 +258,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                     ? "default"
                     : "secondary"
               }
-              className="text-xs"
+              className="text-xs notranslate"
             >
               {isTrainer()
                 ? status === "blocked"

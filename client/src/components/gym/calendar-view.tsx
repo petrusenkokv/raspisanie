@@ -52,6 +52,7 @@ function monthDayBookingLabel(booked: number, capacity: number): string {
   return `${booked} ${word}`;
 }
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
 interface CalendarViewProps {
@@ -424,6 +425,7 @@ interface WeekGridProps {
 function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: WeekGridProps) {
   const { currentUser, isTrainer } = useGymStore();
   const weekdayLabels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] as const;
+  const weekGridCols = "grid-cols-[2.25rem_repeat(7,minmax(0,1fr))] sm:grid-cols-[3rem_repeat(7,minmax(0,1fr))] md:grid-cols-[3.75rem_repeat(7,minmax(0,1fr))]";
 
   // Collect all unique times across the week
   const allTimes = useMemo(() => {
@@ -432,25 +434,31 @@ function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLo
     return Array.from(times).sort();
   }, [dates, getScheduleForDate]);
 
+  const formatWeekTimeLabel = (time: string) => {
+    const t = time.length >= 5 ? time.slice(0, 5) : time;
+    const [hour, minute] = t.split(":");
+    if (!minute || minute === "00") return String(Number(hour));
+    return t;
+  };
+
   return (
     <div>
-      <div className="overflow-x-auto -mx-4 px-4">
-        <div className="min-w-[500px]">
+      <div className="w-full min-w-0">
         {/* Header row */}
-        <div className="grid gap-1 mb-1" style={{ gridTemplateColumns: `60px repeat(${dates.length}, 1fr)` }}>
+        <div className={cn("grid gap-0.5 sm:gap-1 mb-1", weekGridCols)}>
           <div /> {/* time column placeholder */}
           {dates.map((date, dayIndex) => {
             const isToday = isSameDay(date, new Date());
             return (
-              <div key={date.toISOString()} className={`text-center py-2 rounded-lg ${
+              <div key={date.toISOString()} className={`text-center py-1 sm:py-2 rounded-md sm:rounded-lg min-w-0 ${
                 isToday ? "bg-blue-100 dark:bg-blue-900/30" : "bg-gray-50 dark:bg-gray-800"
               }`}>
-                <div className={`text-xs font-semibold ${
+                <div className={`text-[10px] sm:text-xs font-semibold leading-none ${
                   isToday ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"
                 }`}>
                   {weekdayLabels[dayIndex]}
                 </div>
-                <div className={`text-sm font-bold ${
+                <div className={`text-xs sm:text-sm font-bold leading-tight mt-0.5 ${
                   isToday ? "text-blue-700 dark:text-blue-300" : "text-gray-800 dark:text-white"
                 }`}>
                   {format(date, "d")}
@@ -461,23 +469,30 @@ function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLo
         </div>
 
         {/* Time rows */}
-        <div className="space-y-1">
+        <div className="space-y-0.5 sm:space-y-1">
           {allTimes.map((time) => (
             <div
               key={time}
-              className="grid gap-1 items-center"
-              style={{ gridTemplateColumns: `60px repeat(${dates.length}, 1fr)` }}
+              className={cn("grid gap-0.5 sm:gap-1 items-center", weekGridCols)}
             >
               {/* Time label */}
-              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 text-right pr-2 py-1">
-                {time}
+              <div className="text-[10px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 text-right pr-0.5 sm:pr-2 py-0.5 sm:py-1 tabular-nums leading-none">
+                <span className="sm:hidden">{formatWeekTimeLabel(time)}</span>
+                <span className="hidden sm:inline">{time.length >= 5 ? time.slice(0, 5) : time}</span>
               </div>
 
               {/* Slot cells */}
               {dates.map((date) => {
                 const slots = getScheduleForDate(date);
                 const ts = slots.find((s) => s.time === time);
-                if (!ts) return <div key={date.toISOString()} className="h-9 rounded bg-gray-100 dark:bg-gray-800 opacity-30" />;
+                if (!ts) {
+                  return (
+                    <div
+                      key={date.toISOString()}
+                      className="h-8 sm:h-9 rounded bg-gray-100 dark:bg-gray-800 opacity-30 min-w-0"
+                    />
+                  );
+                }
                 return (
                   <WeekCell
                     key={date.toISOString()}
@@ -496,7 +511,6 @@ function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLo
             </div>
           ))}
         </div>
-      </div>
       </div>
       {!isTrainer() && <MonthCalendarLegend />}
     </div>
@@ -630,7 +644,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
 
   const cellContent = (
     <button
-      className={`w-full h-9 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${cellClass}`}
+      className={`w-full min-w-0 h-8 sm:h-9 rounded text-[10px] sm:text-xs font-medium transition-colors flex items-center justify-center gap-0.5 sm:gap-1 ${cellClass}`}
       onClick={() => setOpen(true)}
       disabled={isBlocked && !isTrainer}
       aria-label={
@@ -642,8 +656,8 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
     >
       {isTrainer ? (
         <>
-          <Users className="h-3 w-3 shrink-0" />
-          <span>
+          <Users className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
+          <span className="tabular-nums leading-none">
             {occupiedCount}/{timeSlot.maxCapacity}
           </span>
         </>

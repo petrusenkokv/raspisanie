@@ -13,7 +13,7 @@ export type CalendarCellHintLevel =
   | "guest-full";
 
 const ICON_CLASS = "h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0";
-const WEEK_ICON_CLASS = "h-3 w-3 shrink-0";
+const WEEK_ICON_CLASS = "h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0";
 
 function HintIcon({
   fillLevel,
