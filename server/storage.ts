@@ -1630,6 +1630,35 @@ export class MemStorage implements IStorage {
     return cancelled;
   }
 
+  private removeOutOfRangeSlot(slot: TimeSlot): Booking[] {
+    if (slot.blockReason === "manual") return [];
+
+    const hasActive = Array.from(this.bookings.values()).some(
+      b => b.timeSlotId === slot.id && b.status !== "cancelled"
+    );
+    if (hasActive) {
+      if (slot.isBlocked) return [];
+      const cancelled = this.cancelBookingsOnSlot(slot.id);
+      this.timeSlots.set(slot.id, { ...slot, isBlocked: true, blockReason: "template" });
+      return cancelled;
+    }
+
+    const slotBookingIds: string[] = [];
+    for (const [bid, b] of Array.from(this.bookings.entries())) {
+      if (b.timeSlotId === slot.id) {
+        slotBookingIds.push(bid);
+        this.bookings.delete(bid);
+      }
+    }
+    for (const [nid, n] of Array.from(this.notifications.entries())) {
+      if (n.relatedBookingId && slotBookingIds.includes(n.relatedBookingId)) {
+        this.notifications.set(nid, { ...n, relatedBookingId: null });
+      }
+    }
+    this.timeSlots.delete(slot.id);
+    return [];
+  }
+
   async blockDate(date: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
     // Make sure all hours within current settings exist for this date
     for (let h = this.settings.dayStartHour; h < this.settings.dayEndHour; h++) {
@@ -1712,20 +1741,7 @@ export class MemStorage implements IStorage {
         const hour = parseInt(s.time.slice(0, 2), 10);
         const inRange = hour >= next.dayStartHour && hour < next.dayEndHour;
         if (!inRange) {
-          const hasActive = Array.from(this.bookings.values()).some(b =>
-            b.timeSlotId === s.id && b.status !== "cancelled"
-          );
-          if (!hasActive && s.blockReason !== "manual") {
-            this.timeSlots.delete(s.id);
-          } else {
-            // Out of range but has active bookings or manually blocked — leave it,
-            // but ensure it's blocked so no new bookings sneak in.
-            if (!s.isBlocked) {
-              const c = this.cancelBookingsOnSlot(s.id);
-              cancelled.push(...c);
-              this.timeSlots.set(s.id, { ...s, isBlocked: true, blockReason: "template" });
-            }
-          }
+          cancelled.push(...this.removeOutOfRangeSlot(s));
         }
       }
 

@@ -1094,6 +1094,30 @@ export class DbStorage implements IStorage {
     return cancelled;
   }
 
+  /** Remove slot outside working hours; cancels active bookings or deletes cancelled history first. */
+  private async removeOutOfRangeSlot(slot: TimeSlot): Promise<Booking[]> {
+    if (slot.blockReason === "manual") return [];
+
+    const hasActive = await db.select().from(bookings).where(
+      and(eq(bookings.timeSlotId, slot.id), ne(bookings.status, "cancelled"))
+    );
+    if (hasActive.length > 0) {
+      if (slot.isBlocked) return [];
+      const cancelled = await this.cancelBookingsOnSlot(slot.id);
+      await db.update(timeSlots).set({ isBlocked: true, blockReason: "template" }).where(eq(timeSlots.id, slot.id));
+      return cancelled;
+    }
+
+    const slotBookingRows = await db.select({ id: bookings.id }).from(bookings).where(eq(bookings.timeSlotId, slot.id));
+    const slotBookingIds = slotBookingRows.map(r => r.id);
+    if (slotBookingIds.length > 0) {
+      await db.update(notifications).set({ relatedBookingId: null }).where(inArray(notifications.relatedBookingId, slotBookingIds));
+      await db.delete(bookings).where(eq(bookings.timeSlotId, slot.id));
+    }
+    await db.delete(timeSlots).where(eq(timeSlots.id, slot.id));
+    return [];
+  }
+
   async blockDate(date: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
     const settings = await this.loadSettings();
     for (let h = settings.dayStartHour; h < settings.dayEndHour; h++) {
@@ -1167,18 +1191,8 @@ export class DbStorage implements IStorage {
         const hour = parseInt(normalizeTime(s.time).slice(0, 2), 10);
         const inRange = hour >= next.dayStartHour && hour < next.dayEndHour;
         if (!inRange) {
-          const hasActive = await db.select().from(bookings).where(
-            and(eq(bookings.timeSlotId, s.id), ne(bookings.status, "cancelled"))
-          );
-          if (hasActive.length === 0 && s.blockReason !== "manual") {
-            await db.delete(timeSlots).where(eq(timeSlots.id, s.id));
-          } else {
-            if (!s.isBlocked) {
-              const c = await this.cancelBookingsOnSlot(s.id);
-              cancelled.push(...c);
-              await db.update(timeSlots).set({ isBlocked: true, blockReason: "template" }).where(eq(timeSlots.id, s.id));
-            }
-          }
+          const c = await this.removeOutOfRangeSlot(s);
+          cancelled.push(...c);
         }
       }
 
