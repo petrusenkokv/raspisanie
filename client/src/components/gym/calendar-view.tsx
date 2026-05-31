@@ -318,9 +318,6 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                       }`}>
                         {format(date, "d")}
                       </span>
-                      {isTrainerClosed && (
-                        <Lock className="h-3 w-3 text-gray-500 dark:text-gray-400 shrink-0" />
-                      )}
                     </div>
                     {openSlots.length > 0 && viewerIsTrainer && (
                       <div className="flex-1 flex flex-col justify-end">
@@ -362,10 +359,11 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                       />
                     )}
                     {isTrainerClosed && (
-                      <div className="flex-1 flex flex-col justify-end">
-                        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate">
+                      <div className="flex-1 flex flex-col items-center justify-center gap-0.5 min-h-0 w-full px-0.5 pb-0.5 pointer-events-none">
+                        <Lock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-500 dark:text-gray-400 shrink-0" />
+                        <span className="hidden lg:block text-[10px] font-medium leading-tight text-center truncate max-w-full px-0.5 text-gray-600 dark:text-gray-400">
                           {period?.name?.trim() || "Закрыто"}
-                        </div>
+                        </span>
                       </div>
                     )}
                     {isTemplateDayOff && (
