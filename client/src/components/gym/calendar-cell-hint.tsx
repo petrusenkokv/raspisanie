@@ -57,13 +57,31 @@ function getHint(fillLevel: CalendarCellHintLevel) {
 
 type CalendarCellHintProps = {
   fillLevel: CalendarCellHintLevel;
-  layout: "month" | "week";
+  layout: "month" | "week" | "day";
 };
 
 export function CalendarCellHint({ fillLevel, layout }: CalendarCellHintProps) {
   const hint = getHint(fillLevel);
   const showLabel =
     fillLevel !== "full" && fillLevel !== "guest-full";
+
+  if (layout === "day") {
+    return (
+      <span className="inline-flex items-center gap-1.5 notranslate pointer-events-none">
+        <HintIcon fillLevel={fillLevel} />
+        {showLabel && (
+          <span
+            className={cn(
+              "hidden sm:inline text-xs font-medium leading-none",
+              hint.labelClass,
+            )}
+          >
+            {hint.shortLabel}
+          </span>
+        )}
+      </span>
+    );
+  }
 
   if (layout === "week") {
     return (

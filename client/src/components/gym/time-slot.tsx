@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmedBookingHint } from "./confirmed-booking-hint";
+import { CalendarCellHint, type CalendarCellHintLevel } from "./calendar-cell-hint";
 import { useTrainerBookingCancel } from "./trainer-cancel-booking";
 import { useStudentBookingCancel } from "./student-cancel-booking";
 import {
@@ -22,12 +23,11 @@ import {
   shouldShowTrainerPaymentBadge,
 } from "@/lib/utils-gym";
 import {
-  getStudentSlotAvailability,
   getStudentSlotFillLevel,
-  studentAvailabilityHint,
-  studentSlotBadgeText,
-  dayCardStudentFillClasses,
-  dayCardGuestNeutralClasses,
+  weekCellGuestAvailableClasses,
+  weekCellGuestFullClasses,
+  weekCellStudentBookedClasses,
+  weekCellStudentFillClasses,
 } from "@/lib/slot-availability-ui";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -198,22 +198,25 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
 
   const status = getSlotStatus();
   const isGuest = !currentUser;
-  const studentAvailability = getStudentSlotAvailability(isBlocked, isFull);
   const studentFillLevel = getStudentSlotFillLevel(
     isBlocked,
     isFull,
     allActiveBookings.length,
   );
+  const dayHintLevel: CalendarCellHintLevel = (() => {
+    if (isBlocked) return "blocked";
+    if (familyBookings.length > 0) return "booked";
+    if (isGuest) return isFull ? "guest-full" : "guest-empty";
+    if (isFull) return "full";
+    if (allActiveBookings.length > 0) return "partial";
+    return "empty";
+  })();
   const cardStatusStyle = (() => {
-    if (isGuest && !isBlocked) return dayCardGuestNeutralClasses;
     if (isTrainer()) return statusStyles[status];
-    if (userBooking?.status === "pending") {
-      return "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800";
-    }
-    if (userBooking?.status === "confirmed") {
-      return "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800";
-    }
-    return dayCardStudentFillClasses[studentFillLevel];
+    if (isBlocked) return weekCellStudentFillClasses.blocked;
+    if (familyBookings.length > 0) return weekCellStudentBookedClasses;
+    if (isGuest) return isFull ? weekCellGuestFullClasses : weekCellGuestAvailableClasses;
+    return weekCellStudentFillClasses[studentFillLevel];
   })();
 
   const handleCardClick = () => {
@@ -233,7 +236,6 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
         "p-4 transition-all duration-200 hover:shadow-md",
         !currentUser && !isBlocked && !isFull && "cursor-pointer",
         cardStatusStyle,
-        userBooking && "ring-2 ring-blue-500"
       )}
       onClick={handleCardClick}
     >
@@ -247,29 +249,21 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
         </div>
 
         <div className="flex items-center gap-2">
-          {(isTrainer() || currentUser) && (
+          {isTrainer() ? (
             <Badge
-              variant={
-                isTrainer()
-                  ? status === "available"
-                    ? "default"
-                    : "secondary"
-                  : studentAvailability === "available"
-                    ? "default"
-                    : "secondary"
-              }
+              variant={status === "available" ? "default" : "secondary"}
               className="text-xs notranslate"
             >
-              {isTrainer()
-                ? status === "blocked"
-                  ? blockedLabel
-                  : status === "full"
-                    ? "Занято"
-                    : status === "almost-full"
-                      ? "Почти полно"
-                      : "Свободно"
-                : studentSlotBadgeText(studentAvailability, blockedLabel)}
+              {status === "blocked"
+                ? blockedLabel
+                : status === "full"
+                  ? "Занято"
+                  : status === "almost-full"
+                    ? "Почти полно"
+                    : "Свободно"}
             </Badge>
+          ) : (
+            <CalendarCellHint fillLevel={dayHintLevel} layout="day" />
           )}
 
           {!isBlocked && isTrainer() && (
@@ -530,8 +524,8 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                         className={cn(
                           "rounded px-2 py-1.5 border flex flex-wrap items-center justify-between gap-x-2 gap-y-1",
                           isPending
-                            ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700"
-                            : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700",
+                            ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700"
+                            : "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700",
                         )}
                       >
                         <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -620,9 +614,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {studentAvailabilityHint(isFull)}
-                </p>
+                familyBookings.length === 0 && !isFull && (
+                  <p className="text-sm text-gray-600 dark:text-gray-400 sr-only">
+                    Можно записаться
+                  </p>
+                )
               )}
             </div>
           )}

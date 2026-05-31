@@ -91,26 +91,30 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
   // ─── Day view ───────────────────────────────────────────────────────────────
   if (currentView === "day") {
     const timeSlots = getScheduleForDate(selectedDate);
+    const viewerIsTrainer = isTrainer();
     return (
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {timeSlots.length > 0 ? (
-          timeSlots.map((ts) => (
-            <TimeSlot
-              key={ts.id}
-              timeSlot={ts}
-              familyStudentIds={familyStudentIds}
-              onBook={onBook}
-              onCancel={onCancel}
-              onConfirm={onConfirm}
-              onLoginRequest={onLoginRequest}
-              onTrainerBook={onTrainerBook}
-            />
-          ))
-        ) : (
-          <Card className="col-span-full p-6 text-center">
-            <p className="text-gray-500 dark:text-gray-400">Расписание на этот день не создано</p>
-          </Card>
-        )}
+      <div>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {timeSlots.length > 0 ? (
+            timeSlots.map((ts) => (
+              <TimeSlot
+                key={ts.id}
+                timeSlot={ts}
+                familyStudentIds={familyStudentIds}
+                onBook={onBook}
+                onCancel={onCancel}
+                onConfirm={onConfirm}
+                onLoginRequest={onLoginRequest}
+                onTrainerBook={onTrainerBook}
+              />
+            ))
+          ) : (
+            <Card className="col-span-full p-6 text-center">
+              <p className="text-gray-500 dark:text-gray-400">Расписание на этот день не создано</p>
+            </Card>
+          )}
+        </div>
+        {!viewerIsTrainer && <MonthCalendarLegend />}
       </div>
     );
   }
