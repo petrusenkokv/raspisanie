@@ -342,7 +342,7 @@ export function NotificationsPopover({
       >
         <div className="flex flex-col gap-2 px-4 py-3 border-b">
           <div className="font-semibold text-base shrink-0">Уведомления</div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
+          <div className="flex flex-row flex-wrap items-center gap-x-4 gap-y-1">
             {unreadCount > 0 && (
               <button
                 type="button"
