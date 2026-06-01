@@ -216,11 +216,17 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                   (ts.blockReason === "manual" || ts.blockReason === "holiday") &&
                   isSlotInWorkingHours(ts.time, dateStr, weeklyTemplate),
               );
+              // Отпуск/закрытие периода ставит manual на все слоты, в т.ч. в выходные по шаблону
+              const trainerClosedManually =
+                openSlots.length === 0 &&
+                slots.length > 0 &&
+                slots.some(
+                  (ts) => ts.blockReason === "manual" || ts.blockReason === "holiday",
+                );
               const isTrainerClosed =
                 !!period ||
-                (openSlots.length === 0 &&
-                  slots.length > 0 &&
-                  trainerClosedInWorkingHours);
+                trainerClosedInWorkingHours ||
+                trainerClosedManually;
               const isTemplateDayOff = !isTrainerClosed && openSlots.length === 0;
 
               let tooltipNode: React.ReactNode = null;
