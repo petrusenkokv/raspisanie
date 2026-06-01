@@ -372,7 +372,7 @@ export function CalendarHeader({
           <div className="flex items-center gap-2 min-w-0 justify-center md:justify-start">
             <Calendar className="h-5 w-5 text-blue-600 flex-shrink-0" aria-hidden />
             <h1 className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-              Расписание тренировок
+              Расписание Константина
             </h1>
             {trainer && (
               <Badge variant="secondary" className="text-xs flex-shrink-0">Тренер</Badge>
