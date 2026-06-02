@@ -1772,6 +1772,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/trainer/blocked-periods", async (_req, res) => {
+    try {
+      const periods = await storage.getBlockedPeriods();
+      res.json({ periods });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось получить закрытые периоды" });
+    }
+  });
+
   // ----- Attendance -----
   app.patch("/api/trainer/bookings/:id/attendance", async (req, res) => {
     try {

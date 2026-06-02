@@ -24,7 +24,7 @@ import {
   type InsertParentChild,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
-import type { IStorage, AttendanceStats } from "./storage";
+import type { IStorage, AttendanceStats, BlockedPeriod } from "./storage";
 import type { PushSubscriptionData } from "./push";
 import {
   moscowDateString,
@@ -38,6 +38,13 @@ import {
 const sickPeriods = pgTable("sick_periods", {
   id: varchar("id").primaryKey().default(drizzleSql`gen_random_uuid()`),
   studentId: varchar("student_id").notNull(),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+const blockedPeriods = pgTable("blocked_periods", {
+  id: varchar("id").primaryKey().default(drizzleSql`gen_random_uuid()`),
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
@@ -127,6 +134,7 @@ export class DbStorage implements IStorage {
   private settingsCache: TrainerSettings | null = null;
   private broadcastLogs: Map<string, BroadcastLog> = new Map();
   private recurringExceptionsSchemaReady = false;
+  private blockedPeriodsSchemaReady = false;
 
   private async ensureRecurringExceptionsSchema(): Promise<void> {
     if (this.recurringExceptionsSchemaReady) return;
@@ -145,6 +153,23 @@ export class DbStorage implements IStorage {
       `);
     } catch { /* ignore */ }
     this.recurringExceptionsSchemaReady = true;
+  }
+
+  private async ensureBlockedPeriodsSchema(): Promise<void> {
+    if (this.blockedPeriodsSchemaReady) return;
+    try {
+      await db.execute(drizzleSql`
+        CREATE TABLE IF NOT EXISTS blocked_periods (
+          id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+          start_date text NOT NULL,
+          end_date text NOT NULL,
+          created_at timestamp DEFAULT now()
+        )
+      `);
+      this.blockedPeriodsSchemaReady = true;
+    } catch {
+      // ignore schema race/fallback issues
+    }
   }
 
   // ======================== SETTINGS ========================
@@ -1222,6 +1247,7 @@ export class DbStorage implements IStorage {
   }
 
   async blockDateRange(startDate: string, endDate: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
+    await this.ensureBlockedPeriodsSchema();
     const dates = eachDateInRange(startDate, endDate).map(localDateStr);
     const allSlots: TimeSlot[] = [];
     const allCancelled: Booking[] = [];
@@ -1230,7 +1256,30 @@ export class DbStorage implements IStorage {
       allSlots.push(...r.slots);
       allCancelled.push(...r.cancelledBookings);
     }
+    if (blocked) {
+      await db.insert(blockedPeriods).values({ startDate, endDate });
+    } else {
+      await db.delete(blockedPeriods).where(
+        and(eq(blockedPeriods.startDate, startDate), eq(blockedPeriods.endDate, endDate)),
+      );
+    }
     return { slots: allSlots, cancelledBookings: allCancelled };
+  }
+
+  async getBlockedPeriods(): Promise<BlockedPeriod[]> {
+    await this.ensureBlockedPeriodsSchema();
+    const today = localDateStr(new Date());
+    const rows = await db
+      .select()
+      .from(blockedPeriods)
+      .where(gte(blockedPeriods.endDate, today))
+      .orderBy(asc(blockedPeriods.startDate), asc(blockedPeriods.createdAt));
+    return rows.map((r) => ({
+      id: r.id,
+      startDate: r.startDate,
+      endDate: r.endDate,
+      daysCount: eachDateInRange(r.startDate, r.endDate).length,
+    }));
   }
 
   // ======================== TRAINER SETTINGS ========================

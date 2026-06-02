@@ -50,6 +50,13 @@ export type AttendanceStats = {
   pending: number; // confirmed past bookings without attendance set
 };
 
+export type BlockedPeriod = {
+  id: string;
+  startDate: string;
+  endDate: string;
+  daysCount: number;
+};
+
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
@@ -122,6 +129,7 @@ export interface IStorage {
   blockSlot(timeSlotId: string, blocked: boolean): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }>;
   blockDate(date: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }>;
   blockDateRange(startDate: string, endDate: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }>;
+  getBlockedPeriods(): Promise<BlockedPeriod[]>;
 
   // Trainer schedule settings
   getTrainerSettings(): Promise<TrainerSettings>;
@@ -249,6 +257,7 @@ export class MemStorage implements IStorage {
   /** Keys: `${recurringBookingId}:${YYYY-MM-DD}` */
   private recurringBookingExceptions: Set<string> = new Set();
   private holidays: Map<string, Holiday> = new Map();
+  private blockedPeriods: Map<string, { id: string; startDate: string; endDate: string; createdAt: Date }> = new Map();
   private membershipPayments: Map<string, MembershipPayment> = new Map();
   private trainerPayments: Map<string, TrainerPayment> = new Map();
   private sickPeriods: Map<string, SickPeriod> = new Map();
@@ -1777,7 +1786,33 @@ export class MemStorage implements IStorage {
       allSlots.push(...r.slots);
       allCancelled.push(...r.cancelledBookings);
     }
+    if (blocked) {
+      const id = randomUUID();
+      this.blockedPeriods.set(id, {
+        id,
+        startDate,
+        endDate,
+        createdAt: new Date(),
+      });
+    } else {
+      for (const [id, p] of Array.from(this.blockedPeriods.entries())) {
+        if (p.startDate === startDate && p.endDate === endDate) {
+          this.blockedPeriods.delete(id);
+        }
+      }
+    }
     return { slots: allSlots, cancelledBookings: allCancelled };
+  }
+
+  async getBlockedPeriods(): Promise<BlockedPeriod[]> {
+    const today = localDateStr(new Date());
+    return Array.from(this.blockedPeriods.values())
+      .filter((p) => p.endDate >= today)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))
+      .map((p) => {
+        const days = eachDateInRange(p.startDate, p.endDate).length;
+        return { id: p.id, startDate: p.startDate, endDate: p.endDate, daysCount: days };
+      });
   }
 
   // ----- Trainer schedule settings -----
