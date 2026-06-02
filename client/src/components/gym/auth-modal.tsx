@@ -79,16 +79,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   const selfIsMinor = selfAge !== null && selfAge < 14;
 
   useEffect(() => {
-    if (!registerSelf || !selfIsMinor) return;
-    setRegisterSelf(false);
-    setRegisterChild(true);
-    toast({
-      title: "Регистрация через представителя",
-      description: "До 14 лет нужно зарегистрировать ребёнка — заполните данные ниже.",
-    });
-  }, [selfIsMinor, registerSelf]);
-
-  useEffect(() => {
     if (open) setMode(initialMode);
   }, [open, initialMode]);
 
