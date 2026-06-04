@@ -39,6 +39,16 @@ import {
 import { BookStudentDialog } from "./book-student-dialog";
 import { RecurringBookingsPanel } from "./recurring-bookings-panel";
 import { DocumentViewDialog } from "./document-view-dialog";
+import {
+  TrainerStudentConsentsBlock,
+  TrainerStudentConsentsManager,
+} from "./trainer-student-consents-block";
+import {
+  TrainerNewStudentServiceFields,
+  TrainerStudentServiceSection,
+} from "./trainer-student-service-section";
+import { computeSessionPrice } from "@shared/consents-pricing";
+import type { TrainerService } from "@shared/schema";
 import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, BadgeAlert } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -85,6 +95,8 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [viewStudentId, setViewStudentId] = useState<string | null>(null);
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [newStudent, setNewStudent] = useState(emptyNewStudent);
+  const [addStudentAcceptedDocs, setAddStudentAcceptedDocs] = useState<Record<string, boolean>>({});
+  const [addStudentServiceId, setAddStudentServiceId] = useState("");
   const [consentWarningStudent, setConsentWarningStudent] = useState<(User & { pendingDocumentCount: number }) | null>(null);
   const { toast } = useToast();
 
@@ -99,6 +111,30 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     staleTime: 0,
     refetchOnMount: true
   });
+
+  useEffect(() => {
+    if (!addDialogOpen) {
+      setAddStudentAcceptedDocs({});
+      setAddStudentServiceId("");
+    }
+  }, [addDialogOpen]);
+
+  const { data: trainerServices = [] } = useQuery<TrainerService[]>({
+    queryKey: ["/api/trainer/services"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/trainer/services");
+      return r.json();
+    },
+    enabled: addDialogOpen,
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    if (!addDialogOpen || addStudentServiceId) return;
+    const active = trainerServices.filter((s) => s.isActive);
+    const def = active.find((s) => s.isDefault) ?? active[0];
+    if (def) setAddStudentServiceId(def.id);
+  }, [addDialogOpen, trainerServices, addStudentServiceId]);
 
   const { data: documents = [] } = useQuery<Document[]>({
     queryKey: ["/api/documents"],
@@ -123,6 +159,8 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       });
       setAddDialogOpen(false);
       setNewStudent(emptyNewStudent);
+      setAddStudentAcceptedDocs({});
+      setAddStudentServiceId("");
       setSearchQuery("");
     },
     onError: (error: any) => {
@@ -255,11 +293,29 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
         return;
       }
     }
+    const consentDocumentIds = documents
+      .filter((d) => addStudentAcceptedDocs[d.id])
+      .map((d) => d.id);
     addMutation.mutate({
       ...newStudent,
-      consentDocumentIds: [],
+      consentDocumentIds,
+      selectedServiceId: addStudentServiceId || undefined,
     });
   };
+
+  const addStudentPricePreview = useMemo(() => {
+    const active = trainerServices.filter((s) => s.isActive);
+    const svc = active.find((s) => s.id === addStudentServiceId) ?? active[0];
+    if (!svc) return null;
+    const signed = new Set(
+      documents.filter((d) => addStudentAcceptedDocs[d.id]).map((d) => d.id),
+    );
+    return computeSessionPrice({
+      service: { id: svc.id, name: svc.name, priceRub: svc.priceRub },
+      documents,
+      signedDocumentIds: signed,
+    });
+  }, [trainerServices, addStudentServiceId, documents, addStudentAcceptedDocs]);
 
   return (
     <>
@@ -575,28 +631,23 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
               />
             </div>
 
-            {documents.length > 0 && (
-              <div className="border rounded-lg p-3 space-y-1.5 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
-                <p className="text-sm font-medium text-blue-800 dark:text-blue-300">Документы для подписи</p>
-                <p className="text-xs text-blue-700 dark:text-blue-400">
-                  Ученик самостоятельно ознакомится и подпишет следующие документы при первом входе в приложение:
-                </p>
-                <ul className="space-y-1">
-                  {documents.map(doc => (
-                    <li key={doc.id} className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                      <button
-                        type="button"
-                        className="underline hover:text-blue-900 dark:hover:text-blue-200"
-                        onClick={() => setViewingDoc(doc)}
-                      >
-                        {doc.title}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <TrainerNewStudentServiceFields
+              services={trainerServices}
+              selectedServiceId={addStudentServiceId}
+              onServiceChange={setAddStudentServiceId}
+              previewTotalRub={addStudentPricePreview?.totalPriceRub ?? null}
+              serviceName={addStudentPricePreview?.serviceName ?? "Тренировка"}
+            />
+
+            <TrainerStudentConsentsBlock
+              documents={documents}
+              acceptedByDocId={addStudentAcceptedDocs}
+              onToggle={(documentId, accepted) =>
+                setAddStudentAcceptedDocs((prev) => ({ ...prev, [documentId]: accepted }))
+              }
+              onViewDocument={setViewingDoc}
+              disabled={addMutation.isPending}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
@@ -902,19 +953,11 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                 </div>
               );
             })()}
-            <div className="border rounded p-3 space-y-2">
-              <p className="font-medium">Принятые документы</p>
-              {student.consents.length === 0 ? (
-                <p className="text-gray-500">Документы не приняты</p>
-              ) : (
-                student.consents.map(c => (
-                  <div key={c.id} className="text-xs">
-                    ✓ {c.document.title} —{" "}
-                    {c.acceptedAt ? format(new Date(c.acceptedAt), "d MMM yyyy", { locale: ru }) : ""}
-                  </div>
-                ))
-              )}
-            </div>
+            <TrainerStudentServiceSection studentId={student.id} />
+            <TrainerStudentConsentsManager
+              studentId={student.id}
+              consents={student.consents}
+            />
             <AttendanceSection studentId={student.id} />
             <PaymentsSection studentId={student.id} />
             <SickLeaveSection student={student} />

@@ -68,25 +68,28 @@ export type PaymentBadgeStudent = {
   exemptTrainerPayment?: boolean | null;
 };
 
-/** Скрыть отметки оплаты: тренер в слоте, своя запись, или флаги освобождения. */
-export function shouldShowMembershipBadge(
-  student: PaymentBadgeStudent,
-  bookingStudentId?: string,
-  viewerUserId?: string | null,
-): boolean {
-  if (bookingStudentId && viewerUserId && bookingStudentId === viewerUserId) return false;
+/** Скрыть отметки оплаты: запись тренера на себя или флаги освобождения. */
+export function shouldShowMembershipBadge(student: PaymentBadgeStudent): boolean {
   if (student.role === "trainer") return false;
   return student.exemptMembership !== true;
 }
 
-export function shouldShowTrainerPaymentBadge(
-  student: PaymentBadgeStudent,
-  bookingStudentId?: string,
-  viewerUserId?: string | null,
-): boolean {
-  if (bookingStudentId && viewerUserId && bookingStudentId === viewerUserId) return false;
+export function shouldShowTrainerPaymentBadge(student: PaymentBadgeStudent): boolean {
   if (student.role === "trainer") return false;
   return student.exemptTrainerPayment !== true;
+}
+
+/** Имя и первая буква фамилии: «Елена П.» */
+export function formatStudentShortName(student: {
+  firstName?: string | null;
+  lastName?: string | null;
+}): string {
+  const first = (student.firstName ?? "").trim();
+  const last = (student.lastName ?? "").trim();
+  if (!first && !last) return "";
+  if (!last) return first;
+  const initial = last.charAt(0).toLocaleUpperCase("ru-RU");
+  return `${first} ${initial}.`;
 }
 
 export function formatDateDMY(dateStr: string | null | undefined): string {

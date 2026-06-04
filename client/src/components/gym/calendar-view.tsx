@@ -4,13 +4,18 @@ import { TimeSlot } from "./time-slot";
 import { MonthDayCellHint } from "./month-day-cell-hint";
 import { MonthCalendarLegend } from "./month-calendar-legend";
 import { CalendarCellHint, type CalendarCellHintLevel } from "./calendar-cell-hint";
+import { SlotSessionPrice } from "./slot-session-price";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { type TimeSlotWithBookings, type Holiday, type WeeklyTemplate } from "@shared/schema";
-import { isSlotInWorkingHours, isWorkingDayByTemplate } from "@/lib/utils-gym";
+import {
+  formatStudentShortName,
+  isSlotInWorkingHours,
+  isWorkingDayByTemplate,
+} from "@/lib/utils-gym";
 import {
   monthDayStudentTooltip,
   monthDayGuestTooltip,
@@ -552,7 +557,11 @@ function getWeekSlotHintLevel(
 ): CalendarCellHintLevel {
   if (isBlocked) return "blocked";
   if (hasFamilyBooking) return "booked";
-  if (isGuest) return isFull ? "guest-full" : "guest-empty";
+  if (isGuest) {
+    if (isFull) return "guest-full";
+    if (occupiedCount > 0) return "partial";
+    return "guest-empty";
+  }
   if (isFull) return "full";
   if (occupiedCount > 0) return "partial";
   return "empty";
@@ -620,7 +629,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   const userBooking = familyBookings.find((b) => b.studentId === currentUser?.id) ?? familyBookings[0];
   const isBookingForCurrentUser = !!userBooking && userBooking.studentId === currentUser?.id;
   const bookedPersonName = userBooking
-    ? `${userBooking.student.lastName ?? ""} ${userBooking.student.firstName ?? ""}`.trim()
+    ? formatStudentShortName(userBooking.student)
     : "";
   const isParentUser = currentUser?.role === "parent" || !!(currentUser as any)?.isParent;
   const isGuest = !currentUser && !isTrainer;
@@ -645,7 +654,9 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
     : isGuest
       ? isFull
         ? weekCellGuestFullClasses
-        : weekCellGuestAvailableClasses
+        : occupiedCount > 0
+          ? weekCellStudentFillClasses.partial
+          : weekCellGuestAvailableClasses
     : isTrainer
     ? isFull
       ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300"
@@ -763,7 +774,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                     ? <UserCheck className="h-3 w-3 text-green-600 shrink-0" />
                     : <Clock className="h-3 w-3 text-yellow-600 shrink-0" />}
                   <span className="truncate text-gray-900 dark:text-white">
-                    {booking.student.firstName} {booking.student.lastName}
+                    {formatStudentShortName(booking.student)}
                   </span>
                 </div>
                 <div className="flex gap-1 shrink-0">
@@ -839,6 +850,9 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                     </div>
                   </div>
                 )}
+                <SlotSessionPrice
+                  studentIds={Array.from(new Set(familyBookings.map((b) => b.studentId)))}
+                />
                 {userBooking.status === "confirmed" && (
                   <div className="flex items-center gap-2 px-2 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-md">
                     <UserCheck className="h-4 w-4 text-green-600 shrink-0" />
@@ -892,6 +906,9 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   {studentAvailabilityHint(false)}
                 </p>
+                {bookingStudentIds.length > 0 && (
+                  <SlotSessionPrice studentIds={bookingStudentIds} />
+                )}
                 <Button
                   className="w-full"
                   size="sm"

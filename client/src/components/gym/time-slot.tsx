@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -15,19 +15,19 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmedBookingHint } from "./confirmed-booking-hint";
+import { SlotSessionPrice } from "./slot-session-price";
 import { CalendarCellHint, type CalendarCellHintLevel } from "./calendar-cell-hint";
 import { useTrainerBookingCancel } from "./trainer-cancel-booking";
 import { useStudentBookingCancel } from "./student-cancel-booking";
 import {
+  formatStudentShortName,
   shouldShowMembershipBadge,
   shouldShowTrainerPaymentBadge,
 } from "@/lib/utils-gym";
 import {
+  dayCardStudentBookedClasses,
+  dayCardStudentFillClasses,
   getStudentSlotFillLevel,
-  weekCellGuestAvailableClasses,
-  weekCellGuestFullClasses,
-  weekCellStudentBookedClasses,
-  weekCellStudentFillClasses,
 } from "@/lib/slot-availability-ui";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -158,11 +158,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     familyBookings.find((booking) => booking.studentId === currentUser?.id) ??
     familyBookings[0];
   const bookedPersonName = userBooking
-    ? `${userBooking.student.lastName ?? ""} ${userBooking.student.firstName ?? ""}`.trim()
+    ? formatStudentShortName(userBooking.student)
     : "";
   const isBookingForCurrentUser = !!userBooking && userBooking.studentId === currentUser?.id;
   const familyBookedNames = familyBookings
-    .map((b) => `${b.student.lastName ?? ""} ${b.student.firstName ?? ""}`.trim())
+    .map((b) => formatStudentShortName(b.student))
     .filter(Boolean);
   const bookingOwnerTitle = !userBooking
     ? ""
@@ -198,6 +198,15 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
 
   const status = getSlotStatus();
   const isGuest = !currentUser;
+
+  const slotPriceStudentIds = useMemo(() => {
+    if (!currentUser || isTrainer()) return [] as string[];
+    if (familyBookings.length > 0) {
+      return Array.from(new Set(familyBookings.map((b) => b.studentId)));
+    }
+    if (familyStudentIds.length > 0) return familyStudentIds;
+    return currentUser.id ? [currentUser.id] : [];
+  }, [currentUser, isTrainer, familyBookings, familyStudentIds]);
   const studentFillLevel = getStudentSlotFillLevel(
     isBlocked,
     isFull,
@@ -206,17 +215,25 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const dayHintLevel: CalendarCellHintLevel = (() => {
     if (isBlocked) return "blocked";
     if (familyBookings.length > 0) return "booked";
-    if (isGuest) return isFull ? "guest-full" : "guest-empty";
+    if (isGuest) {
+      if (isFull) return "guest-full";
+      if (allActiveBookings.length > 0) return "partial";
+      return "guest-empty";
+    }
     if (isFull) return "full";
     if (allActiveBookings.length > 0) return "partial";
     return "empty";
   })();
   const cardStatusStyle = (() => {
     if (isTrainer()) return statusStyles[status];
-    if (isBlocked) return weekCellStudentFillClasses.blocked;
-    if (familyBookings.length > 0) return weekCellStudentBookedClasses;
-    if (isGuest) return isFull ? weekCellGuestFullClasses : weekCellGuestAvailableClasses;
-    return weekCellStudentFillClasses[studentFillLevel];
+    if (isBlocked) return dayCardStudentFillClasses.blocked;
+    if (familyBookings.length > 0) return dayCardStudentBookedClasses;
+    if (isGuest) {
+      if (isFull) return dayCardStudentFillClasses.full;
+      if (allActiveBookings.length > 0) return dayCardStudentFillClasses.partial;
+      return dayCardStudentFillClasses.empty;
+    }
+    return dayCardStudentFillClasses[studentFillLevel];
   })();
 
   const handleCardClick = () => {
@@ -365,7 +382,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                           <Clock className="h-3 w-3 text-yellow-600 shrink-0" />
                         )}
                         <span className="text-gray-900 dark:text-white truncate">
-                          {booking.student.firstName} {booking.student.lastName}
+                          {formatStudentShortName(booking.student)}
                         </span>
                         {att ? (
                           <AttendanceBadge status={att} />
@@ -395,16 +412,8 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                           <BookingPaymentBadges
                             studentId={booking.studentId}
                             dateStr={timeSlot.date}
-                            showMembership={shouldShowMembershipBadge(
-                              booking.student,
-                              booking.studentId,
-                              currentUser?.id,
-                            )}
-                            showTrainerPayment={shouldShowTrainerPaymentBadge(
-                              booking.student,
-                              booking.studentId,
-                              currentUser?.id,
-                            )}
+                            showMembership={shouldShowMembershipBadge(booking.student)}
+                            showTrainerPayment={shouldShowTrainerPaymentBadge(booking.student)}
                           />
                         )}
                       </div>
@@ -516,53 +525,49 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
               {familyBookings.length > 0 ? (
                 <div className="space-y-1.5">
                   {familyBookings.map((booking) => {
-                    const personName = `${booking.student.firstName} ${booking.student.lastName}`.trim();
+                    const personName = formatStudentShortName(booking.student);
                     const isPending = booking.status === "pending";
                     return (
                       <div
                         key={booking.id}
                         className={cn(
-                          "rounded px-2 py-1.5 border flex flex-wrap items-center justify-between gap-x-2 gap-y-1",
-                          isPending
-                            ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700"
-                            : "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700",
+                          "rounded px-2 py-1.5 border flex flex-wrap items-center gap-x-1.5 gap-y-1",
+                          "bg-blue-50/80 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700",
                         )}
                       >
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                          {isPending && (
-                            <Clock className="h-3.5 w-3.5 text-yellow-600 shrink-0" />
-                          )}
-                          <span className="text-sm font-medium truncate text-gray-900 dark:text-white">
-                            {personName}
-                          </span>
-                          {isPending ? (
-                            <Tooltip delayDuration={0}>
-                              <TooltipTrigger asChild>
-                                <span
-                                  className="inline-flex shrink-0 cursor-help"
-                                  tabIndex={0}
-                                  aria-label="Ожидаем подтверждения тренера"
-                                  onClick={(e) => e.stopPropagation()}
-                                  onKeyDown={(e) => e.stopPropagation()}
-                                >
-                                  <Badge variant="secondary" className="text-[10px] h-5">
-                                    Ждём
-                                  </Badge>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="z-[100]">
-                                Ожидаем подтверждения тренера
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <ConfirmedBookingHint iconClassName="h-3 w-3" />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <BookingPaymentBadges studentId={booking.studentId} dateStr={timeSlot.date} />
-                          {showFamilyRowActions && (
-                            <>
-                              <Button
+                        <span className="text-sm font-medium truncate text-gray-900 dark:text-white shrink-0 max-w-[45%] sm:max-w-none">
+                          {personName}
+                        </span>
+                        {isPending ? (
+                          <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                              <span
+                                className="inline-flex shrink-0 cursor-help"
+                                tabIndex={0}
+                                aria-label="Ожидаем подтверждения тренера"
+                                onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => e.stopPropagation()}
+                              >
+                                <Clock className="h-3.5 w-3.5 text-yellow-500 dark:text-yellow-400" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="z-[100]">
+                              Ожидаем подтверждения тренера
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <ConfirmedBookingHint iconClassName="h-3 w-3" />
+                        )}
+                        <SlotSessionPrice studentIds={[booking.studentId]} inline />
+                        <BookingPaymentBadges
+                          studentId={booking.studentId}
+                          dateStr={timeSlot.date}
+                          showMembership={shouldShowMembershipBadge(booking.student)}
+                          showTrainerPayment={shouldShowTrainerPaymentBadge(booking.student)}
+                        />
+                        {showFamilyRowActions && (
+                          <>
+                            <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={(e) => {
@@ -606,9 +611,8 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                               >
                                 <X className="h-3 w-3" />
                               </Button>
-                            </>
-                          )}
-                        </div>
+                          </>
+                        )}
                       </div>
                     );
                   })}
@@ -663,7 +667,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
       )}
 
       {!isBlocked && currentUser && !isTrainer() && !(currentUser as any).isPendingApproval && (
-        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+          {!isFull && slotPriceStudentIds.length > 0 && familyBookings.length === 0 && (
+            <SlotSessionPrice studentIds={slotPriceStudentIds} />
+          )}
+          <div className="flex gap-2">
           {userBooking ? (
             isParentUser && !isFull ? (
               <Button
@@ -689,6 +697,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
               </Button>
             )
           )}
+          </div>
         </div>
       )}
 

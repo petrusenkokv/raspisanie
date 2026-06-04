@@ -85,6 +85,8 @@ export function StudentAccountSection({
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: summaryKey });
     queryClient.invalidateQueries({ queryKey: ["/api/users", userId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/users", userId, "account-summary"] });
+    queryClient.invalidateQueries({ queryKey: ["session-price"] });
     queryClient.invalidateQueries({ queryKey: ["schedule"] });
     queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
   };
@@ -158,25 +160,35 @@ export function StudentAccountSection({
         {heading}
       </p>
 
-      {showServicePicker && services.length > 1 && (
+      {showServicePicker && services.length > 0 && (
         <div className="space-y-1">
           <Label className="text-xs">Услуга</Label>
-          <Select
-            value={price.serviceId ?? undefined}
-            onValueChange={(v) => serviceMutation.mutate(v)}
-            disabled={serviceMutation.isPending}
-          >
-            <SelectTrigger className="h-9">
-              <SelectValue placeholder="Выберите услугу" />
-            </SelectTrigger>
-            <SelectContent>
-              {services.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name} — {s.priceRub} ₽
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {services.length > 1 ? (
+            <Select
+              value={price.serviceId ?? undefined}
+              onValueChange={(v) => serviceMutation.mutate(v)}
+              disabled={serviceMutation.isPending}
+            >
+              <SelectTrigger className="h-9" data-testid="select-student-service">
+                <SelectValue placeholder="Выберите услугу" />
+              </SelectTrigger>
+              <SelectContent>
+                {services.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name} — {s.priceRub} ₽
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <p className="text-sm font-medium rounded-md border bg-white dark:bg-gray-900 px-3 py-2">
+              {price.serviceName}
+              <span className="text-muted-foreground font-normal">
+                {" "}
+                — {price.basePriceRub} ₽
+              </span>
+            </p>
+          )}
         </div>
       )}
 

@@ -834,7 +834,9 @@ export async function registerRoutes(
       } else {
         const had = await storage.revokeConsent(targetId, documentId);
         if (!had) return res.status(400).json({ message: "Согласие не было принято" });
-        await notifyTrainerConsentRevoked(student, doc.title);
+        if (!isSessionTrainer(req)) {
+          await notifyTrainerConsentRevoked(student, doc.title);
+        }
       }
 
       const summary = await storage.getStudentAccountSummary(targetId, moscowDateString());
@@ -1609,6 +1611,7 @@ export async function registerRoutes(
         password,
         trainerNotes,
         consentDocumentIds,
+        selectedServiceId,
       } = req.body;
 
       if (!phone || !firstName) {
@@ -1652,7 +1655,19 @@ export async function registerRoutes(
 
       await recordConsents(user.id, Array.from(accepted));
 
-      res.status(201).json(user);
+      if (selectedServiceId && typeof selectedServiceId === "string") {
+        const service = await storage.getTrainerService(selectedServiceId);
+        if (service?.isActive) {
+          await storage.updateUser(user.id, { selectedServiceId: service.id } as any);
+        } else {
+          await storage.assignDefaultServiceToUser(user.id);
+        }
+      } else {
+        await storage.assignDefaultServiceToUser(user.id);
+      }
+
+      const refreshed = await storage.getUser(user.id);
+      res.status(201).json(refreshed ?? user);
     } catch (error) {
       res.status(500).json({ message: "Не удалось добавить ученика" });
     }

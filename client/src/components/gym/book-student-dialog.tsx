@@ -8,8 +8,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useGymStore } from "@/store/gym-store";
 import { useToast } from "@/hooks/use-toast";
-import { type User, type TimeSlotWithBookings } from "@shared/schema";
-import { Calendar, UserCheck, User as UserIcon, Loader2, Search, AlertTriangle, Dumbbell } from "lucide-react";
+import { type User, type TimeSlotWithBookings, type StudentWithConsents } from "@shared/schema";
+import { Calendar, UserCheck, User as UserIcon, Loader2, Search, Dumbbell } from "lucide-react";
+import { TrainerStudentConsentsManager } from "./trainer-student-consents-block";
+import { TrainerStudentServiceSection } from "./trainer-student-service-section";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { ToastAction } from "@/components/ui/toast";
@@ -78,8 +80,20 @@ export function BookStudentDialog({
     staleTime: 0
   });
 
-  const selectedStudentObj = students.find(s => s.id === selectedStudentId);
-  const selectedHasPendingDocs = (selectedStudentObj?.pendingDocumentCount ?? 0) > 0;
+  const effectiveStudentId =
+    !bookingForSelf && !forceSelfMode
+      ? (preselectedStudent?.id || selectedStudentId || null)
+      : null;
+
+  const { data: studentDetail, isLoading: studentDetailLoading } = useQuery<StudentWithConsents>({
+    queryKey: ["/api/trainer/students", effectiveStudentId],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/trainer/students/${effectiveStudentId}`);
+      return r.json();
+    },
+    enabled: open && !!effectiveStudentId,
+    staleTime: 0,
+  });
 
   const bookMutation = useMutation({
     mutationFn: async ({ studentId, timeSlotId }: { studentId: string; timeSlotId: string }) => {
@@ -330,15 +344,24 @@ export function BookStudentDialog({
                   )}
                 </SelectContent>
               </Select>
-              {selectedHasPendingDocs && selectedStudentObj && (
-                <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-950/20 border border-orange-300 dark:border-orange-700 rounded-lg">
-                  <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0 mt-0.5" />
-                  <p className="text-sm text-orange-700 dark:text-orange-400">
-                    <strong>{selectedStudentObj.firstName} {selectedStudentObj.lastName}</strong> не согласился с документами.
-                  </p>
-                </div>
-              )}
             </div>
+          )}
+
+          {effectiveStudentId && (
+            studentDetailLoading ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+              </div>
+            ) : studentDetail ? (
+              <>
+                <TrainerStudentServiceSection studentId={effectiveStudentId} />
+                <TrainerStudentConsentsManager
+                  studentId={effectiveStudentId}
+                  consents={studentDetail.consents}
+                  hint="Отметьте документы, подписанные на бумаге, перед записью на тренировку."
+                />
+              </>
+            ) : null
           )}
 
           {preselectedTimeSlotId ? (

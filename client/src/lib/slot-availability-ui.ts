@@ -244,3 +244,7 @@ export const dayCardStudentFillClasses: Record<StudentSlotFillLevel, string> = {
 
 export const dayCardGuestNeutralClasses =
   "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700";
+
+/** Day cards: семейная запись (синий). */
+export const dayCardStudentBookedClasses =
+  "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600";
