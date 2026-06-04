@@ -198,11 +198,11 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
             })}
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          <div>
+        <div className="space-y-2 sm:space-y-0 sm:grid sm:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-2">
+          <div className="min-w-0">
             <Label className="text-xs">Час</Label>
             <select
-              className="w-full text-sm border rounded px-2 py-1 bg-white dark:bg-gray-900"
+              className="w-full h-10 text-sm border rounded px-2 bg-white dark:bg-gray-900"
               value={hour}
               onChange={(e) => setHour(Number(e.target.value))}
               data-testid="select-recurring-hour"
@@ -217,23 +217,23 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
               })}
             </select>
           </div>
-          <div>
+          <div className="min-w-0">
             <Label className="text-xs">С</Label>
             <Input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="text-sm"
+              className="text-sm w-full min-w-0"
               data-testid="input-recurring-start"
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <Label className="text-xs">По (необяз.)</Label>
             <Input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="text-sm"
+              className="text-sm w-full min-w-0"
               data-testid="input-recurring-end"
             />
           </div>
