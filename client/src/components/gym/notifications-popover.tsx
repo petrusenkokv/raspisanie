@@ -73,6 +73,7 @@ const TYPE_DOT: Record<string, string> = {
   profile_updated: "bg-teal-500",
   new_student: "bg-violet-500",
   registration_approved: "bg-green-500",
+  consent_revoked: "bg-orange-500",
 };
 
 function formatTime(value: Date | string | null): string {
@@ -162,7 +163,7 @@ export function NotificationsPopover({
 
     const seen = seenIdsRef.current;
     const alertTypes = isTrainer
-      ? new Set(["booking_request", "booking_cancelled", "birthday_reminder"])
+      ? new Set(["booking_request", "booking_cancelled", "birthday_reminder", "consent_revoked"])
       : new Set(["training_reminder", "booking_confirmed", "booking_cancelled", "broadcast"]);
 
     const fresh = notifications.filter(

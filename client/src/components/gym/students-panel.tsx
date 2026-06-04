@@ -39,8 +39,7 @@ import {
 import { BookStudentDialog } from "./book-student-dialog";
 import { RecurringBookingsPanel } from "./recurring-bookings-panel";
 import { DocumentViewDialog } from "./document-view-dialog";
-import { DocumentsManagerDialog } from "./documents-manager-dialog";
-import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, FileText, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, BadgeAlert } from "lucide-react";
+import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, BadgeAlert } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
@@ -84,7 +83,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [studentToReactivate, setStudentToReactivate] = useState<User | null>(null);
   const [reactivateResetCv, setReactivateResetCv] = useState(true);
   const [viewStudentId, setViewStudentId] = useState<string | null>(null);
-  const [docsManagerOpen, setDocsManagerOpen] = useState(false);
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [newStudent, setNewStudent] = useState(emptyNewStudent);
   const [consentWarningStudent, setConsentWarningStudent] = useState<(User & { pendingDocumentCount: number }) | null>(null);
@@ -274,23 +272,14 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
             </SheetTitle>
           </SheetHeader>
 
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <Button
-              onClick={() => setAddDialogOpen(true)}
-              data-testid="button-add-student"
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Добавить
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setDocsManagerOpen(true)}
-              data-testid="button-manage-documents"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Документы
-            </Button>
-          </div>
+          <Button
+            className="w-full mb-3"
+            onClick={() => setAddDialogOpen(true)}
+            data-testid="button-add-student"
+          >
+            <UserPlus className="h-4 w-4 mr-2" />
+            Добавить ученика
+          </Button>
 
           {/* Search */}
           <div className="relative mb-2">
@@ -751,11 +740,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
         studentId={viewStudentId}
         open={!!viewStudentId}
         onOpenChange={(o) => !o && setViewStudentId(null)}
-      />
-
-      <DocumentsManagerDialog
-        open={docsManagerOpen}
-        onOpenChange={setDocsManagerOpen}
       />
 
       <DocumentViewDialog

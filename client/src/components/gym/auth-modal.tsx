@@ -16,6 +16,7 @@ import {
   calculateAgeYears,
   todayLocalStr,
 } from "@shared/birth-date";
+import { filterRequiredDocuments, isPricingDocument } from "@shared/consents-pricing";
 
 interface AuthModalProps {
   open: boolean;
@@ -186,12 +187,12 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
       return;
     }
 
-    const missingDocs = documents.filter((d) => !acceptedDocs[d.id]);
-    if (missingDocs.length > 0) {
+    const missingRequired = filterRequiredDocuments(documents).filter((d) => !acceptedDocs[d.id]);
+    if (missingRequired.length > 0) {
       toast({
         variant: "destructive",
-        title: "Примите все документы",
-        description: missingDocs.map((d) => d.title).join(", "),
+        title: "Примите обязательные документы",
+        description: missingRequired.map((d) => d.title).join(", "),
       });
       return;
     }
@@ -638,18 +639,27 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                 {documents.length > 0 && (
                   <div className="border rounded-lg p-3 space-y-2">
                     <p className="text-sm font-medium">Согласия с документами</p>
-                    {documents.map(doc => (
+                    {documents.map((doc) => (
                       <label key={doc.id} className="flex items-start gap-2 text-sm cursor-pointer">
                         <Checkbox
                           checked={!!acceptedDocs[doc.id]}
-                          onCheckedChange={(v) => setAcceptedDocs(prev => ({ ...prev, [doc.id]: !!v }))}
+                          onCheckedChange={(v) => setAcceptedDocs((prev) => ({ ...prev, [doc.id]: !!v }))}
                           data-testid={`checkbox-doc-${doc.id}`}
                         />
                         <span className="flex-1">
                           Согласен(на) с{" "}
-                          <button type="button" className="text-blue-600 underline" onClick={() => setViewingDoc(doc)}>
+                          <button
+                            type="button"
+                            className="text-blue-600 underline"
+                            onClick={() => setViewingDoc(doc)}
+                          >
                             «{doc.title}»
                           </button>
+                          {isPricingDocument(doc) && !acceptedDocs[doc.id] && (
+                            <span className="block text-xs text-muted-foreground mt-0.5">
+                              Необязательно. Без галочки цена выше на {doc.priceSurchargeRub ?? 0} ₽
+                            </span>
+                          )}
                         </span>
                       </label>
                     ))}

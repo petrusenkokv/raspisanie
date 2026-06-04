@@ -20,6 +20,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { type Document } from "@shared/schema";
+import type { DocumentKind } from "@shared/consents-pricing";
 import { Loader2, Plus, Trash2, FileText, Edit, Save, X } from "lucide-react";
 
 interface Props {
@@ -30,9 +31,21 @@ interface Props {
 export function DocumentsManagerDialog({ open, onOpenChange }: Props) {
   const { toast } = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ title: "", content: "", isActive: true });
+  const [editForm, setEditForm] = useState({
+    title: "",
+    content: "",
+    isActive: true,
+    kind: "required" as DocumentKind,
+    priceSurchargeRub: "",
+  });
   const [creating, setCreating] = useState(false);
-  const [newForm, setNewForm] = useState({ title: "", content: "", isActive: true });
+  const [newForm, setNewForm] = useState({
+    title: "",
+    content: "",
+    isActive: true,
+    kind: "required" as DocumentKind,
+    priceSurchargeRub: "",
+  });
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
@@ -49,7 +62,7 @@ export function DocumentsManagerDialog({ open, onOpenChange }: Props) {
     if (!open) {
       setEditingId(null);
       setCreating(false);
-      setNewForm({ title: "", content: "", isActive: true });
+      setNewForm({ title: "", content: "", isActive: true, kind: "required", priceSurchargeRub: "" });
     }
   }, [open]);
 
@@ -59,7 +72,7 @@ export function DocumentsManagerDialog({ open, onOpenChange }: Props) {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (data: typeof newForm) => {
+    mutationFn: async (data: ReturnType<typeof toPayload>) => {
       const r = await apiRequest("POST", "/api/trainer/documents", data);
       return r.json();
     },
@@ -67,7 +80,7 @@ export function DocumentsManagerDialog({ open, onOpenChange }: Props) {
       invalidate();
       toast({ title: "Документ создан" });
       setCreating(false);
-      setNewForm({ title: "", content: "", isActive: true });
+      setNewForm({ title: "", content: "", isActive: true, kind: "required", priceSurchargeRub: "" });
     },
     onError: (e: any) => toast({ title: "Не удалось создать", description: e?.message, variant: "destructive" }),
   });
@@ -98,10 +111,60 @@ export function DocumentsManagerDialog({ open, onOpenChange }: Props) {
     onError: (e: any) => toast({ title: "Не удалось удалить", description: e?.message, variant: "destructive" }),
   });
 
+  const toPayload = (form: typeof newForm) => ({
+    title: form.title,
+    content: form.content,
+    isActive: form.isActive,
+    kind: form.kind,
+    priceSurchargeRub:
+      form.kind === "pricing" ? Math.max(0, Number(form.priceSurchargeRub) || 0) : null,
+  });
+
   const startEdit = (doc: Document) => {
     setEditingId(doc.id);
-    setEditForm({ title: doc.title, content: doc.content, isActive: doc.isActive });
+    setEditForm({
+      title: doc.title,
+      content: doc.content,
+      isActive: doc.isActive,
+      kind: (doc.kind === "pricing" ? "pricing" : "required") as DocumentKind,
+      priceSurchargeRub: doc.priceSurchargeRub != null ? String(doc.priceSurchargeRub) : "",
+    });
   };
+
+  const KindFields = ({
+    form,
+    setForm,
+  }: {
+    form: typeof newForm;
+    setForm: (v: typeof newForm) => void;
+  }) => (
+    <>
+      <div>
+        <Label>Тип документа</Label>
+        <select
+          className="w-full text-sm border rounded px-2 py-2 bg-white dark:bg-gray-900"
+          value={form.kind}
+          onChange={(e) =>
+            setForm({ ...form, kind: e.target.value as DocumentKind })
+          }
+        >
+          <option value="required">Обязательный (без галочки нельзя записаться)</option>
+          <option value="pricing">Влияет на цену (фото/видео и т.п.)</option>
+        </select>
+      </div>
+      {form.kind === "pricing" && (
+        <div>
+          <Label>Надбавка без согласия (₽)</Label>
+          <Input
+            type="number"
+            min={0}
+            value={form.priceSurchargeRub}
+            onChange={(e) => setForm({ ...form, priceSurchargeRub: e.target.value })}
+          />
+        </div>
+      )}
+    </>
+  );
 
   return (
     <>
@@ -141,6 +204,7 @@ export function DocumentsManagerDialog({ open, onOpenChange }: Props) {
                             onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
                           />
                         </div>
+                        <KindFields form={editForm} setForm={setEditForm} />
                         <label className="flex items-center gap-2 text-sm">
                           <Switch
                             checked={editForm.isActive}
@@ -155,7 +219,7 @@ export function DocumentsManagerDialog({ open, onOpenChange }: Props) {
                           </Button>
                           <Button
                             size="sm"
-                            onClick={() => updateMutation.mutate({ id: doc.id, data: editForm })}
+                            onClick={() => updateMutation.mutate({ id: doc.id, data: toPayload(editForm) })}
                             disabled={updateMutation.isPending}
                           >
                             {updateMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
@@ -172,6 +236,11 @@ export function DocumentsManagerDialog({ open, onOpenChange }: Props) {
                               <span className="font-semibold">{doc.title}</span>
                               {!doc.isActive && (
                                 <Badge variant="secondary" className="text-xs">Скрыт</Badge>
+                              )}
+                              {doc.kind === "pricing" && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{doc.priceSurchargeRub ?? 0} ₽
+                                </Badge>
                               )}
                             </div>
                             <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-3 whitespace-pre-wrap mt-1">
@@ -216,13 +285,14 @@ export function DocumentsManagerDialog({ open, onOpenChange }: Props) {
                         placeholder="Введите полный текст документа..."
                       />
                     </div>
+                    <KindFields form={newForm} setForm={setNewForm} />
                     <div className="flex gap-2 justify-end">
-                      <Button variant="outline" size="sm" onClick={() => { setCreating(false); setNewForm({ title: "", content: "", isActive: true }); }}>
+                      <Button variant="outline" size="sm" onClick={() => { setCreating(false); setNewForm({ title: "", content: "", isActive: true, kind: "required", priceSurchargeRub: "" }); }}>
                         Отмена
                       </Button>
                       <Button
                         size="sm"
-                        onClick={() => createMutation.mutate(newForm)}
+                        onClick={() => createMutation.mutate(toPayload(newForm))}
                         disabled={createMutation.isPending || !newForm.title.trim() || !newForm.content.trim()}
                       >
                         {createMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}

@@ -12,6 +12,9 @@ import {
   type DaySchedule,
   type Document,
   type InsertDocument,
+  type TrainerService,
+  type InsertTrainerService,
+  type StudentAccountSummary,
   type UserConsent,
   type StudentWithConsents,
   type RecurringBooking,
@@ -32,6 +35,7 @@ import {
   type InsertParentChild,
 } from "@shared/schema";
 import type { PushSubscriptionData } from "./push";
+import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
 import { randomUUID } from "crypto";
 import {
   moscowDateString,
@@ -113,7 +117,18 @@ export interface IStorage {
   // User consents
   getConsentsByUser(userId: string): Promise<(UserConsent & { document: Document })[]>;
   recordConsent(userId: string, documentId: string): Promise<UserConsent>;
+  revokeConsent(userId: string, documentId: string): Promise<boolean>;
   getStudentWithConsents(id: string): Promise<StudentWithConsents | undefined>;
+  getStudentAccountSummary(studentId: string, todayStr: string): Promise<StudentAccountSummary | undefined>;
+
+  // Trainer services (pricing)
+  getTrainerServices(activeOnly?: boolean): Promise<TrainerService[]>;
+  getTrainerService(id: string): Promise<TrainerService | undefined>;
+  getDefaultTrainerService(): Promise<TrainerService | undefined>;
+  createTrainerService(data: InsertTrainerService): Promise<TrainerService>;
+  updateTrainerService(id: string, updates: Partial<TrainerService>): Promise<TrainerService>;
+  deleteTrainerService(id: string): Promise<void>;
+  assignDefaultServiceToUser(userId: string): Promise<void>;
 
   // Recurring bookings
   getRecurringBookingsByStudent(studentId: string): Promise<RecurringBooking[]>;
@@ -252,6 +267,7 @@ export class MemStorage implements IStorage {
   private bookings: Map<string, Booking> = new Map();
   private notifications: Map<string, Notification> = new Map();
   private documents: Map<string, Document> = new Map();
+  private trainerServicesMap: Map<string, TrainerService> = new Map();
   private consents: Map<string, UserConsent> = new Map();
   private recurringBookings: Map<string, RecurringBooking> = new Map();
   /** Keys: `${recurringBookingId}:${YYYY-MM-DD}` */
@@ -317,19 +333,33 @@ export class MemStorage implements IStorage {
       password: "12345",
       mustChangePassword: false,
       lastLogin: null,
+      selectedServiceId: null,
       createdAt: new Date()
     };
     this.users.set(trainerId, trainer);
 
-    // Seed default consent documents
-    const seedDocs: { title: string; content: string }[] = [
+    const defaultServiceId = randomUUID();
+    this.trainerServicesMap.set(defaultServiceId, {
+      id: defaultServiceId,
+      name: "Тренировка",
+      priceRub: 500,
+      isActive: true,
+      isDefault: true,
+      sortOrder: 0,
+      createdAt: new Date(),
+    });
+
+    const seedDocs: { title: string; content: string; kind: "required" | "pricing"; priceSurchargeRub?: number }[] = [
       {
         title: "Правила техники безопасности в тренажёрном зале",
+        kind: "required",
         content: "1. Перед тренировкой обязательно проведите разминку.\n2. Используйте оборудование строго по назначению.\n3. Не допускайте перегрузок, при недомогании немедленно прекратите занятие и сообщите тренеру.\n4. Соблюдайте чистоту, после упражнений возвращайте инвентарь на место.\n5. Запрещено заниматься в состоянии алкогольного или наркотического опьянения.\n\nЯ ознакомлен(а) с правилами техники безопасности и обязуюсь их соблюдать."
       },
       {
         title: "Разрешение на фото- и видеосъёмку",
-        content: "Я даю согласие тренеру и администрации зала на проведение фото- и видеосъёмки во время тренировок, а также на использование полученных материалов в информационных, рекламных и образовательных целях (соцсети, сайт, отчётность).\n\nСогласие может быть отозвано в любой момент по письменному заявлению."
+        kind: "pricing",
+        priceSurchargeRub: 500,
+        content: "Я даю согласие тренеру и администрации зала на проведение фото- и видеосъёмки во время тренировок, а также на использование полученных материалов в информационных, рекламных и образовательных целях (соцсети, сайт, отчётность).\n\nБез этого согласия стоимость одной тренировки увеличивается на сумму, указанную тренером.\n\nСогласие можно отозвать в любой момент в профиле."
       }
     ];
     for (const d of seedDocs) {
@@ -338,6 +368,8 @@ export class MemStorage implements IStorage {
         id,
         title: d.title,
         content: d.content,
+        kind: d.kind,
+        priceSurchargeRub: d.priceSurchargeRub ?? null,
         isActive: true,
         createdAt: new Date()
       });
@@ -421,9 +453,13 @@ export class MemStorage implements IStorage {
       mustChangePassword: insertUser.mustChangePassword ?? false,
       welcomeShown: false,
       lastLogin: null,
+      selectedServiceId: null,
       createdAt: new Date()
     };
     this.users.set(id, user);
+    if (user.role === "student" || user.role === "parent") {
+      await this.assignDefaultServiceToUser(id);
+    }
     return user;
   }
 
@@ -554,6 +590,8 @@ export class MemStorage implements IStorage {
       id,
       title: doc.title,
       content: doc.content,
+      kind: (doc as any).kind ?? "required",
+      priceSurchargeRub: (doc as any).priceSurchargeRub ?? null,
       isActive: doc.isActive ?? true,
       createdAt: new Date()
     };
@@ -618,6 +656,121 @@ export class MemStorage implements IStorage {
     if (!user) return undefined;
     const consents = await this.getConsentsByUser(id);
     return { ...user, consents };
+  }
+
+  async revokeConsent(userId: string, documentId: string): Promise<boolean> {
+    let removed = false;
+    for (const [cid, c] of Array.from(this.consents.entries())) {
+      if (c.userId === userId && c.documentId === documentId) {
+        this.consents.delete(cid);
+        removed = true;
+      }
+    }
+    return removed;
+  }
+
+  async getTrainerServices(activeOnly = false): Promise<TrainerService[]> {
+    const all = Array.from(this.trainerServicesMap.values());
+    const filtered = activeOnly ? all.filter((s) => s.isActive) : all;
+    return filtered.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  }
+
+  async getTrainerService(id: string): Promise<TrainerService | undefined> {
+    return this.trainerServicesMap.get(id);
+  }
+
+  async getDefaultTrainerService(): Promise<TrainerService | undefined> {
+    const all = await this.getTrainerServices(true);
+    return all.find((s) => s.isDefault) ?? all[0];
+  }
+
+  async createTrainerService(data: InsertTrainerService): Promise<TrainerService> {
+    const id = randomUUID();
+    if (data.isDefault) {
+      for (const s of Array.from(this.trainerServicesMap.values())) {
+        if (s.isDefault) this.trainerServicesMap.set(s.id, { ...s, isDefault: false });
+      }
+    }
+    const service: TrainerService = {
+      id,
+      name: data.name,
+      priceRub: data.priceRub ?? 0,
+      isActive: data.isActive ?? true,
+      isDefault: data.isDefault ?? false,
+      sortOrder: data.sortOrder ?? 0,
+      createdAt: new Date(),
+    };
+    this.trainerServicesMap.set(id, service);
+    return service;
+  }
+
+  async updateTrainerService(id: string, updates: Partial<TrainerService>): Promise<TrainerService> {
+    const cur = this.trainerServicesMap.get(id);
+    if (!cur) throw new Error("Услуга не найдена");
+    if (updates.isDefault) {
+      for (const s of Array.from(this.trainerServicesMap.values())) {
+        if (s.id !== id && s.isDefault) this.trainerServicesMap.set(s.id, { ...s, isDefault: false });
+      }
+    }
+    const updated = { ...cur, ...updates };
+    this.trainerServicesMap.set(id, updated);
+    return updated;
+  }
+
+  async deleteTrainerService(id: string): Promise<void> {
+    const cur = this.trainerServicesMap.get(id);
+    if (!cur) throw new Error("Услуга не найдена");
+    if (cur.isDefault) throw new Error("Нельзя удалить услугу по умолчанию");
+    const active = (await this.getTrainerServices(true)).filter((s) => s.id !== id);
+    if (active.length === 0) throw new Error("Должна остаться хотя бы одна активная услуга");
+    const fallback = active.find((s) => s.isDefault) ?? active[0];
+    for (const u of Array.from(this.users.values())) {
+      if (u.selectedServiceId === id) {
+        this.users.set(u.id, { ...u, selectedServiceId: fallback.id });
+      }
+    }
+    this.trainerServicesMap.delete(id);
+  }
+
+  async assignDefaultServiceToUser(userId: string): Promise<void> {
+    const user = this.users.get(userId);
+    if (!user || user.selectedServiceId) return;
+    const def = await this.getDefaultTrainerService();
+    if (!def) return;
+    this.users.set(userId, { ...user, selectedServiceId: def.id });
+  }
+
+  async getStudentAccountSummary(studentId: string, todayStr: string): Promise<StudentAccountSummary | undefined> {
+    const user = this.users.get(studentId);
+    if (!user) return undefined;
+    await this.assignDefaultServiceToUser(studentId);
+    const refreshed = this.users.get(studentId)!;
+    const activeDocs = await this.getDocuments(true);
+    const consents = await this.getConsentsByUser(studentId);
+    const signedDocumentIds = new Set(consents.map((c) => c.documentId));
+    const service =
+      (refreshed.selectedServiceId && (await this.getTrainerService(refreshed.selectedServiceId))) ||
+      (await this.getDefaultTrainerService());
+    const sessionPrice = computeSessionPrice({
+      service: service ? { id: service.id, name: service.name, priceRub: service.priceRub } : null,
+      documents: activeDocs,
+      signedDocumentIds,
+    });
+    const payStatus = await this.getStudentPaymentStatus(studentId, todayStr);
+    let trainerPaymentRemaining: number | null = null;
+    let trainerPaymentTotal: number | null = null;
+    if (payStatus.activeTrainerPayment) {
+      const p = payStatus.activeTrainerPayment;
+      trainerPaymentTotal = p.totalSessions;
+      trainerPaymentRemaining = Math.max(0, p.totalSessions - p.usedSessions);
+    }
+    return {
+      sessionPrice,
+      signedDocumentIds: Array.from(signedDocumentIds),
+      pendingRequiredCount: missingRequiredDocumentIds(activeDocs, signedDocumentIds).length,
+      trainerPaymentRemaining,
+      trainerPaymentTotal,
+    };
   }
 
   async getTimeSlotById(id: string): Promise<TimeSlot | undefined> {

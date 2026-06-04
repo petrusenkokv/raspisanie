@@ -2,13 +2,14 @@ import { db } from "./db";
 import { eq, and, or, ne, asc, desc, inArray, gte, lte, lt, sql as drizzleSql } from "drizzle-orm";
 import { pgTable, varchar, text, timestamp } from "drizzle-orm/pg-core";
 import {
-  users, documents, userConsents, parentChildren, timeSlots, trainerSettings,
+  users, documents, userConsents, trainerServices, parentChildren, timeSlots, trainerSettings,
   holidays, recurringBookings, recurringBookingExceptions, bookings, membershipPayments, trainerPayments, notifications,
   type User, type InsertUser,
   type TimeSlot, type InsertTimeSlot,
   type Booking, type InsertBooking,
   type Notification, type InsertNotification,
   type Document, type InsertDocument,
+  type TrainerService, type InsertTrainerService, type StudentAccountSummary,
   type UserConsent,
   type StudentWithConsents,
   type RecurringBooking, type InsertRecurringBooking,
@@ -33,6 +34,7 @@ import {
   eachDateStrInRange,
   nextCvAllowedDateStr,
 } from "./moscow-date";
+import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
 
 // Sick periods table (not in shared schema, defined locally)
 const sickPeriods = pgTable("sick_periods", {
@@ -135,6 +137,7 @@ export class DbStorage implements IStorage {
   private broadcastLogs: Map<string, BroadcastLog> = new Map();
   private recurringExceptionsSchemaReady = false;
   private blockedPeriodsSchemaReady = false;
+  private servicesDocsSchemaReady = false;
 
   private async ensureRecurringExceptionsSchema(): Promise<void> {
     if (this.recurringExceptionsSchemaReady) return;
@@ -153,6 +156,31 @@ export class DbStorage implements IStorage {
       `);
     } catch { /* ignore */ }
     this.recurringExceptionsSchemaReady = true;
+  }
+
+  private async ensureServicesAndDocsSchema(): Promise<void> {
+    if (this.servicesDocsSchemaReady) return;
+    try {
+      await db.execute(drizzleSql`
+        CREATE TABLE IF NOT EXISTS trainer_services (
+          id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+          name text NOT NULL,
+          price_rub integer NOT NULL DEFAULT 0,
+          is_active boolean NOT NULL DEFAULT true,
+          is_default boolean NOT NULL DEFAULT false,
+          sort_order integer NOT NULL DEFAULT 0,
+          created_at timestamp DEFAULT now()
+        )
+      `);
+      await db.execute(drizzleSql`ALTER TABLE documents ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'required'`);
+      await db.execute(drizzleSql`ALTER TABLE documents ADD COLUMN IF NOT EXISTS price_surcharge_rub integer`);
+      await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS selected_service_id varchar`);
+      await db.execute(drizzleSql`
+        UPDATE documents SET kind = 'pricing', price_surcharge_rub = COALESCE(price_surcharge_rub, 500)
+        WHERE title ILIKE '%фото%' OR title ILIKE '%видео%'
+      `);
+    } catch { /* ignore */ }
+    this.servicesDocsSchemaReady = true;
   }
 
   private async ensureBlockedPeriodsSchema(): Promise<void> {
@@ -217,6 +245,7 @@ export class DbStorage implements IStorage {
   // ======================== SEED ========================
 
   async seed(): Promise<void> {
+    await this.ensureServicesAndDocsSchema();
     // Ensure DB columns exist (safe migrations)
     try {
       await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_pending_approval boolean NOT NULL DEFAULT false`);
@@ -281,18 +310,31 @@ export class DbStorage implements IStorage {
         exemptTrainerPayment: true,
       }).where(eq(users.id, trainer.id));
     }
+    const services = await db.select().from(trainerServices);
+    if (services.length === 0) {
+      await db.insert(trainerServices).values({
+        name: "Тренировка",
+        priceRub: 500,
+        isActive: true,
+        isDefault: true,
+        sortOrder: 0,
+      });
+    }
     // Ensure default documents exist
     const docs = await db.select().from(documents);
     if (docs.length === 0) {
       await db.insert(documents).values([
         {
           title: "Правила техники безопасности в тренажёрном зале",
+          kind: "required",
           content: "1. Перед тренировкой обязательно проведите разминку.\n2. Используйте оборудование строго по назначению.\n3. Не допускайте перегрузок, при недомогании немедленно прекратите занятие и сообщите тренеру.\n4. Соблюдайте чистоту, после упражнений возвращайте инвентарь на место.\n5. Запрещено заниматься в состоянии алкогольного или наркотического опьянения.\n\nЯ ознакомлен(а) с правилами техники безопасности и обязуюсь их соблюдать.",
           isActive: true,
         },
         {
           title: "Разрешение на фото- и видеосъёмку",
-          content: "Я даю согласие тренеру и администрации зала на проведение фото- и видеосъёмки во время тренировок, а также на использование полученных материалов в информационных, рекламных и образовательных целях (соцсети, сайт, отчётность).\n\nСогласие может быть отозвано в любой момент по письменному заявлению.",
+          kind: "pricing",
+          priceSurchargeRub: 500,
+          content: "Я даю согласие тренеру и администрации зала на проведение фото- и видеосъёмки во время тренировок, а также на использование полученных материалов в информационных, рекламных и образовательных целях (соцсети, сайт, отчётность).\n\nБез этого согласия стоимость одной тренировки увеличивается на сумму, указанную тренером.\n\nСогласие можно отозвать в любой момент в профиле.",
           isActive: true,
         },
       ]);
@@ -345,7 +387,12 @@ export class DbStorage implements IStorage {
       password: insertUser.password ?? "",
       mustChangePassword: insertUser.mustChangePassword ?? false,
     }).returning();
-    return rows[0];
+    const user = rows[0];
+    if (user.role === "student" || user.role === "parent") {
+      await this.assignDefaultServiceToUser(user.id);
+      return (await this.getUser(user.id))!;
+    }
+    return user;
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User> {
@@ -436,9 +483,12 @@ export class DbStorage implements IStorage {
   }
 
   async createDocument(doc: InsertDocument): Promise<Document> {
+    await this.ensureServicesAndDocsSchema();
     const rows = await db.insert(documents).values({
       title: doc.title,
       content: doc.content,
+      kind: (doc as any).kind ?? "required",
+      priceSurchargeRub: (doc as any).priceSurchargeRub ?? null,
       isActive: doc.isActive ?? true,
     }).returning();
     return rows[0];
@@ -489,6 +539,118 @@ export class DbStorage implements IStorage {
     if (!user) return undefined;
     const consents = await this.getConsentsByUser(id);
     return { ...user, consents };
+  }
+
+  async revokeConsent(userId: string, documentId: string): Promise<boolean> {
+    const existing = await db
+      .select()
+      .from(userConsents)
+      .where(and(eq(userConsents.userId, userId), eq(userConsents.documentId, documentId)))
+      .limit(1);
+    if (!existing[0]) return false;
+    await db
+      .delete(userConsents)
+      .where(and(eq(userConsents.userId, userId), eq(userConsents.documentId, documentId)));
+    return true;
+  }
+
+  async getTrainerServices(activeOnly = false): Promise<TrainerService[]> {
+    await this.ensureServicesAndDocsSchema();
+    const rows = activeOnly
+      ? await db.select().from(trainerServices).where(eq(trainerServices.isActive, true)).orderBy(asc(trainerServices.sortOrder), asc(trainerServices.name))
+      : await db.select().from(trainerServices).orderBy(asc(trainerServices.sortOrder), asc(trainerServices.name));
+    return rows;
+  }
+
+  async getTrainerService(id: string): Promise<TrainerService | undefined> {
+    await this.ensureServicesAndDocsSchema();
+    const rows = await db.select().from(trainerServices).where(eq(trainerServices.id, id));
+    return rows[0];
+  }
+
+  async getDefaultTrainerService(): Promise<TrainerService | undefined> {
+    const all = await this.getTrainerServices(true);
+    return all.find((s) => s.isDefault) ?? all[0];
+  }
+
+  async createTrainerService(data: InsertTrainerService): Promise<TrainerService> {
+    await this.ensureServicesAndDocsSchema();
+    if (data.isDefault) {
+      await db.update(trainerServices).set({ isDefault: false });
+    }
+    const rows = await db.insert(trainerServices).values({
+      name: data.name,
+      priceRub: data.priceRub ?? 0,
+      isActive: data.isActive ?? true,
+      isDefault: data.isDefault ?? false,
+      sortOrder: data.sortOrder ?? 0,
+    }).returning();
+    return rows[0];
+  }
+
+  async updateTrainerService(id: string, updates: Partial<TrainerService>): Promise<TrainerService> {
+    await this.ensureServicesAndDocsSchema();
+    if (updates.isDefault) {
+      await db.update(trainerServices).set({ isDefault: false }).where(ne(trainerServices.id, id));
+    }
+    const rows = await db.update(trainerServices).set(updates).where(eq(trainerServices.id, id)).returning();
+    if (!rows[0]) throw new Error("Услуга не найдена");
+    return rows[0];
+  }
+
+  async deleteTrainerService(id: string): Promise<void> {
+    await this.ensureServicesAndDocsSchema();
+    const cur = await this.getTrainerService(id);
+    if (!cur) throw new Error("Услуга не найдена");
+    if (cur.isDefault) throw new Error("Нельзя удалить услугу по умолчанию");
+    const active = (await this.getTrainerServices(true)).filter((s) => s.id !== id);
+    if (active.length === 0) throw new Error("Должна остаться хотя бы одна активная услуга");
+    const fallback = active.find((s) => s.isDefault) ?? active[0];
+    await db.update(users).set({ selectedServiceId: fallback.id }).where(eq(users.selectedServiceId, id));
+    await db.delete(trainerServices).where(eq(trainerServices.id, id));
+  }
+
+  async assignDefaultServiceToUser(userId: string): Promise<void> {
+    await this.ensureServicesAndDocsSchema();
+    const user = await this.getUser(userId);
+    if (!user?.selectedServiceId) {
+      const def = await this.getDefaultTrainerService();
+      if (def) await db.update(users).set({ selectedServiceId: def.id }).where(eq(users.id, userId));
+    }
+  }
+
+  async getStudentAccountSummary(studentId: string, todayStr: string): Promise<StudentAccountSummary | undefined> {
+    await this.ensureServicesAndDocsSchema();
+    const user = await this.getUser(studentId);
+    if (!user) return undefined;
+    await this.assignDefaultServiceToUser(studentId);
+    const refreshed = (await this.getUser(studentId))!;
+    const activeDocs = await this.getDocuments(true);
+    const consents = await this.getConsentsByUser(studentId);
+    const signedDocumentIds = new Set(consents.map((c) => c.documentId));
+    const service =
+      (refreshed.selectedServiceId && (await this.getTrainerService(refreshed.selectedServiceId))) ||
+      (await this.getDefaultTrainerService());
+    const sessionPrice = computeSessionPrice({
+      service: service ? { id: service.id, name: service.name, priceRub: service.priceRub } : null,
+      documents: activeDocs,
+      signedDocumentIds,
+    });
+    const payStatus = await this.getStudentPaymentStatus(studentId, todayStr);
+    let trainerPaymentRemaining: number | null = null;
+    let trainerPaymentTotal: number | null = null;
+    if (payStatus.activeTrainerPayment) {
+      const p = payStatus.activeTrainerPayment;
+      trainerPaymentTotal = p.totalSessions;
+      trainerPaymentRemaining = Math.max(0, p.totalSessions - p.usedSessions);
+    }
+    return {
+      sessionPrice,
+      signedDocumentIds: Array.from(signedDocumentIds),
+      pendingRequiredCount: missingRequiredDocumentIds(activeDocs, signedDocumentIds).length,
+      trainerPaymentRemaining,
+      trainerPaymentTotal,
+    };
   }
 
   // ======================== TIME SLOTS ========================

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
-import type { User } from "@shared/schema";
+import type { User, Document } from "@shared/schema";
 import { storage } from "./storage-instance";
 import { setupWebSocket, broadcast, setRealtimeEnabled } from "./ws";
 import { sendPushToUser, vapidPublicKey } from "./push";
@@ -24,6 +24,11 @@ import {
   sanitizeBookingMessage,
 } from "@shared/booking-message";
 import { moscowDateString } from "./moscow-date";
+import {
+  filterRequiredDocuments,
+  missingRequiredDocumentIds,
+} from "@shared/consents-pricing";
+import { documentInputSchema, trainerServiceInputSchema } from "@shared/schema";
 import {
   establishSession,
   destroySession,
@@ -63,6 +68,44 @@ async function recordConsents(userId: string, documentIds: string[] | undefined)
       await storage.recordConsent(userId, docId);
     }
   }
+}
+
+async function getSignedDocumentIds(userId: string): Promise<Set<string>> {
+  const consents = await storage.getConsentsByUser(userId);
+  return new Set(consents.map((c) => c.documentId));
+}
+
+async function getPendingRequiredDocuments(userId: string) {
+  const activeDocs = await storage.getDocuments(true);
+  const signed = await getSignedDocumentIds(userId);
+  return filterRequiredDocuments(activeDocs).filter((d) => !signed.has(d.id));
+}
+
+async function assertRequiredConsentsForBooking(studentId: string): Promise<string | null> {
+  const missing = await getPendingRequiredDocuments(studentId);
+  if (missing.length === 0) return null;
+  return `Примите обязательные документы: ${missing.map((d) => d.title).join(", ")}`;
+}
+
+async function notifyTrainerConsentRevoked(
+  student: User,
+  documentTitle: string,
+): Promise<void> {
+  const trainer = await storage.getTrainer();
+  if (!trainer) return;
+  const fullName = [student.lastName, student.firstName].filter(Boolean).join(" ");
+  const message = `${fullName || "Ученик"} отозвал(а) согласие: «${documentTitle}»`;
+  await storage.createNotification({
+    userId: trainer.id,
+    type: "consent_revoked",
+    title: "Отозвано согласие",
+    message,
+    isRead: false,
+    relatedBookingId: null,
+    relatedUserId: student.id,
+  } as any);
+  broadcast({ type: "notification_update" });
+  pushNotifyUser(trainer.id, "Отозвано согласие", message);
 }
 
 function sanitizeScheduleForPublic<T extends any>(schedule: T): T {
@@ -299,13 +342,12 @@ export async function registerRoutes(
         normalizedParentPhone = np;
       }
 
-      // Check that all active documents are accepted
       const activeDocs = await storage.getDocuments(true);
       const accepted = new Set<string>(Array.isArray(consentDocumentIds) ? consentDocumentIds : []);
-      const missing = activeDocs.filter(d => !accepted.has(d.id));
-      if (missing.length > 0) {
+      const missingRequired = filterRequiredDocuments(activeDocs).filter((d) => !accepted.has(d.id));
+      if (missingRequired.length > 0) {
         return res.status(400).json({
-          message: `Необходимо принять документы: ${missing.map(d => d.title).join(", ")}`
+          message: `Необходимо принять документы: ${missingRequired.map((d) => d.title).join(", ")}`,
         });
       }
 
@@ -401,10 +443,10 @@ export async function registerRoutes(
 
       const activeDocs = await storage.getDocuments(true);
       const accepted = new Set<string>(Array.isArray(consentDocumentIds) ? consentDocumentIds : []);
-      const missing = activeDocs.filter((d) => !accepted.has(d.id));
-      if (missing.length > 0) {
+      const missingRequired = filterRequiredDocuments(activeDocs).filter((d) => !accepted.has(d.id));
+      if (missingRequired.length > 0) {
         return res.status(400).json({
-          message: `Необходимо принять документы: ${missing.map((d) => d.title).join(", ")}`,
+          message: `Необходимо принять документы: ${missingRequired.map((d) => d.title).join(", ")}`,
         });
       }
 
@@ -523,10 +565,7 @@ export async function registerRoutes(
 
       await storage.updateUser(user.id, { lastLogin: new Date() });
 
-      const allDocs = await storage.getDocuments(true);
-      const userConsents = await storage.getConsentsByUser(user.id);
-      const signedDocIds = new Set(userConsents.map(c => c.documentId));
-      const pendingDocuments = allDocs.filter(d => !signedDocIds.has(d.id));
+      const pendingDocuments = await getPendingRequiredDocuments(user.id);
 
       const showWelcomeMessage = !user.isPendingApproval && !user.welcomeShown;
 
@@ -556,10 +595,7 @@ export async function registerRoutes(
           pendingDocuments: [],
         });
       }
-      const allDocs = await storage.getDocuments(true);
-      const userConsents = await storage.getConsentsByUser(user.id);
-      const signedDocIds = new Set(userConsents.map((c) => c.documentId));
-      const pendingDocuments = allDocs.filter((d) => !signedDocIds.has(d.id));
+      const pendingDocuments = await getPendingRequiredDocuments(user.id);
       res.json({
         user: toPublicUser(user),
         pendingDocuments,
@@ -718,6 +754,98 @@ export async function registerRoutes(
       res.json({ user: toPublicUser(user) });
     } catch {
       res.status(500).json({ message: "Не удалось получить данные пользователя" });
+    }
+  });
+
+  app.get("/api/users/:id/account-summary", requireAuth, async (req, res) => {
+    try {
+      const targetId = req.params.id;
+      if (
+        !isSessionTrainer(req) &&
+        targetId !== sessionUserId(req) &&
+        !(await storage.isParentOfChild(sessionUserId(req), targetId))
+      ) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
+      const summary = await storage.getStudentAccountSummary(targetId, moscowDateString());
+      if (!summary) return res.status(404).json({ message: "Пользователь не найден" });
+      const activeDocs = await storage.getDocuments(true);
+      const signed = new Set(summary.signedDocumentIds);
+      res.json({
+        ...summary,
+        documents: activeDocs.map((d) => ({
+          ...d,
+          accepted: signed.has(d.id),
+        })),
+      });
+    } catch {
+      res.status(500).json({ message: "Не удалось загрузить данные профиля" });
+    }
+  });
+
+  app.patch("/api/users/:id/selected-service", requireAuth, async (req, res) => {
+    try {
+      const targetId = req.params.id;
+      if (
+        !isSessionTrainer(req) &&
+        targetId !== sessionUserId(req) &&
+        !(await storage.isParentOfChild(sessionUserId(req), targetId))
+      ) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
+      const { serviceId } = req.body ?? {};
+      if (!serviceId || typeof serviceId !== "string") {
+        return res.status(400).json({ message: "Укажите serviceId" });
+      }
+      const service = await storage.getTrainerService(serviceId);
+      if (!service || !service.isActive) {
+        return res.status(400).json({ message: "Услуга не найдена или недоступна" });
+      }
+      const user = await storage.updateUser(targetId, { selectedServiceId: serviceId } as any);
+      res.json({ user: toPublicUser(user) });
+    } catch {
+      res.status(500).json({ message: "Не удалось сохранить услугу" });
+    }
+  });
+
+  app.post("/api/users/:id/consents/toggle", requireAuth, async (req, res) => {
+    try {
+      const targetId = req.params.id;
+      if (
+        !isSessionTrainer(req) &&
+        targetId !== sessionUserId(req) &&
+        !(await storage.isParentOfChild(sessionUserId(req), targetId))
+      ) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
+      const { documentId, accepted } = req.body ?? {};
+      if (!documentId || typeof accepted !== "boolean") {
+        return res.status(400).json({ message: "Укажите documentId и accepted" });
+      }
+      const doc = await storage.getDocument(documentId);
+      if (!doc || !doc.isActive) {
+        return res.status(404).json({ message: "Документ не найден" });
+      }
+      const student = await storage.getUser(targetId);
+      if (!student) return res.status(404).json({ message: "Пользователь не найден" });
+
+      if (accepted) {
+        await storage.recordConsent(targetId, documentId);
+      } else {
+        const had = await storage.revokeConsent(targetId, documentId);
+        if (!had) return res.status(400).json({ message: "Согласие не было принято" });
+        await notifyTrainerConsentRevoked(student, doc.title);
+      }
+
+      const summary = await storage.getStudentAccountSummary(targetId, moscowDateString());
+      const activeDocs = await storage.getDocuments(true);
+      const signed = new Set(summary?.signedDocumentIds ?? []);
+      res.json({
+        accountSummary: summary,
+        documents: activeDocs.map((d) => ({ ...d, accepted: signed.has(d.id) })),
+      });
+    } catch {
+      res.status(500).json({ message: "Не удалось обновить согласие" });
     }
   });
 
@@ -1025,6 +1153,11 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Ваша регистрация ещё не одобрена тренером. Ожидайте подтверждения." });
       }
 
+      const consentBlock = await assertRequiredConsentsForBooking(studentId);
+      if (consentBlock) {
+        return res.status(403).json({ message: consentBlock });
+      }
+
       // Check if time slot is available
       const existingBookings = await storage.getBookingsByTimeSlot(timeSlotId);
       const confirmedBookings = existingBookings.filter(b => b.status === "confirmed");
@@ -1321,6 +1454,22 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/services", async (_req, res) => {
+    try {
+      res.json(await storage.getTrainerServices(true));
+    } catch {
+      res.status(500).json({ message: "Не удалось получить услуги" });
+    }
+  });
+
+  app.get("/api/documents", async (_req, res) => {
+    try {
+      res.json(await storage.getDocuments(true));
+    } catch {
+      res.status(500).json({ message: "Не удалось получить документы" });
+    }
+  });
+
   // Trainer routes
   app.use("/api/trainer", requireTrainer);
 
@@ -1328,13 +1477,12 @@ export async function registerRoutes(
     try {
       const includeInactive = req.query.includeInactive === "true";
       const students = await storage.getStudentsList(includeInactive);
-      const activeDocs = await storage.getDocuments(true);
       const todayStr = moscowDateString();
       const studentsWithConsents = await Promise.all(
         students.map(async (student) => {
-          const consents = await storage.getConsentsByUser(student.id);
-          const acceptedIds = new Set(consents.map((c) => c.documentId));
-          const pendingDocumentCount = activeDocs.filter((d) => !acceptedIds.has(d.id)).length;
+          const signed = await getSignedDocumentIds(student.id);
+          const activeDocs = await storage.getDocuments(true);
+          const pendingDocumentCount = missingRequiredDocumentIds(activeDocs, signed).length;
           let hasMembership = false;
           let hasTrainerPayment = false;
           try {
@@ -1511,15 +1659,6 @@ export async function registerRoutes(
   });
 
   // ----- Documents (consent forms) -----
-  app.get("/api/documents", async (_req, res) => {
-    try {
-      const docs = await storage.getDocuments(true);
-      res.json(docs);
-    } catch (error) {
-      res.status(500).json({ message: "Не удалось получить документы" });
-    }
-  });
-
   app.get("/api/trainer/documents", async (_req, res) => {
     try {
       const docs = await storage.getDocuments(false);
@@ -1531,15 +1670,21 @@ export async function registerRoutes(
 
   app.post("/api/trainer/documents", async (req, res) => {
     try {
-      const { title, content, isActive } = req.body;
-      if (!title || !content) {
-        return res.status(400).json({ message: "Укажите название и текст документа" });
+      const parsed = documentInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Некорректные данные" });
+      }
+      const { title, content, isActive, kind, priceSurchargeRub } = parsed.data;
+      if (kind === "pricing" && (priceSurchargeRub == null || priceSurchargeRub < 0)) {
+        return res.status(400).json({ message: "Для ценового документа укажите надбавку (₽)" });
       }
       const doc = await storage.createDocument({
-        title: String(title).trim(),
-        content: String(content),
+        title: title.trim(),
+        content,
         isActive: isActive ?? true,
-      });
+        kind: kind ?? "required",
+        priceSurchargeRub: kind === "pricing" ? priceSurchargeRub ?? 0 : null,
+      } as any);
       res.status(201).json(doc);
     } catch (error) {
       res.status(500).json({ message: "Не удалось создать документ" });
@@ -1549,15 +1694,64 @@ export async function registerRoutes(
   app.patch("/api/trainer/documents/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { title, content, isActive } = req.body;
-      const updates: Partial<{ title: string; content: string; isActive: boolean }> = {};
-      if (title !== undefined) updates.title = String(title).trim();
-      if (content !== undefined) updates.content = String(content);
-      if (isActive !== undefined) updates.isActive = !!isActive;
+      const parsed = documentInputSchema.partial().safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Некорректные данные" });
+      }
+      const updates: Partial<Document> = {};
+      const data = parsed.data;
+      if (data.title !== undefined) updates.title = data.title.trim();
+      if (data.content !== undefined) updates.content = data.content;
+      if (data.isActive !== undefined) updates.isActive = data.isActive;
+      if (data.kind !== undefined) updates.kind = data.kind;
+      if (data.priceSurchargeRub !== undefined) updates.priceSurchargeRub = data.priceSurchargeRub;
       const doc = await storage.updateDocument(id, updates);
       res.json(doc);
     } catch (error) {
       res.status(500).json({ message: "Не удалось обновить документ" });
+    }
+  });
+
+  app.get("/api/trainer/services", async (_req, res) => {
+    try {
+      res.json(await storage.getTrainerServices(false));
+    } catch {
+      res.status(500).json({ message: "Не удалось получить услуги" });
+    }
+  });
+
+  app.post("/api/trainer/services", async (req, res) => {
+    try {
+      const parsed = trainerServiceInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Некорректные данные" });
+      }
+      const service = await storage.createTrainerService(parsed.data as any);
+      res.status(201).json(service);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "Не удалось создать услугу" });
+    }
+  });
+
+  app.patch("/api/trainer/services/:id", async (req, res) => {
+    try {
+      const parsed = trainerServiceInputSchema.partial().safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Некорректные данные" });
+      }
+      const service = await storage.updateTrainerService(req.params.id, parsed.data as any);
+      res.json(service);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "Не удалось обновить услугу" });
+    }
+  });
+
+  app.delete("/api/trainer/services/:id", async (req, res) => {
+    try {
+      await storage.deleteTrainerService(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ message: e?.message || "Не удалось удалить услугу" });
     }
   });
 

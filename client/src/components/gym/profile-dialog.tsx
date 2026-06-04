@@ -17,6 +17,7 @@ import { updateStudentProfileSchema, type User as UserType } from "@shared/schem
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { birthDateAgeSuffix, calculateAge, todayLocalStr, formatDateDMY } from "@/lib/utils-gym";
+import { StudentAccountSection } from "@/components/gym/student-account-section";
 
 type FormValues = typeof updateStudentProfileSchema._type;
 
@@ -89,6 +90,20 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   }, [freshData, setUser]);
 
   const user = freshData?.user ?? currentUser;
+  const isParentOnly =
+    user?.role === "parent" && !user?.isAlsoStudent && !!(user as any)?.isParent;
+  const showSelfAccount =
+    user?.role === "student" || (user?.role === "parent" && !!user?.isAlsoStudent);
+
+  const { data: parentChildren = [] } = useQuery<UserType[]>({
+    queryKey: ["/api/parent/children"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/parent/children");
+      return r.json();
+    },
+    enabled: open && !!(user as any)?.isParent,
+    staleTime: 30_000,
+  });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(updateStudentProfileSchema),
@@ -286,6 +301,40 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                       )}
                     </div>
                   </>
+                )}
+
+                {showSelfAccount && user?.id && (
+                  <StudentAccountSection
+                    userId={user.id}
+                    heading={
+                      user.role === "parent" && user.isAlsoStudent
+                        ? "Мои тренировки: цена и согласия"
+                        : "Стоимость и согласия"
+                    }
+                  />
+                )}
+
+                {(user as any)?.isParent && parentChildren.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold flex items-center gap-2">
+                      <Baby className="h-4 w-4" />
+                      Дети: цена и согласия
+                    </p>
+                    {parentChildren.map((child) => (
+                      <StudentAccountSection
+                        key={child.id}
+                        userId={child.id}
+                        heading={`${child.firstName} ${child.lastName ?? ""}`}
+                        showServicePicker
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {isParentOnly && parentChildren.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Добавьте детей в разделе «Мои дети», чтобы управлять их согласиями и ценой.
+                  </p>
                 )}
 
                 <div className="flex justify-end pt-2">

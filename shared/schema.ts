@@ -42,6 +42,18 @@ export const users = pgTable("users", {
   password: text("password").notNull().default(""),
   mustChangePassword: boolean("must_change_password").notNull().default(false),
   lastLogin: timestamp("last_login"),
+  selectedServiceId: varchar("selected_service_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Trainer services (pricing catalog)
+export const trainerServices = pgTable("trainer_services", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  priceRub: integer("price_rub").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  isDefault: boolean("is_default").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -50,6 +62,9 @@ export const documents = pgTable("documents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),
   content: text("content").notNull(),
+  /** required = must accept to book; pricing = optional, adds surcharge when not accepted */
+  kind: text("kind").notNull().default("required"),
+  priceSurchargeRub: integer("price_surcharge_rub"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -240,6 +255,29 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
 export const insertDocumentSchema = createInsertSchema(documents).omit({
   id: true,
   createdAt: true,
+});
+
+export const documentKindSchema = z.enum(["required", "pricing"]);
+
+export const documentInputSchema = z.object({
+  title: z.string().min(1),
+  content: z.string().min(1),
+  isActive: z.boolean().optional(),
+  kind: documentKindSchema.optional(),
+  priceSurchargeRub: z.number().int().min(0).nullable().optional(),
+});
+
+export const insertTrainerServiceSchema = createInsertSchema(trainerServices).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const trainerServiceInputSchema = z.object({
+  name: z.string().min(1).max(120),
+  priceRub: z.number().int().min(0).max(1_000_000),
+  isActive: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(999).optional(),
 });
 
 export const insertUserConsentSchema = createInsertSchema(userConsents).omit({
@@ -438,6 +476,15 @@ export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 export type Document = typeof documents.$inferSelect;
+export type InsertTrainerService = z.infer<typeof insertTrainerServiceSchema>;
+export type TrainerService = typeof trainerServices.$inferSelect;
+export type StudentAccountSummary = {
+  sessionPrice: import("./consents-pricing").SessionPriceBreakdown;
+  signedDocumentIds: string[];
+  pendingRequiredCount: number;
+  trainerPaymentRemaining: number | null;
+  trainerPaymentTotal: number | null;
+};
 export type InsertUserConsent = z.infer<typeof insertUserConsentSchema>;
 export type UserConsent = typeof userConsents.$inferSelect;
 export type StudentWithConsents = User & { consents: (UserConsent & { document: Document })[] };

@@ -16,7 +16,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare, Send, Lock, Unlock } from "lucide-react";
+import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare, Send, Lock, Unlock, Banknote } from "lucide-react";
+import { TrainerServicesSection } from "./trainer-services-section";
+import { TrainerPricingSettings } from "./trainer-pricing-settings";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { type WeeklyTemplate, type WeekdayTemplateEntry, type Holiday } from "@shared/schema";
@@ -226,26 +228,32 @@ export function ScheduleSettingsDialog({
           </div>
         ) : (
           <Tabs defaultValue="hours" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="hours" data-testid="tab-hours">
-                <Clock className="h-4 w-4 mr-1" />
-                Часы
-              </TabsTrigger>
-              <TabsTrigger value="week" data-testid="tab-week">
-                Неделя
-              </TabsTrigger>
-              <TabsTrigger value="limits" data-testid="tab-limits">
-                Лимиты
-              </TabsTrigger>
-              <TabsTrigger value="holidays" data-testid="tab-holidays">
-                <CalendarOff className="h-4 w-4 mr-1" />
-                Праздники
-              </TabsTrigger>
-              <TabsTrigger value="welcome" data-testid="tab-welcome">
-                <MessageSquare className="h-4 w-4 mr-1" />
-                Привет
-              </TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto -mx-1 px-1 pb-1">
+              <TabsList className="inline-flex h-auto flex-wrap gap-1 w-max min-w-full">
+                <TabsTrigger value="hours" data-testid="tab-hours" className="text-xs sm:text-sm">
+                  <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
+                  Часы
+                </TabsTrigger>
+                <TabsTrigger value="week" data-testid="tab-week" className="text-xs sm:text-sm">
+                  Неделя
+                </TabsTrigger>
+                <TabsTrigger value="limits" data-testid="tab-limits" className="text-xs sm:text-sm">
+                  Лимиты
+                </TabsTrigger>
+                <TabsTrigger value="holidays" data-testid="tab-holidays" className="text-xs sm:text-sm">
+                  <CalendarOff className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
+                  Праздники
+                </TabsTrigger>
+                <TabsTrigger value="welcome" data-testid="tab-welcome" className="text-xs sm:text-sm">
+                  <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
+                  Привет
+                </TabsTrigger>
+                <TabsTrigger value="pricing" data-testid="tab-pricing" className="text-xs sm:text-sm">
+                  <Banknote className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
+                  Цены
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             {/* Working hours tab */}
             <TabsContent value="hours" className="space-y-4 pt-4">
@@ -657,6 +665,16 @@ export function ScheduleSettingsDialog({
                   Если поле пустое — ученик увидит стандартный текст после регистрации.
                 </p>
               )}
+            </TabsContent>
+
+            <TabsContent value="pricing" className="space-y-6 pt-4">
+              <div className="space-y-3">
+                <p className="text-sm font-medium">Услуги и базовые цены</p>
+                <TrainerServicesSection enabled={open} />
+              </div>
+              <div className="border-t pt-4">
+                <TrainerPricingSettings enabled={open} />
+              </div>
             </TabsContent>
           </Tabs>
         )}

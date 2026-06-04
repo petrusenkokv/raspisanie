@@ -132,8 +132,8 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
   });
 
-  // A slot is considered "past" 1 hour after its start time (a typical lesson length)
-  const isPast = minutesUntil < -60;
+  // Attendance marks available from slot start (Moscow time)
+  const slotStarted = minutesUntil <= 0;
 
   const isFull = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
@@ -348,7 +348,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
               )}
               {allActiveBookings.map((booking) => {
                 const att = (booking as any).attendanceStatus as AttendanceStatus | null | undefined;
-                const showAttendance = isPast && booking.status === "confirmed";
+                const showAttendance = slotStarted && booking.status === "confirmed";
                 return (
                   <div
                     key={booking.id}
