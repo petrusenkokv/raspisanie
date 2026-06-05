@@ -934,6 +934,16 @@ export class MemStorage implements IStorage {
   }
 
   async createBooking(insertBooking: InsertBooking): Promise<Booking> {
+    const duplicate = Array.from(this.bookings.values()).find(
+      (b) =>
+        b.studentId === insertBooking.studentId &&
+        b.timeSlotId === insertBooking.timeSlotId &&
+        b.status !== "cancelled",
+    );
+    if (duplicate) {
+      throw new Error("Ученик уже записан на это время");
+    }
+
     const id = randomUUID();
     const status = insertBooking.status || "pending";
     const booking: Booking = {
@@ -1611,8 +1621,7 @@ export class MemStorage implements IStorage {
     if (!hasAny) {
       this.generateTimeSlotsForDate(date);
     }
-    this.dedupeTimeSlotsForDate(date);
-    this.dedupeDuplicateStudentSlotBookings();
+    this.repairScheduleIntegrity(date);
     const timeSlots = await this.getTimeSlotsByDate(date);
     return {
       date,
@@ -1906,6 +1915,24 @@ export class MemStorage implements IStorage {
     return false;
   }
 
+  private bookingKeepPriority(b: Booking): number {
+    if (b.recurringBookingId) return 0;
+    if (b.status === "confirmed") return 1;
+    return 2;
+  }
+
+  private cancelDuplicateBooking(duplicate: Booking): void {
+    if (duplicate.consumedTrainerPaymentId) {
+      this.refundTrainerSession(duplicate.consumedTrainerPaymentId);
+    }
+    this.bookings.set(duplicate.id, {
+      ...duplicate,
+      status: "cancelled",
+      cancelledAt: new Date(),
+      consumedTrainerPaymentId: null,
+    });
+  }
+
   private dedupeDuplicateStudentSlotBookings(): void {
     const groups = new Map<string, Booking[]>();
     for (const booking of Array.from(this.bookings.values())) {
@@ -1919,21 +1946,46 @@ export class MemStorage implements IStorage {
       if (list.length <= 1) continue;
       list.sort(
         (a, b) =>
+          this.bookingKeepPriority(a) - this.bookingKeepPriority(b) ||
           (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) ||
           a.id.localeCompare(b.id),
       );
       for (const duplicate of list.slice(1)) {
-        if (duplicate.consumedTrainerPaymentId) {
-          this.refundTrainerSession(duplicate.consumedTrainerPaymentId);
-        }
-        this.bookings.set(duplicate.id, {
-          ...duplicate,
-          status: "cancelled",
-          cancelledAt: new Date(),
-          consumedTrainerPaymentId: null,
-        });
+        this.cancelDuplicateBooking(duplicate);
       }
     }
+  }
+
+  private dedupeDuplicateStudentHourBookings(date: string): void {
+    const groups = new Map<string, Booking[]>();
+    for (const booking of Array.from(this.bookings.values())) {
+      if (booking.status === "cancelled") continue;
+      const slot = this.timeSlots.get(booking.timeSlotId);
+      if (!slot || slot.date !== date) continue;
+      const hour = slotHourFromTime(slot.time);
+      const key = `${booking.studentId}:${date}:${hour}`;
+      const list = groups.get(key) ?? [];
+      list.push(booking);
+      groups.set(key, list);
+    }
+    for (const list of Array.from(groups.values())) {
+      if (list.length <= 1) continue;
+      list.sort(
+        (a, b) =>
+          this.bookingKeepPriority(a) - this.bookingKeepPriority(b) ||
+          (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) ||
+          a.id.localeCompare(b.id),
+      );
+      for (const duplicate of list.slice(1)) {
+        this.cancelDuplicateBooking(duplicate);
+      }
+    }
+  }
+
+  private repairScheduleIntegrity(date: string): void {
+    this.dedupeTimeSlotsForDate(date);
+    this.dedupeDuplicateStudentHourBookings(date);
+    this.dedupeDuplicateStudentSlotBookings();
   }
 
   async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
@@ -1981,7 +2033,16 @@ export class MemStorage implements IStorage {
           b.timeSlotId === slot.id && b.status === "confirmed"
         );
         if (confirmed.length >= slot.maxCapacity) { skipped++; continue; }
-        // Create confirmed booking
+        const dupActive = Array.from(this.bookings.values()).find(
+          (b) =>
+            b.studentId === rule.studentId &&
+            b.timeSlotId === slot.id &&
+            b.status !== "cancelled",
+        );
+        if (dupActive) {
+          skipped++;
+          continue;
+        }
         const bid = randomUUID();
         this.bookings.set(bid, {
           id: bid,
@@ -2002,6 +2063,7 @@ export class MemStorage implements IStorage {
         created++;
       }
     }
+    this.dedupeDuplicateStudentSlotBookings();
     return { created, skipped };
   }
 

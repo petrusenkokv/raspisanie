@@ -1,6 +1,5 @@
-const CACHE_NAME = 'gym-app-v3';
+const CACHE_NAME = 'gym-app-v4';
 const STATIC_ASSETS = [
-  '/',
   '/manifest.json',
   '/icon-192.svg',
   '/icon-512.svg'
@@ -22,30 +21,26 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-function shouldBypassCache(url) {
-  if (url.pathname.startsWith('/api/')) return true;
-  if (url.pathname.startsWith('/src/')) return true;
-  if (url.pathname.startsWith('/@')) return true;
-  if (url.pathname.startsWith('/node_modules/')) return true;
-  if (url.pathname === '/' || url.pathname.endsWith('.html')) return true;
-  return false;
+function isStaticAsset(pathname) {
+  return STATIC_ASSETS.includes(pathname) || pathname.endsWith('.svg');
 }
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (shouldBypassCache(url)) return;
   if (event.request.method !== 'GET') return;
+  if (!isStaticAsset(url.pathname)) return;
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request).then((response) => {
         if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
-      })
-      .catch(() => caches.match(event.request))
+      });
+    }),
   );
 });
 

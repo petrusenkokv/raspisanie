@@ -371,6 +371,17 @@ export class DbStorage implements IStorage {
       d.setDate(today.getDate() + i);
       await this.generateTimeSlotsForDate(localDateStr(d), settings);
     }
+
+    try {
+      await this.repairAllScheduleIntegrity();
+      await db.execute(drizzleSql`
+        CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_active_per_student_slot
+        ON bookings (student_id, time_slot_id)
+        WHERE status <> 'cancelled'
+      `);
+    } catch (err) {
+      console.error("[storage] booking integrity repair:", err);
+    }
   }
 
   // ======================== USERS ========================
@@ -923,6 +934,17 @@ export class DbStorage implements IStorage {
   }
 
   async createBooking(insertBooking: InsertBooking): Promise<Booking> {
+    const existing = await db.select().from(bookings).where(
+      and(
+        eq(bookings.studentId, insertBooking.studentId),
+        eq(bookings.timeSlotId, insertBooking.timeSlotId),
+        ne(bookings.status, "cancelled"),
+      ),
+    ).limit(1);
+    if (existing.length > 0) {
+      throw new Error("Ученик уже записан на это время");
+    }
+
     const status = insertBooking.status || "pending";
     const rows = await db.insert(bookings).values({
       studentId: insertBooking.studentId,
@@ -1227,8 +1249,7 @@ export class DbStorage implements IStorage {
     if (existing.length === 0) {
       await this.generateTimeSlotsForDate(date, settings);
     }
-    await this.dedupeTimeSlotsForDate(date);
-    await this.dedupeDuplicateStudentSlotBookings();
+    await this.repairScheduleIntegrity(date);
     const slotRows = await db.select().from(timeSlots).where(eq(timeSlots.date, date)).orderBy(asc(timeSlots.time));
     const enriched = await Promise.all(slotRows.map(s => this.enrichSlot(normalizeSlot(s))));
     return { date, timeSlots: enriched };
@@ -1419,6 +1440,23 @@ export class DbStorage implements IStorage {
     return false;
   }
 
+  private bookingKeepPriority(b: Booking): number {
+    if (b.recurringBookingId) return 0;
+    if (b.status === "confirmed") return 1;
+    return 2;
+  }
+
+  private async cancelDuplicateBooking(duplicate: Booking): Promise<void> {
+    if (duplicate.consumedTrainerPaymentId) {
+      await this.refundTrainerSession(duplicate.consumedTrainerPaymentId);
+    }
+    await this.updateBooking(duplicate.id, {
+      status: "cancelled",
+      cancelledAt: new Date(),
+      consumedTrainerPaymentId: null,
+    });
+  }
+
   private async dedupeDuplicateStudentSlotBookings(): Promise<void> {
     const active = await db
       .select()
@@ -1435,20 +1473,68 @@ export class DbStorage implements IStorage {
       if (list.length <= 1) continue;
       list.sort(
         (a, b) =>
+          this.bookingKeepPriority(a) - this.bookingKeepPriority(b) ||
           (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) ||
           a.id.localeCompare(b.id),
       );
       for (const duplicate of list.slice(1)) {
-        if (duplicate.consumedTrainerPaymentId) {
-          await this.refundTrainerSession(duplicate.consumedTrainerPaymentId);
-        }
-        await this.updateBooking(duplicate.id, {
-          status: "cancelled",
-          cancelledAt: new Date(),
-          consumedTrainerPaymentId: null,
-        });
+        await this.cancelDuplicateBooking(duplicate);
       }
     }
+  }
+
+  private async dedupeDuplicateStudentHourBookings(date: string): Promise<void> {
+    const rows = await db
+      .select({ booking: bookings, slot: timeSlots })
+      .from(bookings)
+      .innerJoin(timeSlots, eq(bookings.timeSlotId, timeSlots.id))
+      .where(and(ne(bookings.status, "cancelled"), eq(timeSlots.date, date)));
+
+    const groups = new Map<string, Array<(typeof rows)[number]>>();
+    for (const row of rows) {
+      const dateStr =
+        typeof row.slot.date === "object"
+          ? localDateStr(row.slot.date as Date)
+          : String(row.slot.date);
+      const hour = slotHourFromTime(row.slot.time);
+      const key = `${row.booking.studentId}:${dateStr}:${hour}`;
+      const list = groups.get(key) ?? [];
+      list.push(row);
+      groups.set(key, list);
+    }
+
+    for (const list of Array.from(groups.values())) {
+      if (list.length <= 1) continue;
+      list.sort(
+        (a, b) =>
+          this.bookingKeepPriority(a.booking) - this.bookingKeepPriority(b.booking) ||
+          (a.booking.createdAt?.getTime() ?? 0) - (b.booking.createdAt?.getTime() ?? 0) ||
+          a.booking.id.localeCompare(b.booking.id),
+      );
+      for (const { booking: duplicate } of list.slice(1)) {
+        await this.cancelDuplicateBooking(duplicate);
+      }
+    }
+  }
+
+  private async repairScheduleIntegrity(date: string): Promise<void> {
+    await this.dedupeTimeSlotsForDate(date);
+    await this.dedupeDuplicateStudentHourBookings(date);
+    await this.dedupeDuplicateStudentSlotBookings();
+  }
+
+  private async repairAllScheduleIntegrity(): Promise<void> {
+    const slotDates = await db.select({ date: timeSlots.date }).from(timeSlots);
+    const dates = new Set(
+      slotDates.map((r) =>
+        typeof r.date === "object" ? localDateStr(r.date as Date) : String(r.date),
+      ),
+    );
+    for (const date of Array.from(dates)) {
+      await this.dedupeTimeSlotsForDate(date);
+      await this.dedupeDuplicateStudentHourBookings(date);
+    }
+    await this.dedupeDuplicateStudentSlotBookings();
   }
 
   async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
@@ -1505,18 +1591,34 @@ export class DbStorage implements IStorage {
           and(eq(bookings.timeSlotId, slot.id), eq(bookings.status, "confirmed"))
         );
         if (confirmed.length >= slot.maxCapacity) { skipped++; continue; }
-        await db.insert(bookings).values({
-          studentId: rule.studentId,
-          timeSlotId: slot.id,
-          status: "confirmed",
-          bookedBy: rule.createdBy,
-          notes: "Постоянная запись",
-          recurringBookingId: rule.id,
-          confirmedAt: new Date(),
-        });
-        created++;
+        const dupActive = await db.select().from(bookings).where(
+          and(
+            eq(bookings.studentId, rule.studentId),
+            eq(bookings.timeSlotId, slot.id),
+            ne(bookings.status, "cancelled"),
+          ),
+        );
+        if (dupActive.length > 0) {
+          skipped++;
+          continue;
+        }
+        try {
+          await db.insert(bookings).values({
+            studentId: rule.studentId,
+            timeSlotId: slot.id,
+            status: "confirmed",
+            bookedBy: rule.createdBy,
+            notes: "Постоянная запись",
+            recurringBookingId: rule.id,
+            confirmedAt: new Date(),
+          });
+          created++;
+        } catch {
+          skipped++;
+        }
       }
     }
+    await this.dedupeDuplicateStudentSlotBookings();
     return { created, skipped };
   }
 
