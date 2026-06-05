@@ -1612,6 +1612,8 @@ export async function registerRoutes(
         trainerNotes,
         consentDocumentIds,
         selectedServiceId,
+        exemptMembership,
+        exemptTrainerPayment,
       } = req.body;
 
       if (!phone || !firstName) {
@@ -1651,6 +1653,8 @@ export async function registerRoutes(
         isVerified: true,
         password: await hashPassword(initialPassword),
         mustChangePassword: true,
+        exemptMembership: !!exemptMembership,
+        exemptTrainerPayment: !!exemptTrainerPayment,
       } as any);
 
       await recordConsents(user.id, Array.from(accepted));

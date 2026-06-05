@@ -97,6 +97,8 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [newStudent, setNewStudent] = useState(emptyNewStudent);
   const [addStudentAcceptedDocs, setAddStudentAcceptedDocs] = useState<Record<string, boolean>>({});
   const [addStudentServiceId, setAddStudentServiceId] = useState("");
+  const [addExemptMembership, setAddExemptMembership] = useState(false);
+  const [addExemptTrainerPayment, setAddExemptTrainerPayment] = useState(false);
   const [consentWarningStudent, setConsentWarningStudent] = useState<(User & { pendingDocumentCount: number }) | null>(null);
   const { toast } = useToast();
 
@@ -116,6 +118,8 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     if (!addDialogOpen) {
       setAddStudentAcceptedDocs({});
       setAddStudentServiceId("");
+      setAddExemptMembership(false);
+      setAddExemptTrainerPayment(false);
     }
   }, [addDialogOpen]);
 
@@ -161,6 +165,8 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       setNewStudent(emptyNewStudent);
       setAddStudentAcceptedDocs({});
       setAddStudentServiceId("");
+      setAddExemptMembership(false);
+      setAddExemptTrainerPayment(false);
       setSearchQuery("");
     },
     onError: (error: any) => {
@@ -300,6 +306,8 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       ...newStudent,
       consentDocumentIds,
       selectedServiceId: addStudentServiceId || undefined,
+      exemptMembership: addExemptMembership,
+      exemptTrainerPayment: addExemptTrainerPayment,
     });
   };
 
@@ -630,6 +638,14 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 rows={3}
               />
             </div>
+
+            <PaymentExemptFields
+              exemptMembership={addExemptMembership}
+              exemptTrainerPayment={addExemptTrainerPayment}
+              onExemptMembershipChange={setAddExemptMembership}
+              onExemptTrainerPaymentChange={setAddExemptTrainerPayment}
+              disabled={addMutation.isPending}
+            />
 
             <TrainerNewStudentServiceFields
               services={trainerServices}
@@ -1067,6 +1083,47 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
   );
 }
 
+function PaymentExemptFields({
+  exemptMembership,
+  exemptTrainerPayment,
+  onExemptMembershipChange,
+  onExemptTrainerPaymentChange,
+  disabled = false,
+}: {
+  exemptMembership: boolean;
+  exemptTrainerPayment: boolean;
+  onExemptMembershipChange: (value: boolean) => void;
+  onExemptTrainerPaymentChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+        Освобождение от оплаты
+      </p>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Для бесплатных занятий или учеников без абонемента — красные отметки в расписании не показываются.
+      </p>
+      <label className="flex items-start gap-2 cursor-pointer">
+        <Checkbox
+          checked={exemptMembership}
+          disabled={disabled}
+          onCheckedChange={(v) => onExemptMembershipChange(!!v)}
+        />
+        <span className="text-sm leading-tight">Не требовать членский взнос (ЧВ/БВ)</span>
+      </label>
+      <label className="flex items-start gap-2 cursor-pointer">
+        <Checkbox
+          checked={exemptTrainerPayment}
+          disabled={disabled}
+          onCheckedChange={(v) => onExemptTrainerPaymentChange(!!v)}
+        />
+        <span className="text-sm leading-tight">Не требовать оплату тренеру</span>
+      </label>
+    </div>
+  );
+}
+
 function PaymentExemptSection({
   studentId,
   student,
@@ -1110,30 +1167,13 @@ function PaymentExemptSection({
   };
 
   return (
-    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-        Освобождение от оплаты
-      </p>
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        Для бесплатных занятий или учеников без абонемента — красные отметки в расписании не показываются.
-      </p>
-      <label className="flex items-start gap-2 cursor-pointer">
-        <Checkbox
-          checked={exemptMembership}
-          disabled={patchMutation.isPending}
-          onCheckedChange={(v) => handleToggle("exemptMembership", !!v)}
-        />
-        <span className="text-sm leading-tight">Не требовать членский взнос (ЧВ/БВ)</span>
-      </label>
-      <label className="flex items-start gap-2 cursor-pointer">
-        <Checkbox
-          checked={exemptTrainerPayment}
-          disabled={patchMutation.isPending}
-          onCheckedChange={(v) => handleToggle("exemptTrainerPayment", !!v)}
-        />
-        <span className="text-sm leading-tight">Не требовать оплату тренеру</span>
-      </label>
-    </div>
+    <PaymentExemptFields
+      exemptMembership={exemptMembership}
+      exemptTrainerPayment={exemptTrainerPayment}
+      onExemptMembershipChange={(v) => handleToggle("exemptMembership", v)}
+      onExemptTrainerPaymentChange={(v) => handleToggle("exemptTrainerPayment", v)}
+      disabled={patchMutation.isPending}
+    />
   );
 }
 

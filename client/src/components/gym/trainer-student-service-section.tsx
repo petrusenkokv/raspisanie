@@ -153,7 +153,7 @@ export function TrainerNewStudentServiceFields({
 
   return (
     <div className="border rounded-lg p-3 space-y-2 bg-white dark:bg-gray-900">
-      <p className="text-sm font-medium">Услуга</p>
+      <p className="text-sm font-medium">Услуга и стоимость</p>
       {active.length === 1 ? (
         <p className="text-sm">
           {active[0].name} — {active[0].priceRub} ₽
