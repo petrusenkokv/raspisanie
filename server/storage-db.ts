@@ -1379,9 +1379,42 @@ export class DbStorage implements IStorage {
     }
   }
 
+  private async dedupeDuplicateStudentSlotBookings(): Promise<void> {
+    const active = await db
+      .select()
+      .from(bookings)
+      .where(ne(bookings.status, "cancelled"));
+    const groups = new Map<string, typeof active>();
+    for (const booking of active) {
+      const key = `${booking.studentId}:${booking.timeSlotId}`;
+      const list = groups.get(key) ?? [];
+      list.push(booking);
+      groups.set(key, list);
+    }
+    for (const list of Array.from(groups.values())) {
+      if (list.length <= 1) continue;
+      list.sort(
+        (a, b) =>
+          (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) ||
+          a.id.localeCompare(b.id),
+      );
+      for (const duplicate of list.slice(1)) {
+        if (duplicate.consumedTrainerPaymentId) {
+          await this.refundTrainerSession(duplicate.consumedTrainerPaymentId);
+        }
+        await this.updateBooking(duplicate.id, {
+          status: "cancelled",
+          cancelledAt: new Date(),
+          consumedTrainerPaymentId: null,
+        });
+      }
+    }
+  }
+
   async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
     await this.ensureRecurringExceptionsSchema();
     this.recurringMembershipCache.clear();
+    await this.dedupeDuplicateStudentSlotBookings();
     await this.cancelRecurringBookingsWithoutMembership(untilDate);
     const settings = await this.loadSettings();
     const rules = await db.select().from(recurringBookings);
@@ -1422,6 +1455,14 @@ export class DbStorage implements IStorage {
           ),
         );
         if (anyForRule.length > 0) continue;
+        const alreadyInSlot = await db.select().from(bookings).where(
+          and(
+            eq(bookings.studentId, rule.studentId),
+            eq(bookings.timeSlotId, slot.id),
+            ne(bookings.status, "cancelled"),
+          ),
+        );
+        if (alreadyInSlot.length > 0) { skipped++; continue; }
         // Student already booked that day?
         const daySlots = await db.select().from(timeSlots).where(eq(timeSlots.date, dateStr));
         const daySlotIds = daySlots.map(s => s.id);

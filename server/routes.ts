@@ -1823,7 +1823,29 @@ export async function registerRoutes(
   app.post("/api/trainer/book-student", async (req, res) => {
     try {
       const { timeSlotId, studentId, notes, trainerId } = req.body;
-      
+
+      const slot = await storage.getTimeSlotById(timeSlotId);
+      if (!slot) return res.status(404).json({ message: "Слот не найден" });
+      if (slot.isBlocked) return res.status(400).json({ message: "Слот заблокирован" });
+
+      const slotBookings = await storage.getBookingsByTimeSlot(timeSlotId);
+      const alreadyInSlot = slotBookings.some(
+        (b) => b.studentId === studentId && b.status !== "cancelled",
+      );
+      if (alreadyInSlot) {
+        return res.status(400).json({ message: "Ученик уже записан на это время" });
+      }
+
+      const dayBookings = await storage.getBookingsByStudent(studentId);
+      const alreadyThatDay = dayBookings.find(
+        (b) => b.status !== "cancelled" && b.timeSlot.date === slot.date,
+      );
+      if (alreadyThatDay) {
+        return res.status(400).json({
+          message: `Ученик уже записан на ${alreadyThatDay.timeSlot.time} в этот день`,
+        });
+      }
+
       const booking = await storage.createBooking({
         studentId,
         timeSlotId,
@@ -2250,6 +2272,19 @@ export async function registerRoutes(
       const target = await storage.getUser(String(studentId));
       if (!target || !canHaveRecurringBookings(target)) {
         return res.status(404).json({ message: "Ученик не найден" });
+      }
+
+      const newStart = String(startDate);
+      const newEnd = endDate ? String(endDate) : "9999-12-31";
+      const existingRules = await storage.getRecurringBookingsByStudent(String(studentId));
+      for (const rule of existingRules) {
+        if (rule.hour !== h) continue;
+        if (!rule.weekdays.some((d) => wd.includes(d))) continue;
+        const ruleEnd = rule.endDate || "9999-12-31";
+        if (newStart > ruleEnd || rule.startDate > newEnd) continue;
+        return res.status(409).json({
+          message: `У ученика уже есть постоянная запись на ${String(h).padStart(2, "0")}:00 в пересекающиеся дни недели`,
+        });
       }
 
       const creator = trainerId ? await storage.getUser(String(trainerId)) : null;

@@ -1873,8 +1873,39 @@ export class MemStorage implements IStorage {
     }
   }
 
+  private dedupeDuplicateStudentSlotBookings(): void {
+    const groups = new Map<string, Booking[]>();
+    for (const booking of Array.from(this.bookings.values())) {
+      if (booking.status === "cancelled") continue;
+      const key = `${booking.studentId}:${booking.timeSlotId}`;
+      const list = groups.get(key) ?? [];
+      list.push(booking);
+      groups.set(key, list);
+    }
+    for (const list of Array.from(groups.values())) {
+      if (list.length <= 1) continue;
+      list.sort(
+        (a, b) =>
+          (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) ||
+          a.id.localeCompare(b.id),
+      );
+      for (const duplicate of list.slice(1)) {
+        if (duplicate.consumedTrainerPaymentId) {
+          this.refundTrainerSession(duplicate.consumedTrainerPaymentId);
+        }
+        this.bookings.set(duplicate.id, {
+          ...duplicate,
+          status: "cancelled",
+          cancelledAt: new Date(),
+          consumedTrainerPaymentId: null,
+        });
+      }
+    }
+  }
+
   async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
     this.recurringMembershipCache.clear();
+    this.dedupeDuplicateStudentSlotBookings();
     await this.cancelRecurringBookingsWithoutMembership(untilDate);
     let created = 0;
     let skipped = 0;
@@ -1907,6 +1938,13 @@ export class MemStorage implements IStorage {
             b.status !== "cancelled",
         );
         if (anyForRule) continue;
+        const alreadyInSlot = Array.from(this.bookings.values()).find(
+          (b) =>
+            b.studentId === rule.studentId &&
+            b.timeSlotId === slot.id &&
+            b.status !== "cancelled",
+        );
+        if (alreadyInSlot) { skipped++; continue; }
         // Student already has a booking that day?
         const studentSlotIdsThatDay = new Set(
           Array.from(this.timeSlots.values()).filter(s => s.date === dateStr).map(s => s.id)
