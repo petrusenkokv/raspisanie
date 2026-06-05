@@ -138,6 +138,7 @@ export class DbStorage implements IStorage {
   private recurringExceptionsSchemaReady = false;
   private blockedPeriodsSchemaReady = false;
   private servicesDocsSchemaReady = false;
+  private sickPeriodsSchemaReady = false;
 
   private async ensureRecurringExceptionsSchema(): Promise<void> {
     if (this.recurringExceptionsSchemaReady) return;
@@ -196,6 +197,28 @@ export class DbStorage implements IStorage {
         )
       `);
       this.blockedPeriodsSchemaReady = true;
+    } catch {
+      // ignore schema race/fallback issues
+    }
+  }
+
+  private async ensureSickPeriodsSchema(): Promise<void> {
+    if (this.sickPeriodsSchemaReady) return;
+    try {
+      await db.execute(drizzleSql`
+        CREATE TABLE IF NOT EXISTS sick_periods (
+          id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+          student_id varchar NOT NULL,
+          start_date text NOT NULL,
+          end_date text NOT NULL,
+          created_at timestamp DEFAULT now()
+        )
+      `);
+      await db.execute(drizzleSql`
+        CREATE INDEX IF NOT EXISTS sick_periods_student_id_idx
+        ON sick_periods (student_id)
+      `);
+      this.sickPeriodsSchemaReady = true;
     } catch {
       // ignore schema race/fallback issues
     }
@@ -462,6 +485,7 @@ export class DbStorage implements IStorage {
     await db.delete(membershipPayments).where(eq(membershipPayments.studentId, id));
     await db.delete(trainerPayments).where(eq(trainerPayments.studentId, id));
     // Delete sick periods for this student
+    await this.ensureSickPeriodsSchema();
     await db.delete(sickPeriods).where(eq(sickPeriods.studentId, id));
     await db.update(bookings).set({ recurringBookingId: null }).where(eq(bookings.studentId, id));
     await db.delete(recurringBookings).where(eq(recurringBookings.studentId, id));
@@ -1033,6 +1057,7 @@ export class DbStorage implements IStorage {
     if (!user) throw new Error("Пользователь не найден");
     if (user.role !== "student") throw new Error("Только ученики могут уходить на больничный");
 
+    await this.ensureSickPeriodsSchema();
     const updatedUser = await this.updateUser(studentId, { sickUntil, sickNote: sickUntil ? (sickNote ?? null) : null });
 
     if (sickUntil) {
@@ -1681,6 +1706,7 @@ export class DbStorage implements IStorage {
 
   private async getSickDaysAfter(studentId: string, afterDate: string): Promise<Set<string>> {
     try {
+      await this.ensureSickPeriodsSchema();
       const periods = await db.select().from(sickPeriods).where(
         and(eq(sickPeriods.studentId, studentId), gte(sickPeriods.endDate, afterDate))
       );
