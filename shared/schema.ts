@@ -484,6 +484,7 @@ export type StudentAccountSummary = {
   pendingRequiredCount: number;
   trainerPaymentRemaining: number | null;
   trainerPaymentTotal: number | null;
+  exemptTrainerPayment: boolean;
 };
 export type InsertUserConsent = z.infer<typeof insertUserConsentSchema>;
 export type UserConsent = typeof userConsents.$inferSelect;

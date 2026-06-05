@@ -1093,6 +1093,7 @@ function PaymentExemptSection({
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId] });
       queryClient.invalidateQueries({ queryKey: ["payment-status"] });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", studentId] });
       toast({ title: "Сохранено" });
     },
     onError: (e: any) => {

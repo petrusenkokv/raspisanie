@@ -770,6 +770,7 @@ export class MemStorage implements IStorage {
       pendingRequiredCount: missingRequiredDocumentIds(activeDocs, signedDocumentIds).length,
       trainerPaymentRemaining,
       trainerPaymentTotal,
+      exemptTrainerPayment: refreshed.exemptTrainerPayment === true,
     };
   }
 

@@ -42,6 +42,7 @@ type AccountSummaryResponse = {
   pendingRequiredCount: number;
   trainerPaymentRemaining: number | null;
   trainerPaymentTotal: number | null;
+  exemptTrainerPayment?: boolean;
   documents: DocWithAccepted[];
 };
 
@@ -145,12 +146,15 @@ export function StudentAccountSection({
   }
 
   const price = data.sessionPrice;
+  const hideSessionPrice = data.exemptTrainerPayment === true;
   const revokeWarning = revokeTarget
     ? isRequiredDocument(revokeTarget)
       ? "После отзыва вы не сможете записываться на тренировки, пока снова не примете этот документ. Тренер получит уведомление."
-      : isPricingDocument(revokeTarget) && (revokeTarget.priceSurchargeRub ?? 0) > 0
+      : isPricingDocument(revokeTarget) && !hideSessionPrice && (revokeTarget.priceSurchargeRub ?? 0) > 0
         ? `Стоимость одной тренировки увеличится на ${revokeTarget.priceSurchargeRub} ₽ (итого ${price.basePriceRub + (revokeTarget.priceSurchargeRub ?? 0)} ₽). Запись останется доступной. Тренер получит уведомление.`
-        : "Тренер получит уведомление об отзыве согласия."
+        : isPricingDocument(revokeTarget)
+          ? "Запись останется доступной. Тренер получит уведомление."
+          : "Тренер получит уведомление об отзыве согласия."
     : "";
 
   return (
@@ -175,7 +179,7 @@ export function StudentAccountSection({
               <SelectContent>
                 {services.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
-                    {s.name} — {s.priceRub} ₽
+                    {hideSessionPrice ? s.name : `${s.name} — ${s.priceRub} ₽`}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -183,35 +187,39 @@ export function StudentAccountSection({
           ) : (
             <p className="text-sm font-medium rounded-md border bg-white dark:bg-gray-900 px-3 py-2">
               {price.serviceName}
-              <span className="text-muted-foreground font-normal">
-                {" "}
-                — {price.basePriceRub} ₽
-              </span>
+              {!hideSessionPrice && (
+                <span className="text-muted-foreground font-normal">
+                  {" "}
+                  — {price.basePriceRub} ₽
+                </span>
+              )}
             </p>
           )}
         </div>
       )}
 
-      <div className="rounded-md border bg-white dark:bg-gray-900 p-3 space-y-1">
-        <p className="text-xs text-muted-foreground">Цена за одну тренировку</p>
-        <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-          {price.totalPriceRub} ₽
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {price.serviceName}: {price.basePriceRub} ₽
-          {price.surchargeRub > 0 &&
-            ` + надбавка ${price.surchargeRub} ₽`}
-        </p>
-        {price.surcharges.length > 0 && (
-          <ul className="text-xs text-amber-700 dark:text-amber-400 list-disc pl-4 mt-1">
-            {price.surcharges.map((s) => (
-              <li key={s.documentId}>
-                без «{s.title}»: +{s.amountRub} ₽
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {!hideSessionPrice && (
+        <div className="rounded-md border bg-white dark:bg-gray-900 p-3 space-y-1">
+          <p className="text-xs text-muted-foreground">Цена за одну тренировку</p>
+          <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+            {price.totalPriceRub} ₽
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {price.serviceName}: {price.basePriceRub} ₽
+            {price.surchargeRub > 0 &&
+              ` + надбавка ${price.surchargeRub} ₽`}
+          </p>
+          {price.surcharges.length > 0 && (
+            <ul className="text-xs text-amber-700 dark:text-amber-400 list-disc pl-4 mt-1">
+              {price.surcharges.map((s) => (
+                <li key={s.documentId}>
+                  без «{s.title}»: +{s.amountRub} ₽
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {data.trainerPaymentTotal != null && (
         <p className="text-xs text-muted-foreground">
