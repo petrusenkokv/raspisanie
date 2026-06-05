@@ -1122,6 +1122,31 @@ export class DbStorage implements IStorage {
     return rows[0];
   }
 
+  async wasReminderSentRecently(
+    userId: string,
+    type: string,
+    title: string,
+    relatedBookingId: string | null,
+    withinMinutes: number,
+  ): Promise<boolean> {
+    const cutoff = new Date(Date.now() - withinMinutes * 60_000);
+    const conditions = [
+      eq(notifications.userId, userId),
+      eq(notifications.type, type),
+      eq(notifications.title, title),
+      gte(notifications.createdAt, cutoff),
+    ];
+    if (relatedBookingId) {
+      conditions.push(eq(notifications.relatedBookingId, relatedBookingId));
+    }
+    const rows = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(and(...conditions))
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async markNotificationAsRead(id: string): Promise<Notification> {
     const rows = await db.update(notifications).set({ isRead: true }).where(eq(notifications.id, id)).returning();
     if (!rows[0]) throw new Error("Notification not found");

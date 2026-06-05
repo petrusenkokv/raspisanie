@@ -6,6 +6,10 @@ const sent1h = new Set<string>();
 // Дедупликация дополнительных напоминаний (общая настройка тренера для всех учеников).
 // Ключ: `${bookingId}:custom:${reminderMinutes}`.
 const sentCustom = new Set<string>();
+// Напоминания тренеру о предстоящих слотах (по timeSlotId).
+const sentTrainer24h = new Set<string>();
+const sentTrainer1h = new Set<string>();
+const sentTrainerCustom = new Set<string>();
 // Дедупликация напоминаний об окончании ЧВ.
 // Ключ вида `${studentId}:${cvValidUntil}:${bucket}`, где bucket = "3d" | "1d" | "0d".
 const sentCvExpiry = new Set<string>();
@@ -49,6 +53,59 @@ function dayPrefix(slotDate: string, now: Date): "today" | "tomorrow" | "other" 
 function formatHuman(date: string, time: string): string {
   const [y, m, d] = date.split("-");
   return `${d}-${m}-${y} в ${time}`;
+}
+
+function formatStudentShortName(firstName: string, lastName?: string | null): string {
+  const lastInitial = lastName?.trim()?.[0];
+  return lastInitial ? `${firstName} ${lastInitial}.` : firstName;
+}
+
+async function formatStudentNames(studentIds: string[]): Promise<string> {
+  const names: string[] = [];
+  for (const id of studentIds) {
+    const user = await storage.getUser(id);
+    if (!user) continue;
+    names.push(formatStudentShortName(user.firstName, user.lastName));
+  }
+  return names.length > 0 ? names.join(", ") : "нет записей";
+}
+
+const REMINDER_WINDOW_MINUTES = {
+  day: 20 * 60,
+  hour: 90,
+  custom: 10,
+} as const;
+
+async function createTrainingReminder(params: {
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  relatedBookingId: string | null;
+  memoryKey: string;
+  memorySet: Set<string>;
+  window: keyof typeof REMINDER_WINDOW_MINUTES;
+}): Promise<void> {
+  if (params.memorySet.has(params.memoryKey)) return;
+  const already = await storage.wasReminderSentRecently(
+    params.userId,
+    params.type,
+    params.title,
+    params.relatedBookingId,
+    REMINDER_WINDOW_MINUTES[params.window],
+  );
+  if (already) {
+    params.memorySet.add(params.memoryKey);
+    return;
+  }
+  await storage.createNotification({
+    userId: params.userId,
+    type: params.type,
+    title: params.title,
+    message: params.message,
+    relatedBookingId: params.relatedBookingId,
+  });
+  params.memorySet.add(params.memoryKey);
 }
 
 // Проверка окончания ЧВ: за 3 дня, за 1 день, в день окончания.
@@ -240,12 +297,135 @@ async function checkStudentBirthdays(now: Date) {
   }
 }
 
+async function notifyTrainerUpcomingSlots(
+  bookings: Awaited<ReturnType<typeof storage.listActiveBookings>>,
+  now: number,
+  reminderMinutes: number | null,
+) {
+  const trainer = await storage.getTrainer();
+  if (!trainer) return;
+
+  const slotMap = new Map<
+    string,
+    { slotDate: string; slotTime: string; studentIds: string[]; firstBookingId: string }
+  >();
+
+  for (const booking of bookings) {
+    if (booking.status !== "confirmed") continue;
+    const slot = await storage.getTimeSlotById(booking.timeSlotId);
+    if (!slot || slot.isBlocked) continue;
+    const existing = slotMap.get(slot.id);
+    if (existing) {
+      if (!existing.studentIds.includes(booking.studentId)) {
+        existing.studentIds.push(booking.studentId);
+      }
+      continue;
+    }
+    slotMap.set(slot.id, {
+      slotDate: slot.date,
+      slotTime: slot.time.slice(0, 5),
+      studentIds: [booking.studentId],
+      firstBookingId: booking.id,
+    });
+  }
+
+  for (const [slotId, group] of Array.from(slotMap.entries())) {
+    const start = slotStartTime(group.slotDate, group.slotTime);
+    if (!start) continue;
+
+    const minutesUntil = Math.round((start.getTime() - now) / 60_000);
+    if (minutesUntil <= 0) continue;
+
+    const when = formatHuman(group.slotDate, group.slotTime);
+    const prefix = dayPrefix(group.slotDate, new Date(now));
+    const timeOnly = group.slotTime;
+    const students = await formatStudentNames(group.studentIds);
+
+    if (minutesUntil > 60 && minutesUntil <= 1440) {
+      const message =
+        prefix === "today"
+          ? `Сегодня в ${timeOnly} — ${students}`
+          : prefix === "tomorrow"
+            ? `Завтра в ${timeOnly} — ${students}`
+            : `Скоро тренировка: ${when} — ${students}`;
+      await createTrainingReminder({
+        userId: trainer.id,
+        type: "trainer_training_reminder",
+        title: "Напоминание о тренировке",
+        message,
+        relatedBookingId: group.firstBookingId,
+        memoryKey: slotId,
+        memorySet: sentTrainer24h,
+        window: "day",
+      });
+    }
+
+    if (reminderMinutes !== 60 && minutesUntil > 0 && minutesUntil <= 60) {
+      await createTrainingReminder({
+        userId: trainer.id,
+        type: "trainer_training_reminder",
+        title: "Тренировка через час",
+        message: `Через час тренировка: ${when} — ${students}`,
+        relatedBookingId: group.firstBookingId,
+        memoryKey: slotId,
+        memorySet: sentTrainer1h,
+        window: "hour",
+      });
+    }
+
+    const m = reminderMinutes;
+    if (m && m > 0) {
+      const customKey = `${slotId}:custom:${m}`;
+      if (minutesUntil <= m && minutesUntil >= m - 1) {
+        const minutesText =
+          m % 60 === 0
+            ? `${m / 60} ${m / 60 === 1 ? "час" : "ч."}`
+            : `${m} минут`;
+        await createTrainingReminder({
+          userId: trainer.id,
+          type: "trainer_training_reminder",
+          title: `Тренировка через ${minutesText}`,
+          message: `Через ${minutesText} тренировка: ${when} — ${students}`,
+          relatedBookingId: group.firstBookingId,
+          memoryKey: customKey,
+          memorySet: sentTrainerCustom,
+          window: "custom",
+        });
+      }
+    }
+  }
+
+  if (sentTrainer24h.size > 5000 || sentTrainer1h.size > 5000 || sentTrainerCustom.size > 5000) {
+    const activeSlotIds = new Set(
+      Array.from(slotMap.keys()).filter((slotId) => {
+        const group = slotMap.get(slotId);
+        if (!group) return false;
+        const start = slotStartTime(group.slotDate, group.slotTime);
+        if (!start) return false;
+        return start.getTime() > now;
+      }),
+    );
+    for (const id of Array.from(sentTrainer24h)) {
+      if (!activeSlotIds.has(id)) sentTrainer24h.delete(id);
+    }
+    for (const id of Array.from(sentTrainer1h)) {
+      if (!activeSlotIds.has(id)) sentTrainer1h.delete(id);
+    }
+    for (const key of Array.from(sentTrainerCustom)) {
+      const slotId = key.split(":")[0];
+      if (!activeSlotIds.has(slotId)) sentTrainerCustom.delete(key);
+    }
+  }
+}
+
 async function tick() {
   try {
     const bookings = await storage.listActiveBookings();
     const now = Date.now();
     const settings = await storage.getTrainerSettings();
     const reminderMinutes = settings.reminderMinutes;
+
+    await notifyTrainerUpcomingSlots(bookings, now, reminderMinutes);
 
     for (const booking of bookings) {
       const slot = await storage.getTimeSlotById(booking.timeSlotId);
@@ -260,38 +440,38 @@ async function tick() {
       const prefix = dayPrefix(slot.date, new Date(now));
       const timeOnly = slot.time.slice(0, 5);
 
-      if (
-        minutesUntil > 60 &&
-        minutesUntil <= 1440 &&
-        !sent24h.has(booking.id)
-      ) {
+      if (minutesUntil > 60 && minutesUntil <= 1440) {
         const message =
           prefix === "today"
             ? `Сегодня у вас тренировка в ${timeOnly}`
             : prefix === "tomorrow"
             ? `Завтра у вас тренировка в ${timeOnly}`
             : `Скоро тренировка: ${when}`;
-        await storage.createNotification({
+        await createTrainingReminder({
           userId: booking.studentId,
           type: "training_reminder",
           title: "Напоминание о тренировке",
           message,
           relatedBookingId: booking.id,
+          memoryKey: booking.id,
+          memorySet: sent24h,
+          window: "day",
         });
-        sent24h.add(booking.id);
       }
 
       // Если общая настройка тренера = 60 минут, стандартное напоминание «за час»
       // дублирует пользовательское — пропускаем его.
-      if (reminderMinutes !== 60 && minutesUntil > 0 && minutesUntil <= 60 && !sent1h.has(booking.id)) {
-        await storage.createNotification({
+      if (reminderMinutes !== 60 && minutesUntil > 0 && minutesUntil <= 60) {
+        await createTrainingReminder({
           userId: booking.studentId,
           type: "training_reminder",
           title: "Тренировка через час",
           message: `Через час у вас тренировка: ${when}`,
           relatedBookingId: booking.id,
+          memoryKey: booking.id,
+          memorySet: sent1h,
+          window: "hour",
         });
-        sent1h.add(booking.id);
       }
 
       // Дополнительное напоминание (общая настройка тренера для всех учеников).
@@ -299,19 +479,21 @@ async function tick() {
       if (m && m > 0) {
         const customKey = `${booking.id}:custom:${m}`;
         // Срабатываем когда minutesUntil попадает в [m-1, m] — небольшой допуск под тик в 60с.
-        if (minutesUntil <= m && minutesUntil >= m - 1 && !sentCustom.has(customKey)) {
+        if (minutesUntil <= m && minutesUntil >= m - 1) {
           const minutesText =
             m % 60 === 0
               ? `${m / 60} ${m / 60 === 1 ? "час" : "ч."}`
               : `${m} минут`;
-          await storage.createNotification({
+          await createTrainingReminder({
             userId: booking.studentId,
             type: "training_reminder",
             title: `Тренировка через ${minutesText}`,
             message: `Через ${minutesText} у вас тренировка: ${when}`,
             relatedBookingId: booking.id,
+            memoryKey: customKey,
+            memorySet: sentCustom,
+            window: "custom",
           });
-          sentCustom.add(customKey);
         }
       }
     }
@@ -334,6 +516,10 @@ async function tick() {
   } catch (err) {
     console.error("[reminders] tick failed:", err);
   }
+}
+
+export async function runRemindersTick(): Promise<void> {
+  await tick();
 }
 
 export function startReminderScheduler() {

@@ -102,6 +102,13 @@ export interface IStorage {
   getNotificationsByUser(userId: string): Promise<Notification[]>;
   getNotification(id: string): Promise<Notification | undefined>;
   createNotification(notification: InsertNotification): Promise<Notification>;
+  wasReminderSentRecently(
+    userId: string,
+    type: string,
+    title: string,
+    relatedBookingId: string | null,
+    withinMinutes: number,
+  ): Promise<boolean>;
   markNotificationAsRead(id: string): Promise<Notification>;
   markAllNotificationsAsRead(userId: string): Promise<number>;
   deleteReadNotifications(userId: string): Promise<number>;
@@ -1494,6 +1501,25 @@ export class MemStorage implements IStorage {
     };
     this.notifications.set(id, notification);
     return notification;
+  }
+
+  async wasReminderSentRecently(
+    userId: string,
+    type: string,
+    title: string,
+    relatedBookingId: string | null,
+    withinMinutes: number,
+  ): Promise<boolean> {
+    const cutoff = Date.now() - withinMinutes * 60_000;
+    return Array.from(this.notifications.values()).some(
+      (n) =>
+        n.userId === userId &&
+        n.type === type &&
+        n.title === title &&
+        (relatedBookingId == null || n.relatedBookingId === relatedBookingId) &&
+        n.createdAt &&
+        new Date(n.createdAt).getTime() >= cutoff,
+    );
   }
 
   async markNotificationAsRead(id: string): Promise<Notification> {

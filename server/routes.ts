@@ -2555,6 +2555,24 @@ export async function registerRoutes(
     }
   });
 
+  // Vercel Cron: напоминания о тренировках (ученикам и тренеру).
+  app.get("/api/cron/reminders", async (req, res) => {
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      const auth = req.headers.authorization;
+      if (auth !== `Bearer ${cronSecret}`) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+    }
+    try {
+      const { runRemindersTick } = await import("./reminders");
+      await runRemindersTick();
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Reminder tick failed" });
+    }
+  });
+
   const httpServer = createServer(app);
   const websocket = options.websocket ?? true;
   setRealtimeEnabled(websocket);
