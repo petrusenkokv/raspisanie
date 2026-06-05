@@ -786,6 +786,24 @@ export class DbStorage implements IStorage {
     const dupBookings = await db.select().from(bookings).where(eq(bookings.timeSlotId, dupId));
     for (const b of dupBookings) {
       if (b.status === "cancelled") continue;
+      const onKeeper = await db.select().from(bookings).where(
+        and(
+          eq(bookings.studentId, b.studentId),
+          eq(bookings.timeSlotId, keeperId),
+          ne(bookings.status, "cancelled"),
+        ),
+      );
+      if (onKeeper.length > 0) {
+        if (b.consumedTrainerPaymentId) {
+          await this.refundTrainerSession(b.consumedTrainerPaymentId);
+        }
+        await db.update(bookings).set({
+          status: "cancelled",
+          cancelledAt: new Date(),
+          consumedTrainerPaymentId: null,
+        }).where(eq(bookings.id, b.id));
+        continue;
+      }
       await db.update(bookings).set({ timeSlotId: keeperId }).where(eq(bookings.id, b.id));
     }
 
@@ -1210,6 +1228,7 @@ export class DbStorage implements IStorage {
       await this.generateTimeSlotsForDate(date, settings);
     }
     await this.dedupeTimeSlotsForDate(date);
+    await this.dedupeDuplicateStudentSlotBookings();
     const slotRows = await db.select().from(timeSlots).where(eq(timeSlots.date, date)).orderBy(asc(timeSlots.time));
     const enriched = await Promise.all(slotRows.map(s => this.enrichSlot(normalizeSlot(s))));
     return { date, timeSlots: enriched };
@@ -1379,6 +1398,27 @@ export class DbStorage implements IStorage {
     }
   }
 
+  private async studentHasActiveBookingAtHour(
+    studentId: string,
+    dateStr: string,
+    hour: number,
+  ): Promise<boolean> {
+    const daySlots = await db.select().from(timeSlots).where(eq(timeSlots.date, dateStr));
+    for (const raw of daySlots) {
+      const slot = normalizeSlot(raw);
+      if (slotHourFromTime(slot.time) !== hour) continue;
+      const active = await db.select().from(bookings).where(
+        and(
+          eq(bookings.studentId, studentId),
+          eq(bookings.timeSlotId, slot.id),
+          ne(bookings.status, "cancelled"),
+        ),
+      );
+      if (active.length > 0) return true;
+    }
+    return false;
+  }
+
   private async dedupeDuplicateStudentSlotBookings(): Promise<void> {
     const active = await db
       .select()
@@ -1440,6 +1480,7 @@ export class DbStorage implements IStorage {
             ),
           );
         if (excepted.length > 0) { skipped++; continue; }
+        await this.dedupeTimeSlotsForDate(dateStr);
         const slot = await this.ensureSlot(dateStr, rule.hour, settings);
         if (slot.isBlocked) { skipped++; continue; }
         if (!(await this.studentHasMembershipForDate(rule.studentId, dateStr))) {
@@ -1455,22 +1496,9 @@ export class DbStorage implements IStorage {
           ),
         );
         if (anyForRule.length > 0) continue;
-        const alreadyInSlot = await db.select().from(bookings).where(
-          and(
-            eq(bookings.studentId, rule.studentId),
-            eq(bookings.timeSlotId, slot.id),
-            ne(bookings.status, "cancelled"),
-          ),
-        );
-        if (alreadyInSlot.length > 0) { skipped++; continue; }
-        // Student already booked that day?
-        const daySlots = await db.select().from(timeSlots).where(eq(timeSlots.date, dateStr));
-        const daySlotIds = daySlots.map(s => s.id);
-        if (daySlotIds.length > 0) {
-          const studentBookedThatDay = await db.select().from(bookings).where(
-            and(eq(bookings.studentId, rule.studentId), ne(bookings.status, "cancelled"), inArray(bookings.timeSlotId, daySlotIds))
-          );
-          if (studentBookedThatDay.length > 0) { skipped++; continue; }
+        if (await this.studentHasActiveBookingAtHour(rule.studentId, dateStr, rule.hour)) {
+          skipped++;
+          continue;
         }
         // Slot full?
         const confirmed = await db.select().from(bookings).where(

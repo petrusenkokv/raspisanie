@@ -1612,6 +1612,7 @@ export class MemStorage implements IStorage {
       this.generateTimeSlotsForDate(date);
     }
     this.dedupeTimeSlotsForDate(date);
+    this.dedupeDuplicateStudentSlotBookings();
     const timeSlots = await this.getTimeSlotsByDate(date);
     return {
       date,
@@ -1699,6 +1700,24 @@ export class MemStorage implements IStorage {
 
     for (const [bid, b] of Array.from(this.bookings.entries())) {
       if (b.timeSlotId !== dupId || b.status === "cancelled") continue;
+      const onKeeper = Array.from(this.bookings.values()).find(
+        (existing) =>
+          existing.studentId === b.studentId &&
+          existing.timeSlotId === keeperId &&
+          existing.status !== "cancelled",
+      );
+      if (onKeeper) {
+        if (b.consumedTrainerPaymentId) {
+          this.refundTrainerSession(b.consumedTrainerPaymentId);
+        }
+        this.bookings.set(bid, {
+          ...b,
+          status: "cancelled",
+          cancelledAt: new Date(),
+          consumedTrainerPaymentId: null,
+        });
+        continue;
+      }
       this.bookings.set(bid, { ...b, timeSlotId: keeperId });
     }
 
@@ -1873,6 +1892,20 @@ export class MemStorage implements IStorage {
     }
   }
 
+  private studentHasActiveBookingAtHour(studentId: string, dateStr: string, hour: number): boolean {
+    for (const slot of Array.from(this.timeSlots.values())) {
+      if (slot.date !== dateStr || slotHourFromTime(slot.time) !== hour) continue;
+      const active = Array.from(this.bookings.values()).find(
+        (b) =>
+          b.studentId === studentId &&
+          b.timeSlotId === slot.id &&
+          b.status !== "cancelled",
+      );
+      if (active) return true;
+    }
+    return false;
+  }
+
   private dedupeDuplicateStudentSlotBookings(): void {
     const groups = new Map<string, Booking[]>();
     for (const booking of Array.from(this.bookings.values())) {
@@ -1924,6 +1957,7 @@ export class MemStorage implements IStorage {
           skipped++;
           continue;
         }
+        this.dedupeTimeSlotsForDate(dateStr);
         const slot = this.ensureSlot(dateStr, rule.hour);
         if (slot.isBlocked) { skipped++; continue; }
         if (!(await this.studentHasMembershipForDate(rule.studentId, dateStr))) {
@@ -1938,21 +1972,10 @@ export class MemStorage implements IStorage {
             b.status !== "cancelled",
         );
         if (anyForRule) continue;
-        const alreadyInSlot = Array.from(this.bookings.values()).find(
-          (b) =>
-            b.studentId === rule.studentId &&
-            b.timeSlotId === slot.id &&
-            b.status !== "cancelled",
-        );
-        if (alreadyInSlot) { skipped++; continue; }
-        // Student already has a booking that day?
-        const studentSlotIdsThatDay = new Set(
-          Array.from(this.timeSlots.values()).filter(s => s.date === dateStr).map(s => s.id)
-        );
-        const studentBookedThatDay = Array.from(this.bookings.values()).find(b =>
-          b.studentId === rule.studentId && b.status !== "cancelled" && studentSlotIdsThatDay.has(b.timeSlotId)
-        );
-        if (studentBookedThatDay) { skipped++; continue; }
+        if (this.studentHasActiveBookingAtHour(rule.studentId, dateStr, rule.hour)) {
+          skipped++;
+          continue;
+        }
         // Slot full?
         const confirmed = Array.from(this.bookings.values()).filter(b =>
           b.timeSlotId === slot.id && b.status === "confirmed"

@@ -2279,11 +2279,15 @@ export async function registerRoutes(
       const existingRules = await storage.getRecurringBookingsByStudent(String(studentId));
       for (const rule of existingRules) {
         if (rule.hour !== h) continue;
-        if (!rule.weekdays.some((d) => wd.includes(d))) continue;
+        const sharedWeekdays = rule.weekdays.filter((d) => wd.includes(d));
+        if (sharedWeekdays.length === 0) continue;
         const ruleEnd = rule.endDate || "9999-12-31";
         if (newStart > ruleEnd || rule.startDate > newEnd) continue;
+        const daysLabel = sharedWeekdays
+          .map((d) => ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][d - 1])
+          .join(", ");
         return res.status(409).json({
-          message: `У ученика уже есть постоянная запись на ${String(h).padStart(2, "0")}:00 в пересекающиеся дни недели`,
+          message: `У ученика уже есть постоянная запись на ${String(h).padStart(2, "0")}:00 (${daysLabel})`,
         });
       }
 
