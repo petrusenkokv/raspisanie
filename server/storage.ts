@@ -44,6 +44,7 @@ import {
   eachDateStrInRange,
   nextCvAllowedDateStr,
 } from "./moscow-date";
+import { studentIdentityKey } from "./student-identity";
 
 export type AttendanceStats = {
   total: number;
@@ -139,6 +140,7 @@ export interface IStorage {
 
   // Recurring bookings
   getRecurringBookingsByStudent(studentId: string): Promise<RecurringBooking[]>;
+  getRecurringBookingsForIdentity(studentId: string): Promise<RecurringBooking[]>;
   getRecurringBooking(id: string): Promise<RecurringBooking | undefined>;
   createRecurringBooking(rule: InsertRecurringBooking): Promise<RecurringBooking>;
   deleteRecurringBooking(id: string): Promise<{ cancelledCount: number }>;
@@ -1798,6 +1800,19 @@ export class MemStorage implements IStorage {
       .sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
   }
 
+  async getRecurringBookingsForIdentity(studentId: string): Promise<RecurringBooking[]> {
+    const student = await this.getUser(studentId);
+    if (!student) return [];
+    const identity = studentIdentityKey(student);
+    const rules = Array.from(this.recurringBookings.values());
+    const matches: RecurringBooking[] = [];
+    for (const rule of rules) {
+      const user = await this.getUser(rule.studentId);
+      if (user && studentIdentityKey(user) === identity) matches.push(rule);
+    }
+    return matches.sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
+  }
+
   async getRecurringBooking(id: string): Promise<RecurringBooking | undefined> {
     return this.recurringBookings.get(id);
   }
@@ -1902,15 +1917,16 @@ export class MemStorage implements IStorage {
   }
 
   private studentHasActiveBookingAtHour(studentId: string, dateStr: string, hour: number): boolean {
+    const student = this.users.get(studentId);
+    if (!student) return false;
+    const identity = studentIdentityKey(student);
     for (const slot of Array.from(this.timeSlots.values())) {
       if (slot.date !== dateStr || slotHourFromTime(slot.time) !== hour) continue;
-      const active = Array.from(this.bookings.values()).find(
-        (b) =>
-          b.studentId === studentId &&
-          b.timeSlotId === slot.id &&
-          b.status !== "cancelled",
-      );
-      if (active) return true;
+      for (const booking of Array.from(this.bookings.values())) {
+        if (booking.timeSlotId !== slot.id || booking.status === "cancelled") continue;
+        const user = this.users.get(booking.studentId);
+        if (user && studentIdentityKey(user) === identity) return true;
+      }
     }
     return false;
   }
@@ -1962,8 +1978,10 @@ export class MemStorage implements IStorage {
       if (booking.status === "cancelled") continue;
       const slot = this.timeSlots.get(booking.timeSlotId);
       if (!slot || slot.date !== date) continue;
+      const user = this.users.get(booking.studentId);
+      if (!user) continue;
       const hour = slotHourFromTime(slot.time);
-      const key = `${booking.studentId}:${date}:${hour}`;
+      const key = `${studentIdentityKey(user)}:${date}:${hour}`;
       const list = groups.get(key) ?? [];
       list.push(booking);
       groups.set(key, list);

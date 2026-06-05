@@ -34,6 +34,7 @@ import {
   eachDateStrInRange,
   nextCvAllowedDateStr,
 } from "./moscow-date";
+import { studentIdentityKey } from "./student-identity";
 import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
 
 // Sick periods table (not in shared schema, defined locally)
@@ -1282,6 +1283,19 @@ export class DbStorage implements IStorage {
     return db.select().from(recurringBookings).where(eq(recurringBookings.studentId, studentId)).orderBy(asc(recurringBookings.createdAt));
   }
 
+  async getRecurringBookingsForIdentity(studentId: string): Promise<RecurringBooking[]> {
+    const student = await this.getUser(studentId);
+    if (!student) return [];
+    const identity = studentIdentityKey(student);
+    const rules = await db.select().from(recurringBookings).orderBy(asc(recurringBookings.createdAt));
+    const matches: RecurringBooking[] = [];
+    for (const rule of rules) {
+      const user = await this.getUser(rule.studentId);
+      if (user && studentIdentityKey(user) === identity) matches.push(rule);
+    }
+    return matches;
+  }
+
   async getRecurringBooking(id: string): Promise<RecurringBooking | undefined> {
     const rows = await db.select().from(recurringBookings).where(eq(recurringBookings.id, id));
     return rows[0];
@@ -1424,18 +1438,23 @@ export class DbStorage implements IStorage {
     dateStr: string,
     hour: number,
   ): Promise<boolean> {
+    const student = await this.getUser(studentId);
+    if (!student) return false;
+    const identity = studentIdentityKey(student);
     const daySlots = await db.select().from(timeSlots).where(eq(timeSlots.date, dateStr));
     for (const raw of daySlots) {
       const slot = normalizeSlot(raw);
       if (slotHourFromTime(slot.time) !== hour) continue;
-      const active = await db.select().from(bookings).where(
-        and(
-          eq(bookings.studentId, studentId),
-          eq(bookings.timeSlotId, slot.id),
-          ne(bookings.status, "cancelled"),
-        ),
-      );
-      if (active.length > 0) return true;
+      const active = await db
+        .select({ booking: bookings, user: users })
+        .from(bookings)
+        .innerJoin(users, eq(bookings.studentId, users.id))
+        .where(
+          and(eq(bookings.timeSlotId, slot.id), ne(bookings.status, "cancelled")),
+        );
+      for (const row of active) {
+        if (studentIdentityKey(row.user) === identity) return true;
+      }
     }
     return false;
   }
@@ -1485,9 +1504,10 @@ export class DbStorage implements IStorage {
 
   private async dedupeDuplicateStudentHourBookings(date: string): Promise<void> {
     const rows = await db
-      .select({ booking: bookings, slot: timeSlots })
+      .select({ booking: bookings, slot: timeSlots, user: users })
       .from(bookings)
       .innerJoin(timeSlots, eq(bookings.timeSlotId, timeSlots.id))
+      .innerJoin(users, eq(bookings.studentId, users.id))
       .where(and(ne(bookings.status, "cancelled"), eq(timeSlots.date, date)));
 
     const groups = new Map<string, Array<(typeof rows)[number]>>();
@@ -1497,7 +1517,8 @@ export class DbStorage implements IStorage {
           ? localDateStr(row.slot.date as Date)
           : String(row.slot.date);
       const hour = slotHourFromTime(row.slot.time);
-      const key = `${row.booking.studentId}:${dateStr}:${hour}`;
+      const identity = studentIdentityKey(row.user);
+      const key = `${identity}:${dateStr}:${hour}`;
       const list = groups.get(key) ?? [];
       list.push(row);
       groups.set(key, list);

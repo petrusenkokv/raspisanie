@@ -2276,7 +2276,7 @@ export async function registerRoutes(
 
       const newStart = String(startDate);
       const newEnd = endDate ? String(endDate) : "9999-12-31";
-      const existingRules = await storage.getRecurringBookingsByStudent(String(studentId));
+      const existingRules = await storage.getRecurringBookingsForIdentity(String(studentId));
       for (const rule of existingRules) {
         if (rule.hour !== h) continue;
         const sharedWeekdays = rule.weekdays.filter((d) => wd.includes(d));
