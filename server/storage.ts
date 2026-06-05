@@ -1831,7 +1831,51 @@ export class MemStorage implements IStorage {
     this.recurringBookingExceptions.delete(`${recurringBookingId}:${date}`);
   }
 
+  private recurringMembershipCache = new Map<string, Map<string, boolean>>();
+
+  private async studentHasMembershipForDate(studentId: string, dateStr: string): Promise<boolean> {
+    let byStudent = this.recurringMembershipCache.get(studentId);
+    if (!byStudent) {
+      byStudent = new Map();
+      this.recurringMembershipCache.set(studentId, byStudent);
+    }
+    if (byStudent.has(dateStr)) return byStudent.get(dateStr)!;
+    const status = await this.getStudentPaymentStatus(studentId, dateStr);
+    byStudent.set(dateStr, status.hasMembership);
+    return status.hasMembership;
+  }
+
+  private async releaseRecurringBookingForMissingMembership(bookingId: string): Promise<void> {
+    const booking = this.bookings.get(bookingId);
+    if (!booking || booking.status !== "confirmed" || !booking.recurringBookingId) return;
+    if (booking.consumedTrainerPaymentId) {
+      this.refundTrainerSession(booking.consumedTrainerPaymentId);
+    }
+    this.bookings.set(bookingId, {
+      ...booking,
+      status: "cancelled",
+      cancelledAt: new Date(),
+      consumedTrainerPaymentId: null,
+    });
+  }
+
+  private async cancelRecurringBookingsWithoutMembership(untilDate: string): Promise<void> {
+    const today = localDateStr(new Date());
+    for (const booking of Array.from(this.bookings.values())) {
+      if (!booking.recurringBookingId || booking.status !== "confirmed") continue;
+      const slot = this.timeSlots.get(booking.timeSlotId);
+      if (!slot) continue;
+      const dateStr = slot.date;
+      if (dateStr < today || dateStr > untilDate) continue;
+      if (!(await this.studentHasMembershipForDate(booking.studentId, dateStr))) {
+        await this.releaseRecurringBookingForMissingMembership(booking.id);
+      }
+    }
+  }
+
   async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
+    this.recurringMembershipCache.clear();
+    await this.cancelRecurringBookingsWithoutMembership(untilDate);
     let created = 0;
     let skipped = 0;
     const today = localDateStr(new Date());
@@ -1851,9 +1895,16 @@ export class MemStorage implements IStorage {
         }
         const slot = this.ensureSlot(dateStr, rule.hour);
         if (slot.isBlocked) { skipped++; continue; }
-        // Already materialized for this rule on this slot (incl. cancelled)?
+        if (!(await this.studentHasMembershipForDate(rule.studentId, dateStr))) {
+          skipped++;
+          continue;
+        }
+        // Already has active booking for this rule on this slot?
         const anyForRule = Array.from(this.bookings.values()).find(
-          (b) => b.recurringBookingId === rule.id && b.timeSlotId === slot.id,
+          (b) =>
+            b.recurringBookingId === rule.id &&
+            b.timeSlotId === slot.id &&
+            b.status !== "cancelled",
         );
         if (anyForRule) continue;
         // Student already has a booking that day?

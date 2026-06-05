@@ -1328,8 +1328,61 @@ export class DbStorage implements IStorage {
       );
   }
 
+  private recurringMembershipCache = new Map<string, Map<string, boolean>>();
+
+  private async studentHasMembershipForDate(studentId: string, dateStr: string): Promise<boolean> {
+    let byStudent = this.recurringMembershipCache.get(studentId);
+    if (!byStudent) {
+      byStudent = new Map();
+      this.recurringMembershipCache.set(studentId, byStudent);
+    }
+    if (byStudent.has(dateStr)) return byStudent.get(dateStr)!;
+    const status = await this.getStudentPaymentStatus(studentId, dateStr);
+    byStudent.set(dateStr, status.hasMembership);
+    return status.hasMembership;
+  }
+
+  private async releaseRecurringBookingForMissingMembership(bookingId: string): Promise<void> {
+    const booking = await this.getRawBooking(bookingId);
+    if (!booking || booking.status !== "confirmed" || !booking.recurringBookingId) return;
+    if (booking.consumedTrainerPaymentId) {
+      await this.refundTrainerSession(booking.consumedTrainerPaymentId);
+    }
+    await this.updateBooking(bookingId, {
+      status: "cancelled",
+      cancelledAt: new Date(),
+      consumedTrainerPaymentId: null,
+    });
+  }
+
+  private async cancelRecurringBookingsWithoutMembership(untilDate: string): Promise<void> {
+    const today = localDateStr(new Date());
+    const rows = await db
+      .select({ booking: bookings, slot: timeSlots })
+      .from(bookings)
+      .innerJoin(timeSlots, eq(bookings.timeSlotId, timeSlots.id))
+      .where(
+        and(
+          drizzleSql`${bookings.recurringBookingId} IS NOT NULL`,
+          eq(bookings.status, "confirmed"),
+          gte(timeSlots.date, today),
+          lte(timeSlots.date, untilDate),
+        ),
+      );
+
+    for (const { booking, slot } of rows) {
+      const dateStr =
+        typeof slot.date === "object" ? localDateStr(slot.date as Date) : String(slot.date);
+      if (!(await this.studentHasMembershipForDate(booking.studentId, dateStr))) {
+        await this.releaseRecurringBookingForMissingMembership(booking.id);
+      }
+    }
+  }
+
   async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
     await this.ensureRecurringExceptionsSchema();
+    this.recurringMembershipCache.clear();
+    await this.cancelRecurringBookingsWithoutMembership(untilDate);
     const settings = await this.loadSettings();
     const rules = await db.select().from(recurringBookings);
     let created = 0;
@@ -1356,9 +1409,17 @@ export class DbStorage implements IStorage {
         if (excepted.length > 0) { skipped++; continue; }
         const slot = await this.ensureSlot(dateStr, rule.hour, settings);
         if (slot.isBlocked) { skipped++; continue; }
-        // Already materialized for this rule on this slot (incl. cancelled)?
+        if (!(await this.studentHasMembershipForDate(rule.studentId, dateStr))) {
+          skipped++;
+          continue;
+        }
+        // Already has active booking for this rule on this slot?
         const anyForRule = await db.select().from(bookings).where(
-          and(eq(bookings.recurringBookingId, rule.id), eq(bookings.timeSlotId, slot.id)),
+          and(
+            eq(bookings.recurringBookingId, rule.id),
+            eq(bookings.timeSlotId, slot.id),
+            ne(bookings.status, "cancelled"),
+          ),
         );
         if (anyForRule.length > 0) continue;
         // Student already booked that day?

@@ -2101,6 +2101,11 @@ export async function registerRoutes(
       const trainer = trainerIdRaw ? await storage.getUser(String(trainerIdRaw)) : await storage.getTrainer();
       const createdBy = trainer?.id || id;
       const payment = await storage.addMembershipPayment(id, parsed.data, createdBy);
+      const horizon = new Date();
+      horizon.setDate(horizon.getDate() + 60);
+      const horizonStr = horizon.toISOString().split("T")[0];
+      await storage.materializeRecurringBookings(horizonStr);
+      broadcast({ type: "schedule_update" });
       res.json(payment);
     } catch (error: any) {
       if (error?.message?.startsWith("BEFORE_NEXT_ALLOWED_DATE:")) {
