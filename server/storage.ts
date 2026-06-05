@@ -141,9 +141,9 @@ export interface IStorage {
   materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }>;
 
   // Slot blocking
-  blockSlot(timeSlotId: string, blocked: boolean): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }>;
-  blockDate(date: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }>;
-  blockDateRange(startDate: string, endDate: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }>;
+  blockSlot(timeSlotId: string, blocked: boolean, blockNote?: string | null): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }>;
+  blockDate(date: string, blocked: boolean, blockNote?: string | null): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }>;
+  blockDateRange(startDate: string, endDate: string, blocked: boolean, blockNote?: string | null): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }>;
   getBlockedPeriods(): Promise<BlockedPeriod[]>;
 
   // Trainer schedule settings
@@ -404,6 +404,7 @@ export class MemStorage implements IStorage {
         isManualCapacity: false,
         isBlocked: blockReason !== null,
         blockReason,
+        blockNote: null,
         createdAt: new Date(),
       };
       this.timeSlots.set(timeSlotId, timeSlot);
@@ -821,6 +822,7 @@ export class MemStorage implements IStorage {
       isManualCapacity: insertTimeSlot.isManualCapacity ?? false,
       isBlocked: insertTimeSlot.isBlocked || false,
       blockReason: insertTimeSlot.blockReason ?? null,
+      blockNote: insertTimeSlot.blockNote ?? null,
       createdAt: new Date()
     };
     this.timeSlots.set(id, timeSlot);
@@ -1713,6 +1715,7 @@ export class MemStorage implements IStorage {
         isManualCapacity: false,
         isBlocked: blockReason !== null,
         blockReason,
+        blockNote: null,
         createdAt: new Date(),
       };
       this.timeSlots.set(id, slot);
@@ -1850,13 +1853,18 @@ export class MemStorage implements IStorage {
   }
 
   // ----- Slot blocking -----
-  async blockSlot(timeSlotId: string, blocked: boolean): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }> {
+  async blockSlot(
+    timeSlotId: string,
+    blocked: boolean,
+    blockNote?: string | null,
+  ): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }> {
     const slot = this.timeSlots.get(timeSlotId);
     if (!slot) throw new Error("Временной слот не найден");
     const updated: TimeSlot = {
       ...slot,
       isBlocked: blocked,
       blockReason: blocked ? "manual" : null,
+      blockNote: blocked ? (blockNote ?? null) : null,
     };
     this.timeSlots.set(timeSlotId, updated);
     const cancelled: Booking[] = [];
@@ -1914,7 +1922,11 @@ export class MemStorage implements IStorage {
     return [];
   }
 
-  async blockDate(date: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
+  async blockDate(
+    date: string,
+    blocked: boolean,
+    blockNote?: string | null,
+  ): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
     // Make sure all hours within current settings exist for this date
     for (let h = this.settings.dayStartHour; h < this.settings.dayEndHour; h++) {
       this.ensureSlot(date, h);
@@ -1924,19 +1936,24 @@ export class MemStorage implements IStorage {
     const updatedSlots: TimeSlot[] = [];
     const cancelled: Booking[] = [];
     for (const s of slots) {
-      const r = await this.blockSlot(s.id, blocked);
+      const r = await this.blockSlot(s.id, blocked, blockNote);
       updatedSlots.push(r.slot);
       cancelled.push(...r.cancelledBookings);
     }
     return { slots: updatedSlots, cancelledBookings: cancelled };
   }
 
-  async blockDateRange(startDate: string, endDate: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
+  async blockDateRange(
+    startDate: string,
+    endDate: string,
+    blocked: boolean,
+    blockNote?: string | null,
+  ): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
     const dates = eachDateInRange(startDate, endDate).map(localDateStr);
     const allSlots: TimeSlot[] = [];
     const allCancelled: Booking[] = [];
     for (const d of dates) {
-      const r = await this.blockDate(d, blocked);
+      const r = await this.blockDate(d, blocked, blockNote);
       allSlots.push(...r.slots);
       allCancelled.push(...r.cancelledBookings);
     }
@@ -2040,7 +2057,7 @@ export class MemStorage implements IStorage {
         const working = !isHolidayDay && isWorkingHour(next.weeklyTemplate, date, hour);
         if (working) {
           if (s.isBlocked) {
-            this.timeSlots.set(s.id, { ...s, isBlocked: false, blockReason: null });
+            this.timeSlots.set(s.id, { ...s, isBlocked: false, blockReason: null, blockNote: null });
           }
         } else {
           if (!s.isBlocked) {
@@ -2149,7 +2166,7 @@ export class MemStorage implements IStorage {
       const hour = parseInt(s.time.slice(0, 2), 10);
       const working = isWorkingHour(this.settings.weeklyTemplate, h.date, hour);
       if (working) {
-        this.timeSlots.set(s.id, { ...s, isBlocked: false, blockReason: null });
+        this.timeSlots.set(s.id, { ...s, isBlocked: false, blockReason: null, blockNote: null });
       } else {
         this.timeSlots.set(s.id, { ...s, isBlocked: true, blockReason: "template" });
       }

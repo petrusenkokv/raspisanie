@@ -8,6 +8,7 @@ import { BookStudentDialog } from "@/components/gym/book-student-dialog";
 import { ChangePasswordDialog } from "@/components/gym/change-password-dialog";
 import { TrainerProfileDialog } from "@/components/gym/trainer-profile-dialog";
 import { BlockPeriodDialog } from "@/components/gym/block-period-dialog";
+import { BlockNoteDialog } from "@/components/gym/block-note-dialog";
 import { ScheduleSettingsDialog } from "@/components/gym/schedule-settings-dialog";
 import { BroadcastDialog } from "@/components/gym/broadcast-dialog";
 import { ProfileDialog } from "@/components/gym/profile-dialog";
@@ -23,6 +24,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, MessageSquare } from "lucide-react";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -34,6 +37,7 @@ export function GymSchedulePage() {
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [trainerProfileOpen, setTrainerProfileOpen] = useState(false);
   const [blockPeriodOpen, setBlockPeriodOpen] = useState(false);
+  const [blockDayNoteDialogOpen, setBlockDayNoteDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -142,12 +146,13 @@ export function GymSchedulePage() {
   }, [currentView, selectedDate, schedule]);
 
   const blockDayMutation = useMutation({
-    mutationFn: async (vars: { date: string; blocked: boolean }) => {
+    mutationFn: async (vars: { date: string; blocked: boolean; blockNote?: string | null }) => {
       const r = await apiRequest("POST", "/api/trainer/block-day", vars);
       return r.json();
     },
     onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      setBlockDayNoteDialogOpen(false);
       toast({
         title: vars.blocked ? "День закрыт" : "День открыт",
         description: vars.blocked && data.cancelledCount > 0 ? `Отменено записей: ${data.cancelledCount}` : undefined,
@@ -401,6 +406,23 @@ export function GymSchedulePage() {
         forced={!!(currentUser as any)?.mustChangePassword}
       />
       <BlockPeriodDialog open={blockPeriodOpen} onOpenChange={setBlockPeriodOpen} />
+      {dayBlockedState && (
+        <BlockNoteDialog
+          open={blockDayNoteDialogOpen}
+          onOpenChange={setBlockDayNoteDialogOpen}
+          title="Закрыть день"
+          description={`Все слоты ${format(new Date(dayBlockedState.dateStr + "T12:00:00"), "d MMMM yyyy", { locale: ru })} будут закрыты. Существующие записи отменятся.`}
+          confirmLabel="Закрыть день"
+          pending={blockDayMutation.isPending}
+          onConfirm={(note) =>
+            blockDayMutation.mutate({
+              date: dayBlockedState.dateStr,
+              blocked: true,
+              blockNote: note,
+            })
+          }
+        />
+      )}
       <ScheduleSettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
@@ -408,10 +430,14 @@ export function GymSchedulePage() {
         blockDayPending={blockDayMutation.isPending}
         onToggleBlockDay={() => {
           if (!dayBlockedState) return;
-          blockDayMutation.mutate({
-            date: dayBlockedState.dateStr,
-            blocked: !dayBlockedState.allBlocked,
-          });
+          if (dayBlockedState.allBlocked) {
+            blockDayMutation.mutate({
+              date: dayBlockedState.dateStr,
+              blocked: false,
+            });
+            return;
+          }
+          setBlockDayNoteDialogOpen(true);
         }}
         onOpenBlockPeriod={() => setBlockPeriodOpen(true)}
         onOpenBroadcast={() => setBroadcastOpen(true)}

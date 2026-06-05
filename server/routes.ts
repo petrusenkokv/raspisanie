@@ -29,6 +29,7 @@ import {
   missingRequiredDocumentIds,
 } from "@shared/consents-pricing";
 import { documentInputSchema, trainerServiceInputSchema } from "@shared/schema";
+import { sanitizeBlockNote } from "@shared/block-display";
 import {
   establishSession,
   destroySession,
@@ -1937,10 +1938,15 @@ export async function registerRoutes(
   app.patch("/api/trainer/time-slots/:id/block", async (req, res) => {
     try {
       const { id } = req.params;
-      const { blocked } = req.body;
-      const result = await storage.blockSlot(id, !!blocked);
+      const { blocked, blockNote } = req.body;
+      const note = blocked ? sanitizeBlockNote(blockNote) : null;
+      const result = await storage.blockSlot(id, !!blocked, note);
       if (blocked) {
-        await notifyCancelled(result.cancelledBookings, "Тренер заблокировал это время. Запишитесь на другое.");
+        const reason = note ? ` Причина: ${note}` : "";
+        await notifyCancelled(
+          result.cancelledBookings,
+          `Тренер заблокировал это время. Запишитесь на другое.${reason}`,
+        );
       }
       broadcast({ type: "schedule_update" });
       broadcast({ type: "notification_update" });
@@ -1952,11 +1958,16 @@ export async function registerRoutes(
 
   app.post("/api/trainer/block-day", async (req, res) => {
     try {
-      const { date, blocked } = req.body;
+      const { date, blocked, blockNote } = req.body;
       if (!date) return res.status(400).json({ message: "Укажите дату" });
-      const result = await storage.blockDate(String(date), !!blocked);
+      const note = blocked ? sanitizeBlockNote(blockNote) : null;
+      const result = await storage.blockDate(String(date), !!blocked, note);
       if (blocked) {
-        await notifyCancelled(result.cancelledBookings, "Тренер закрыл этот день. Запишитесь на другой.");
+        const reason = note ? ` Причина: ${note}` : "";
+        await notifyCancelled(
+          result.cancelledBookings,
+          `Тренер закрыл этот день. Запишитесь на другой.${reason}`,
+        );
       }
       broadcast({ type: "schedule_update" });
       broadcast({ type: "notification_update" });
@@ -1968,14 +1979,19 @@ export async function registerRoutes(
 
   app.post("/api/trainer/block-range", async (req, res) => {
     try {
-      const { startDate, endDate, blocked } = req.body;
+      const { startDate, endDate, blocked, blockNote } = req.body;
       if (!startDate || !endDate) return res.status(400).json({ message: "Укажите начало и конец периода" });
       if (String(startDate) > String(endDate)) {
         return res.status(400).json({ message: "Начало периода должно быть не позже конца" });
       }
-      const result = await storage.blockDateRange(String(startDate), String(endDate), !!blocked);
+      const note = blocked ? sanitizeBlockNote(blockNote) : null;
+      const result = await storage.blockDateRange(String(startDate), String(endDate), !!blocked, note);
       if (blocked) {
-        await notifyCancelled(result.cancelledBookings, "Тренер закрыл этот период. Запишитесь на другие даты.");
+        const reason = note ? ` Причина: ${note}` : "";
+        await notifyCancelled(
+          result.cancelledBookings,
+          `Тренер закрыл этот период. Запишитесь на другие даты.${reason}`,
+        );
       }
       broadcast({ type: "schedule_update" });
       broadcast({ type: "notification_update" });

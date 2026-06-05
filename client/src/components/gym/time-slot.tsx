@@ -31,6 +31,8 @@ import {
 } from "@/lib/slot-availability-ui";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import { ru } from "date-fns/locale";
+import { getBlockedSlotLabel } from "@shared/block-display";
+import { BlockNoteDialog } from "./block-note-dialog";
 
 function minutesUntilSlotMoscow(date: string, time: string): number {
   const t = time.length >= 5 ? time.slice(0, 5) : time;
@@ -79,16 +81,19 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const showFamilyRowActions =
     !!currentUser && !isTrainer() && !(currentUser as any).isPendingApproval;
 
+  const [blockNoteDialogOpen, setBlockNoteDialogOpen] = useState(false);
+
   const blockMutation = useMutation({
-    mutationFn: async (blocked: boolean) => {
-      const r = await apiRequest("PATCH", `/api/trainer/time-slots/${timeSlot.id}/block`, { blocked });
+    mutationFn: async (vars: { blocked: boolean; blockNote?: string | null }) => {
+      const r = await apiRequest("PATCH", `/api/trainer/time-slots/${timeSlot.id}/block`, vars);
       return r.json();
     },
-    onSuccess: (data, blocked) => {
+    onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      setBlockNoteDialogOpen(false);
       toast({
-        title: blocked ? "Слот заблокирован" : "Слот открыт",
-        description: blocked && data.cancelledCount > 0
+        title: vars.blocked ? "Слот заблокирован" : "Слот открыт",
+        description: vars.blocked && data.cancelledCount > 0
           ? `Отменено записей: ${data.cancelledCount}`
           : undefined,
       });
@@ -137,11 +142,9 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
 
   const isFull = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
-  const blockReason = (timeSlot as any).blockReason as string | null | undefined;
-  const blockedLabel =
-    blockReason === "holiday" ? "Праздник" :
-    blockReason === "template" ? "Не работает" :
-    "Заблокировано";
+  const blockReason = timeSlot.blockReason;
+  const blockNote = timeSlot.blockNote;
+  const blockedLabel = getBlockedSlotLabel(blockReason, blockNote);
 
   const bookingStudentIds =
     familyStudentIds.length > 0
@@ -353,6 +356,12 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
           )}
         </div>
       </div>
+
+      {isBlocked && (
+        <div className="mb-3 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-100/80 dark:bg-gray-800/60 px-3 py-2">
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{blockedLabel}</p>
+        </div>
+      )}
 
       {/* Booking Info */}
       {!isBlocked && (
@@ -648,7 +657,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
             variant="ghost"
             size="sm"
             className="w-full text-gray-600 hover:bg-gray-100"
-            onClick={() => blockMutation.mutate(true)}
+            onClick={() => setBlockNoteDialogOpen(true)}
             disabled={blockMutation.isPending}
             data-testid={`button-block-${timeSlot.id}`}
           >
@@ -706,7 +715,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
           variant="outline"
           size="sm"
           className="w-full"
-          onClick={(e) => { e.stopPropagation(); blockMutation.mutate(false); }}
+          onClick={(e) => { e.stopPropagation(); blockMutation.mutate({ blocked: false }); }}
           disabled={blockMutation.isPending}
           data-testid={`button-unblock-${timeSlot.id}`}
         >
@@ -766,6 +775,15 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
       )}
       {trainerCancelDialog}
       {studentCancelDialog}
+      <BlockNoteDialog
+        open={blockNoteDialogOpen}
+        onOpenChange={setBlockNoteDialogOpen}
+        title="Заблокировать слот"
+        description={`Время ${timeSlot.time}. Существующие записи будут отменены.`}
+        confirmLabel="Заблокировать"
+        pending={blockMutation.isPending}
+        onConfirm={(note) => blockMutation.mutate({ blocked: true, blockNote: note })}
+      />
     </>
   );
 }

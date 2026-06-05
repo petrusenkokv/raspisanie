@@ -11,6 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { type TimeSlotWithBookings, type Holiday, type WeeklyTemplate } from "@shared/schema";
+import { getBlockedSlotLabel } from "@shared/block-display";
+import { BlockNoteDialog } from "./block-note-dialog";
 import {
   formatStudentShortName,
   isSlotInWorkingHours,
@@ -228,6 +230,12 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 slots.some(
                   (ts) => ts.blockReason === "manual" || ts.blockReason === "holiday",
                 );
+              const trainerClosedNote = slots.find(
+                (ts) =>
+                  ts.isBlocked &&
+                  (ts.blockReason === "manual" || ts.blockReason === "holiday") &&
+                  ts.blockNote?.trim(),
+              )?.blockNote?.trim();
               const isTrainerClosed =
                 !!period ||
                 trainerClosedInWorkingHours ||
@@ -242,8 +250,8 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                     : `${format(parseISO(period.start), "d MMM", { locale: ru })} — ${format(parseISO(period.end), "d MMM yyyy", { locale: ru })}`
                   : null;
                 const reasonText = period
-                  ? period.name?.trim() || "Отпуск / выходной"
-                  : "Закрыто тренером";
+                  ? period.name?.trim() || trainerClosedNote || "Отпуск / выходной"
+                  : trainerClosedNote || "Закрыто тренером";
                 tooltipNode = (
                   <div className="space-y-1 text-xs">
                     <div className="font-semibold">{reasonText}</div>
@@ -581,6 +589,7 @@ interface WeekCellProps {
 
 function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: WeekCellProps) {
   const [open, setOpen] = useState(false);
+  const [blockNoteDialogOpen, setBlockNoteDialogOpen] = useState(false);
   const { toast } = useToast();
   const { requestCancel: requestTrainerCancel, dialog: trainerCancelDialog } =
     useTrainerBookingCancel(onCancel);
@@ -602,13 +611,17 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   const tooLateToCancel =
     !isTrainer && cancelDeadlineH > 0 && minutesUntil <= cancelDeadlineH * 60;
   const blockMutation = useMutation({
-    mutationFn: async (blocked: boolean) => {
-      const r = await apiRequest("PATCH", `/api/trainer/time-slots/${timeSlot.id}/block`, { blocked });
+    mutationFn: async (vars: { blocked: boolean; blockNote?: string | null }) => {
+      const r = await apiRequest("PATCH", `/api/trainer/time-slots/${timeSlot.id}/block`, vars);
       return r.json();
     },
-    onSuccess: (data, blocked) => {
+    onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
-      toast({ title: blocked ? "Слот заблокирован" : "Слот открыт", description: blocked && data.cancelledCount > 0 ? `Отменено записей: ${data.cancelledCount}` : undefined });
+      setBlockNoteDialogOpen(false);
+      toast({
+        title: vars.blocked ? "Слот заблокирован" : "Слот открыт",
+        description: vars.blocked && data.cancelledCount > 0 ? `Отменено записей: ${data.cancelledCount}` : undefined,
+      });
       setOpen(false);
     },
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
@@ -636,6 +649,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
 
   const isFull    = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
+  const blockedLabel = getBlockedSlotLabel(timeSlot.blockReason, timeSlot.blockNote);
   const occupiedCount = allActive.length;
   const studentAvailability = getStudentSlotAvailability(isBlocked, isFull);
   const studentFillLevel = getStudentSlotFillLevel(isBlocked, isFull, occupiedCount);
@@ -669,7 +683,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
 
   const hintAriaLabel =
     hintLevel === "blocked"
-      ? "Закрыто"
+      ? blockedLabel
       : hintLevel === "booked"
         ? "Ваша запись"
         : hintLevel === "guest-empty" || hintLevel === "empty"
@@ -688,7 +702,13 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
           ? `${hintAriaLabel}, ${timeSlot.time.slice(0, 5)}`
           : undefined
       }
-      title={isGuest && !isBlocked ? "Нажмите, чтобы войти и записаться" : undefined}
+      title={
+        isBlocked && !isTrainer
+          ? blockedLabel
+          : isGuest && !isBlocked
+            ? "Нажмите, чтобы войти и записаться"
+            : undefined
+      }
     >
       {isTrainer ? (
         <>
@@ -707,21 +727,18 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
 
   // Trainer popover for blocked slot — allow unblocking
   if (isBlocked && isTrainer) {
-    const reason = (timeSlot as any).blockReason as string | null | undefined;
-    const label = reason === "holiday" ? "праздник"
-                : reason === "template" ? "не рабочий час"
-                : "заблокирован";
     return (
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>{cellContent}</PopoverTrigger>
         <PopoverContent className="w-60 p-3" side="bottom" align="center">
           <div className="space-y-2">
-            <p className="text-sm font-medium">Слот {timeSlot.time} ({label})</p>
+            <p className="text-sm font-medium">Слот {timeSlot.time}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">{blockedLabel}</p>
             <Button
               variant="outline"
               size="sm"
               className="w-full"
-              onClick={() => blockMutation.mutate(false)}
+              onClick={() => blockMutation.mutate({ blocked: false })}
               disabled={blockMutation.isPending}
             >
               <Unlock className="h-3 w-3 mr-1" />
@@ -825,7 +842,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
               variant="ghost"
               size="sm"
               className="w-full text-gray-600"
-              onClick={() => blockMutation.mutate(true)}
+              onClick={() => setBlockNoteDialogOpen(true)}
               disabled={blockMutation.isPending}
             >
               <Lock className="h-3 w-3 mr-1" />
@@ -945,6 +962,15 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
     </Popover>
     {trainerCancelDialog}
     {studentCancelDialog}
+    <BlockNoteDialog
+      open={blockNoteDialogOpen}
+      onOpenChange={setBlockNoteDialogOpen}
+      title="Заблокировать слот"
+      description={`Время ${timeSlot.time}. Существующие записи будут отменены.`}
+      confirmLabel="Заблокировать"
+      pending={blockMutation.isPending}
+      onConfirm={(note) => blockMutation.mutate({ blocked: true, blockNote: note })}
+    />
     </>
   );
 }

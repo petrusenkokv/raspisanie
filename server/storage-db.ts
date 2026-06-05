@@ -175,6 +175,7 @@ export class DbStorage implements IStorage {
       await db.execute(drizzleSql`ALTER TABLE documents ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'required'`);
       await db.execute(drizzleSql`ALTER TABLE documents ADD COLUMN IF NOT EXISTS price_surcharge_rub integer`);
       await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS selected_service_id varchar`);
+      await db.execute(drizzleSql`ALTER TABLE time_slots ADD COLUMN IF NOT EXISTS block_note text`);
       await db.execute(drizzleSql`
         UPDATE documents SET kind = 'pricing', price_surcharge_rub = COALESCE(price_surcharge_rub, 500)
         WHERE title ILIKE '%фото%' OR title ILIKE '%видео%'
@@ -689,6 +690,7 @@ export class DbStorage implements IStorage {
       isManualCapacity: insertTS.isManualCapacity ?? false,
       isBlocked: insertTS.isBlocked ?? false,
       blockReason: insertTS.blockReason ?? null,
+      blockNote: insertTS.blockNote ?? null,
     }).returning();
     return normalizeSlot(rows[0]);
   }
@@ -1340,10 +1342,18 @@ export class DbStorage implements IStorage {
 
   // ======================== SLOT BLOCKING ========================
 
-  async blockSlot(timeSlotId: string, blocked: boolean): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }> {
+  async blockSlot(
+    timeSlotId: string,
+    blocked: boolean,
+    blockNote?: string | null,
+  ): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }> {
     const slot = await this.getTimeSlotById(timeSlotId);
     if (!slot) throw new Error("Временной слот не найден");
-    const updated = await this.updateTimeSlot(timeSlotId, { isBlocked: blocked, blockReason: blocked ? "manual" : null });
+    const updated = await this.updateTimeSlot(timeSlotId, {
+      isBlocked: blocked,
+      blockReason: blocked ? "manual" : null,
+      blockNote: blocked ? (blockNote ?? null) : null,
+    });
     const cancelled: Booking[] = [];
     if (blocked) {
       const activeBookings = await db.select().from(bookings).where(
@@ -1393,7 +1403,11 @@ export class DbStorage implements IStorage {
     return [];
   }
 
-  async blockDate(date: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
+  async blockDate(
+    date: string,
+    blocked: boolean,
+    blockNote?: string | null,
+  ): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
     const settings = await this.loadSettings();
     for (let h = settings.dayStartHour; h < settings.dayEndHour; h++) {
       await this.ensureSlot(date, h, settings);
@@ -1402,20 +1416,25 @@ export class DbStorage implements IStorage {
     const allSlots: TimeSlot[] = [];
     const allCancelled: Booking[] = [];
     for (const s of daySlots) {
-      const r = await this.blockSlot(s.id, blocked);
+      const r = await this.blockSlot(s.id, blocked, blockNote);
       allSlots.push(r.slot);
       allCancelled.push(...r.cancelledBookings);
     }
     return { slots: allSlots, cancelledBookings: allCancelled };
   }
 
-  async blockDateRange(startDate: string, endDate: string, blocked: boolean): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
+  async blockDateRange(
+    startDate: string,
+    endDate: string,
+    blocked: boolean,
+    blockNote?: string | null,
+  ): Promise<{ slots: TimeSlot[]; cancelledBookings: Booking[] }> {
     await this.ensureBlockedPeriodsSchema();
     const dates = eachDateInRange(startDate, endDate).map(localDateStr);
     const allSlots: TimeSlot[] = [];
     const allCancelled: Booking[] = [];
     for (const d of dates) {
-      const r = await this.blockDate(d, blocked);
+      const r = await this.blockDate(d, blocked, blockNote);
       allSlots.push(...r.slots);
       allCancelled.push(...r.cancelledBookings);
     }
@@ -1506,7 +1525,7 @@ export class DbStorage implements IStorage {
         const hour = parseInt(normalizeTime(s.time).slice(0, 2), 10);
         const working = !isHolidayDay && isWorkingHour(next.weeklyTemplate, dateStr, hour);
         if (working) {
-          if (s.isBlocked) await db.update(timeSlots).set({ isBlocked: false, blockReason: null }).where(eq(timeSlots.id, s.id));
+          await db.update(timeSlots).set({ isBlocked: false, blockReason: null, blockNote: null }).where(eq(timeSlots.id, s.id));
         } else {
           if (!s.isBlocked) {
             const c = await this.cancelBookingsOnSlot(s.id);
@@ -1592,7 +1611,7 @@ export class DbStorage implements IStorage {
       if (s.blockReason !== "holiday") continue;
       const hour = parseInt(normalizeTime(s.time).slice(0, 2), 10);
       const working = isWorkingHour(settings.weeklyTemplate, h.date, hour);
-      await db.update(timeSlots).set({ isBlocked: !working, blockReason: working ? null : "template" }).where(eq(timeSlots.id, s.id));
+      await db.update(timeSlots).set({ isBlocked: !working, blockReason: working ? null : "template", blockNote: working ? null : undefined }).where(eq(timeSlots.id, s.id));
     }
   }
 

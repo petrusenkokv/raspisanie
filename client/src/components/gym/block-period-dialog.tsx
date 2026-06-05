@@ -3,12 +3,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Calendar as CalIcon, X } from "lucide-react";
 import { addDays, addMonths, format } from "date-fns";
 import { ru } from "date-fns/locale";
+import { BLOCK_NOTE_MAX_LENGTH } from "@shared/block-display";
 
 interface Props {
   open: boolean;
@@ -88,6 +90,7 @@ export function BlockPeriodDialog({ open, onOpenChange }: Props) {
   const today = format(new Date(), "yyyy-MM-dd");
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
+  const [blockNote, setBlockNote] = useState("");
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
 
   const periodsQuery = useQuery<{ periods: BlockedPeriod[] }>({
@@ -121,17 +124,19 @@ export function BlockPeriodDialog({ open, onOpenChange }: Props) {
       : "Не удалось загрузить список закрытых периодов";
 
   const blockMutation = useMutation({
-    mutationFn: async (vars: { blocked: boolean }) => {
+    mutationFn: async (vars: { blocked: boolean; blockNote?: string | null }) => {
       const r = await apiRequest("POST", "/api/trainer/block-range", {
         startDate,
         endDate,
         blocked: vars.blocked,
+        blockNote: vars.blockNote,
       });
       return r.json();
     },
     onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/blocked-periods"] });
+      if (vars.blocked) setBlockNote("");
       toast({
         title: vars.blocked ? "Период закрыт" : "Период открыт",
         description: vars.blocked
@@ -210,13 +215,31 @@ export function BlockPeriodDialog({ open, onOpenChange }: Props) {
                 <Label>Дата окончания</Label>
                 <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
               </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label htmlFor="block-period-note">Причина (необязательно)</Label>
+                <Textarea
+                  id="block-period-note"
+                  value={blockNote}
+                  onChange={(e) => setBlockNote(e.target.value.slice(0, BLOCK_NOTE_MAX_LENGTH))}
+                  placeholder="Например: отпуск, соревнования"
+                  rows={2}
+                  maxLength={BLOCK_NOTE_MAX_LENGTH}
+                />
+                <p className="text-xs text-gray-500">Увидят вы и ученики.</p>
+              </div>
               <div className="space-y-1">
                 <Label className="invisible">Действие</Label>
                 <Button
                   type="button"
                   size="sm"
                   className="h-10 px-4 bg-red-600 hover:bg-red-700 text-white whitespace-nowrap w-full sm:w-auto"
-                  onClick={() => blockMutation.mutate({ blocked: true })}
+                  onClick={() => {
+                    const trimmed = blockNote.trim().slice(0, BLOCK_NOTE_MAX_LENGTH);
+                    blockMutation.mutate({
+                      blocked: true,
+                      blockNote: trimmed.length > 0 ? trimmed : null,
+                    });
+                  }}
                   disabled={blockMutation.isPending || deleteMutation.isPending}
                 >
                   {blockMutation.isPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
