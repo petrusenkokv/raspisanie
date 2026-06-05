@@ -1717,6 +1717,37 @@ export class DbStorage implements IStorage {
     return null;
   }
 
+  /** Subscription already consumed for a training on this date (after attendance). */
+  private async findConsumedTrainerPaymentForDate(studentId: string, dateStr: string): Promise<TrainerPayment | null> {
+    const slotRows = await db
+      .select({ id: timeSlots.id })
+      .from(timeSlots)
+      .where(eq(timeSlots.date, dateStr));
+    const slotIds = slotRows.map((s) => s.id);
+    if (slotIds.length === 0) return null;
+
+    const bookingRows = await db
+      .select()
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.studentId, studentId),
+          inArray(bookings.timeSlotId, slotIds),
+          drizzleSql`${bookings.consumedTrainerPaymentId} IS NOT NULL`,
+        ),
+      );
+
+    for (const booking of bookingRows) {
+      if (!booking.consumedTrainerPaymentId) continue;
+      const subRows = await db
+        .select()
+        .from(trainerPayments)
+        .where(eq(trainerPayments.id, booking.consumedTrainerPaymentId));
+      if (subRows[0]) return subRows[0];
+    }
+    return null;
+  }
+
   private async consumeTrainerSession(subscriptionId: string): Promise<void> {
     const rows = await db.select().from(trainerPayments).where(eq(trainerPayments.id, subscriptionId));
     const sub = rows[0];
@@ -1816,7 +1847,10 @@ export class DbStorage implements IStorage {
 
     const exemptMembership = student?.exemptMembership === true;
     const exemptTrainerPayment = student?.exemptTrainerPayment === true;
-    const sub = exemptTrainerPayment ? null : await this.findActiveTrainerSubscriptionFor(studentId, dateStr);
+    let sub = exemptTrainerPayment ? null : await this.findActiveTrainerSubscriptionFor(studentId, dateStr);
+    if (!sub && !exemptTrainerPayment) {
+      sub = await this.findConsumedTrainerPaymentForDate(studentId, dateStr);
+    }
     return {
       hasMembership: exemptMembership ? true : membershipKind !== null,
       membershipKind,

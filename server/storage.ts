@@ -1112,6 +1112,18 @@ export class MemStorage implements IStorage {
     return null;
   }
 
+  /** Subscription already consumed for a training on this date (after attendance). */
+  private findConsumedTrainerPaymentForDate(studentId: string, dateStr: string): TrainerPayment | null {
+    for (const booking of Array.from(this.bookings.values())) {
+      if (booking.studentId !== studentId || !booking.consumedTrainerPaymentId) continue;
+      const slot = this.timeSlots.get(booking.timeSlotId);
+      if (!slot || slot.date !== dateStr) continue;
+      const sub = this.trainerPayments.get(booking.consumedTrainerPaymentId);
+      if (sub) return sub;
+    }
+    return null;
+  }
+
   private consumeTrainerSession(subscriptionId: string) {
     const sub = this.trainerPayments.get(subscriptionId);
     if (!sub) return;
@@ -1448,7 +1460,10 @@ export class MemStorage implements IStorage {
 
     const exemptMembership = student?.exemptMembership === true;
     const exemptTrainerPayment = student?.exemptTrainerPayment === true;
-    const sub = exemptTrainerPayment ? null : this.findActiveTrainerSubscriptionFor(studentId, dateStr);
+    let sub = exemptTrainerPayment ? null : this.findActiveTrainerSubscriptionFor(studentId, dateStr);
+    if (!sub && !exemptTrainerPayment) {
+      sub = this.findConsumedTrainerPaymentForDate(studentId, dateStr);
+    }
     return {
       hasMembership: exemptMembership ? true : membershipKind !== null,
       membershipKind,
