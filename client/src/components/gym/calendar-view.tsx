@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useGymStore } from "@/store/gym-store";
 import { TimeSlot } from "./time-slot";
+import { DaySlotRow } from "./day-slot-row";
 import { MonthDayCellHint } from "./month-day-cell-hint";
 import { MonthCalendarLegend } from "./month-calendar-legend";
 import { CalendarCellHint, type CalendarCellHintLevel } from "./calendar-cell-hint";
@@ -110,17 +111,20 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
     const viewerIsTrainer = isTrainer();
     return (
       <div>
-        <div className="sm:hidden">
+        <div className="sm:hidden space-y-1">
           {timeSlots.length > 0 ? (
-            <DayCompactGrid
-              timeSlots={timeSlots}
-              familyStudentIds={familyStudentIds}
-              onBook={onBook}
-              onCancel={onCancel}
-              onConfirm={onConfirm}
-              onLoginRequest={onLoginRequest}
-              onTrainerBook={onTrainerBook}
-            />
+            timeSlots.map((ts) => (
+              <DaySlotRow
+                key={ts.id}
+                timeSlot={ts}
+                familyStudentIds={familyStudentIds}
+                onBook={onBook}
+                onCancel={onCancel}
+                onConfirm={onConfirm}
+                onLoginRequest={onLoginRequest}
+                onTrainerBook={onTrainerBook}
+              />
+            ))
           ) : (
             <Card className="p-4 text-center">
               <p className="text-gray-500 dark:text-gray-400 text-sm">Расписание на этот день не создано</p>
@@ -1046,69 +1050,5 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
       onConfirm={(note) => blockMutation.mutate({ blocked: true, blockNote: note })}
     />
     </>
-  );
-}
-
-// ─── Compact day timetable (mobile — same row layout as week view) ─────────────
-interface DayCompactGridProps {
-  timeSlots: TimeSlotWithBookings[];
-  onBook: (id: string) => void;
-  onCancel: (id: string, message?: string) => void;
-  onConfirm: (id: string) => void;
-  onLoginRequest: (mode?: "login" | "register") => void;
-  onTrainerBook?: (id: string) => void;
-  familyStudentIds?: string[];
-}
-
-function DayCompactGrid({
-  timeSlots,
-  onBook,
-  onCancel,
-  onConfirm,
-  onLoginRequest,
-  onTrainerBook,
-  familyStudentIds = [],
-}: DayCompactGridProps) {
-  const { currentUser, isTrainer } = useGymStore();
-
-  const sortedSlots = useMemo(
-    () =>
-      [...timeSlots].sort((a, b) =>
-        normalizeSlotTime(a.time).localeCompare(normalizeSlotTime(b.time)),
-      ),
-    [timeSlots],
-  );
-
-  const formatDayTimeLabel = (time: string) => {
-    const t = normalizeSlotTime(time);
-    const [hour, minute] = t.split(":");
-    if (!minute || minute === "00") return String(Number(hour));
-    return t;
-  };
-
-  return (
-    <div className="space-y-0.5">
-      {sortedSlots.map((ts) => (
-        <div
-          key={ts.id}
-          className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-0.5 items-center"
-        >
-          <div className="text-[10px] font-medium text-gray-500 dark:text-gray-400 text-right pr-0.5 py-0.5 tabular-nums leading-none">
-            {formatDayTimeLabel(ts.time)}
-          </div>
-          <WeekCell
-            timeSlot={ts}
-            currentUser={currentUser}
-            isTrainer={isTrainer()}
-            onBook={onBook}
-            onCancel={onCancel}
-            onConfirm={onConfirm}
-            onLoginRequest={onLoginRequest}
-            onTrainerBook={onTrainerBook}
-            familyStudentIds={familyStudentIds}
-          />
-        </div>
-      ))}
-    </div>
   );
 }
