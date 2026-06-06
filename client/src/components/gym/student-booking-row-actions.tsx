@@ -9,9 +9,9 @@ import {
 import {
   MEMBERSHIP_CANCEL_BLOCK_MESSAGE,
   MEMBERSHIP_RESCHEDULE_BLOCK_MESSAGE,
-  MEMBERSHIP_SLOT_BLOCK_HINT,
 } from "@shared/membership-booking";
-import { MembershipBlockHint } from "./membership-block-hint";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 type Props = {
   bookingId: string;
@@ -36,6 +36,7 @@ export function StudentBookingRowActions({
   onReschedule,
   onCancel,
 }: Props) {
+  const { toast } = useToast();
   const checkMembership = shouldShowMembershipBadge(student);
   const { data: paymentStatus } = useStudentPaymentStatus(
     checkMembership ? studentId : undefined,
@@ -47,8 +48,8 @@ export function StudentBookingRowActions({
     paymentStatus !== undefined &&
     !paymentStatus.hasMembership;
 
-  const rescheduleDisabled = tooLateToCancel || blockedByMembership;
-  const cancelDisabled = tooLateToCancel || blockedByMembership;
+  const rescheduleHardDisabled = tooLateToCancel && !blockedByMembership;
+  const cancelHardDisabled = tooLateToCancel && !blockedByMembership;
 
   const rescheduleTitle = blockedByMembership
     ? MEMBERSHIP_RESCHEDULE_BLOCK_MESSAGE
@@ -62,6 +63,29 @@ export function StudentBookingRowActions({
       ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.`
       : "Отменить запись";
 
+  const handleRescheduleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (blockedByMembership) {
+      toast({ variant: "destructive", description: MEMBERSHIP_RESCHEDULE_BLOCK_MESSAGE });
+      return;
+    }
+    if (tooLateToCancel) return;
+    onReschedule();
+  };
+
+  const handleCancelClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (blockedByMembership) {
+      toast({ variant: "destructive", description: MEMBERSHIP_CANCEL_BLOCK_MESSAGE });
+      return;
+    }
+    if (tooLateToCancel) return;
+    onCancel();
+  };
+
+  const actionButtonClass = (blocked: boolean) =>
+    cn(blocked && "opacity-50 cursor-not-allowed");
+
   return (
     <>
       <Tooltip delayDuration={0}>
@@ -70,12 +94,13 @@ export function StudentBookingRowActions({
             <Button
               variant="ghost"
               size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!rescheduleDisabled) onReschedule();
-              }}
-              disabled={rescheduleDisabled}
-              className="h-6 w-6 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+              onClick={handleRescheduleClick}
+              disabled={rescheduleHardDisabled}
+              aria-disabled={blockedByMembership || tooLateToCancel}
+              className={cn(
+                "h-6 w-6 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30",
+                actionButtonClass(blockedByMembership),
+              )}
               title={rescheduleTitle}
               aria-label={`Перенести запись: ${personName}`}
               data-testid={`button-reschedule-${bookingId}`}
@@ -96,12 +121,13 @@ export function StudentBookingRowActions({
             <Button
               variant="ghost"
               size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!cancelDisabled) onCancel();
-              }}
-              disabled={cancelDisabled}
-              className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30"
+              onClick={handleCancelClick}
+              disabled={cancelHardDisabled}
+              aria-disabled={blockedByMembership || tooLateToCancel}
+              className={cn(
+                "h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30",
+                actionButtonClass(blockedByMembership),
+              )}
               title={cancelTitle}
               aria-label={`Отменить запись: ${personName}`}
               data-testid={`button-cancel-${bookingId}`}
@@ -116,12 +142,6 @@ export function StudentBookingRowActions({
           </TooltipContent>
         )}
       </Tooltip>
-      {blockedByMembership && (
-        <MembershipBlockHint
-          message={MEMBERSHIP_SLOT_BLOCK_HINT}
-          className="basis-full w-full"
-        />
-      )}
     </>
   );
 }

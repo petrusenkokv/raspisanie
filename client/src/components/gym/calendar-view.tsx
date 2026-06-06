@@ -26,7 +26,6 @@ import { MembershipBlockedButton } from "./membership-blocked-button";
 import {
   MEMBERSHIP_BOOKING_BLOCK_MESSAGE,
   MEMBERSHIP_CANCEL_BLOCK_MESSAGE,
-  MEMBERSHIP_SLOT_BLOCK_HINT,
 } from "@shared/membership-booking";
 import {
   monthDayStudentTooltip,
@@ -935,9 +934,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                   className="w-full text-red-600"
                   membershipBlocked={bookingBlockedByMembership}
                   membershipMessage={MEMBERSHIP_CANCEL_BLOCK_MESSAGE}
-                  hintMessage={MEMBERSHIP_SLOT_BLOCK_HINT}
                   onClick={() => {
-                    if (bookingBlockedByMembership) return;
                     requestStudentCancel({
                       bookingId: userBooking.id,
                       personName: bookedPersonName || undefined,
