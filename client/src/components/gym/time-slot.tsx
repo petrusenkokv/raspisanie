@@ -51,9 +51,11 @@ interface TimeSlotProps {
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (timeSlotId: string) => void;
   familyStudentIds?: string[];
+  layout?: "card" | "embedded";
 }
 
-export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: TimeSlotProps) {
+export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [], layout = "card" }: TimeSlotProps) {
+  const isEmbedded = layout === "embedded";
   const { currentUser, isTrainer } = useGymStore();
   const { toast } = useToast();
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -270,13 +272,14 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const cardContent = (
     <Card
       className={cn(
-        "p-2.5 sm:p-4 transition-all duration-200 sm:hover:shadow-md",
-        !currentUser && !isBlocked && !isFull && "cursor-pointer",
-        cardStatusStyle,
+        isEmbedded ? "border-0 shadow-none bg-transparent p-0" : "p-2.5 sm:p-4 transition-all duration-200 sm:hover:shadow-md",
+        !isEmbedded && !currentUser && !isBlocked && !isFull && "cursor-pointer",
+        !isEmbedded && cardStatusStyle,
       )}
-      onClick={handleCardClick}
+      onClick={isEmbedded ? undefined : handleCardClick}
     >
       {/* Header */}
+      {!isEmbedded && (
       <div className="flex items-center justify-between mb-1.5 sm:mb-3">
         <div className="flex items-center gap-1.5 sm:gap-2">
           <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-600 dark:text-gray-400" />
@@ -373,6 +376,25 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
           )}
         </div>
       </div>
+      )}
+
+      {isEmbedded && !currentUser && !isBlocked && !isFull && (
+        <div className="space-y-3 pb-2" onClick={(e) => e.stopPropagation()}>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Войдите, чтобы записаться на <strong>{timeSlot.time}</strong>
+          </p>
+          <div className="flex flex-col gap-2">
+            <Button onClick={() => handleLoginClick("login")} className="w-full" size="sm">
+              <LogIn className="mr-2 h-4 w-4" />
+              Войти
+            </Button>
+            <Button onClick={() => handleLoginClick("register")} variant="outline" className="w-full" size="sm">
+              <UserPlus className="mr-2 h-4 w-4" />
+              Зарегистрироваться
+            </Button>
+          </div>
+        </div>
+      )}
 
       {isBlocked && (
         <div className="mb-1.5 sm:mb-3 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-100/80 dark:bg-gray-800/60 px-2 py-1 sm:px-3 sm:py-2">
@@ -714,8 +736,8 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     </Card>
   );
 
-  // Wrap with Popover only for guest users on available slots
-  if (!currentUser && !isBlocked && !isFull) {
+  // Wrap with Popover only for guest users on available slots (card layout)
+  if (!isEmbedded && !currentUser && !isBlocked && !isFull) {
     return (
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>

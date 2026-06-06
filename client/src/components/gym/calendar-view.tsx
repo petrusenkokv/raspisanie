@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useGymStore } from "@/store/gym-store";
 import { TimeSlot } from "./time-slot";
+import { DaySlotRow } from "./day-slot-row";
 import { MonthDayCellHint } from "./month-day-cell-hint";
 import { MonthCalendarLegend } from "./month-calendar-legend";
 import { CalendarCellHint, type CalendarCellHintLevel } from "./calendar-cell-hint";
@@ -110,7 +111,27 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
     const viewerIsTrainer = isTrainer();
     return (
       <div>
-        <div className="grid gap-1.5 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="sm:hidden space-y-1">
+          {timeSlots.length > 0 ? (
+            timeSlots.map((ts) => (
+              <DaySlotRow
+                key={ts.id}
+                timeSlot={ts}
+                familyStudentIds={familyStudentIds}
+                onBook={onBook}
+                onCancel={onCancel}
+                onConfirm={onConfirm}
+                onLoginRequest={onLoginRequest}
+                onTrainerBook={onTrainerBook}
+              />
+            ))
+          ) : (
+            <Card className="p-4 text-center">
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Расписание на этот день не создано</p>
+            </Card>
+          )}
+        </div>
+        <div className="hidden sm:grid gap-3 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {timeSlots.length > 0 ? (
             timeSlots.map((ts) => (
               <TimeSlot
