@@ -528,16 +528,23 @@ export type TrainerSettings = {
 export type TrainerSettingsUpdate = z.infer<typeof trainerSettingsUpdateSchema>;
 export type SlotCapacityUpdate = z.infer<typeof slotCapacityUpdateSchema>;
 
-// Extended types for API responses
+import type { BookingSource } from "./booking-source";
 export type ScheduleBookingStudent = Pick<
   User,
   "firstName" | "lastName" | "phone" | "role" | "exemptMembership" | "exemptTrainerPayment"
 >;
 
+export type ScheduleBooking = Booking & {
+  student: ScheduleBookingStudent;
+  bookingSource?: BookingSource;
+};
+
 export type TimeSlotWithBookings = TimeSlot & {
-  bookings: (Booking & { student: ScheduleBookingStudent })[];
+  bookings: ScheduleBooking[];
   availableSpots: number;
 };
+
+export type { BookingSource } from "./booking-source";
 
 export type BookingWithDetails = Booking & {
   student: ScheduleBookingStudent;

@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmedBookingHint } from "./confirmed-booking-hint";
+import { BookingSourceBadge } from "./booking-source-badge";
 import { SlotSessionPrice } from "./slot-session-price";
 import { CalendarCellHint, type CalendarCellHintLevel } from "./calendar-cell-hint";
 import { useTrainerBookingCancel } from "./trainer-cancel-booking";
@@ -402,7 +403,10 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                             Заявка
                           </Badge>
                         )}
-                        {booking.recurringBookingId && (
+                        {isTrainer() && booking.bookingSource && (
+                          <BookingSourceBadge source={booking.bookingSource} />
+                        )}
+                        {!isTrainer() && booking.recurringBookingId && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span

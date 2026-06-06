@@ -36,6 +36,7 @@ import {
 } from "./moscow-date";
 import { studentIdentityKey, studentFullNameKey } from "./student-identity";
 import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
+import { resolveBookingSource, type BookingSource } from "@shared/booking-source";
 
 // Sick periods table (not in shared schema, defined locally)
 const sickPeriods = pgTable("sick_periods", {
@@ -852,11 +853,30 @@ export class DbStorage implements IStorage {
     return Promise.all(slots.map(s => this.enrichSlot(normalizeSlot(s))));
   }
 
+  private async attachBookingSources<T extends Booking & { student: ScheduleBookingStudent }>(
+    bookings: T[],
+  ): Promise<(T & { bookingSource: BookingSource })[]> {
+    const userCache = new Map<string, User | undefined>();
+    const result: (T & { bookingSource: BookingSource })[] = [];
+    for (const booking of bookings) {
+      if (!userCache.has(booking.bookedBy)) {
+        userCache.set(booking.bookedBy, await this.getUser(booking.bookedBy));
+      }
+      const bookedByUser = userCache.get(booking.bookedBy);
+      result.push({
+        ...booking,
+        bookingSource: resolveBookingSource(booking, bookedByUser),
+      });
+    }
+    return result;
+  }
+
   private async enrichSlot(slot: TimeSlot): Promise<TimeSlotWithBookings> {
     const slotBookings = await this.getBookingsByTimeSlot(slot.id);
     const active = slotBookings.filter(b => b.status !== "cancelled");
     const confirmed = slotBookings.filter(b => b.status === "confirmed");
-    return { ...slot, bookings: active, availableSpots: Math.max(0, slot.maxCapacity - confirmed.length) };
+    const bookings = await this.attachBookingSources(active);
+    return { ...slot, bookings, availableSpots: Math.max(0, slot.maxCapacity - confirmed.length) };
   }
 
   async createTimeSlot(insertTS: InsertTimeSlot): Promise<TimeSlot> {

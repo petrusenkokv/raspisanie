@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { type TimeSlotWithBookings, type Holiday, type WeeklyTemplate } from "@shared/schema";
 import { getBlockedSlotLabel } from "@shared/block-display";
 import { BlockNoteDialog } from "./block-note-dialog";
+import { BookingSourceBadge } from "./booking-source-badge";
 import {
   formatStudentShortName,
   isSlotInWorkingHours,
@@ -786,13 +787,16 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                     : "bg-gray-50 dark:bg-gray-800"
                 }`}
               >
-                <div className="flex items-center gap-1 min-w-0">
+                <div className="flex items-center gap-1 min-w-0 flex-wrap">
                   {booking.status === "confirmed"
                     ? <UserCheck className="h-3 w-3 text-green-600 shrink-0" />
                     : <Clock className="h-3 w-3 text-yellow-600 shrink-0" />}
                   <span className="truncate text-gray-900 dark:text-white">
                     {formatStudentShortName(booking.student)}
                   </span>
+                  {booking.bookingSource && (
+                    <BookingSourceBadge source={booking.bookingSource} />
+                  )}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   {booking.status === "pending" && (

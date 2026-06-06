@@ -30,12 +30,14 @@ import {
   type TrainerPaymentInput,
   type TrainerPaymentWithUsage,
   type StudentPaymentStatus,
+  type ScheduleBookingStudent,
   type BroadcastLog,
   type ParentChild,
   type InsertParentChild,
 } from "@shared/schema";
 import type { PushSubscriptionData } from "./push";
 import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
+import { resolveBookingSource, type BookingSource } from "@shared/booking-source";
 import { randomUUID } from "crypto";
 import {
   moscowDateString,
@@ -814,13 +816,26 @@ export class MemStorage implements IStorage {
       const bookings = await this.getBookingsByTimeSlot(slot.id);
       const activeBookings = bookings.filter(b => b.status !== "cancelled");
       const confirmedBookings = bookings.filter(b => b.status === "confirmed");
+      const withSource = this.attachBookingSources(activeBookings);
       
       return {
         ...slot,
-        bookings: activeBookings,
+        bookings: withSource,
         availableSpots: Math.max(0, slot.maxCapacity - confirmedBookings.length)
       };
     }));
+  }
+
+  private attachBookingSources<T extends Booking & { student: ScheduleBookingStudent }>(
+    bookings: T[],
+  ): (T & { bookingSource: BookingSource })[] {
+    return bookings.map((booking) => {
+      const bookedByUser = this.users.get(booking.bookedBy);
+      return {
+        ...booking,
+        bookingSource: resolveBookingSource(booking, bookedByUser),
+      };
+    });
   }
 
   async getTimeSlotsByDateRange(startDate: string, endDate: string): Promise<TimeSlotWithBookings[]> {
@@ -832,10 +847,11 @@ export class MemStorage implements IStorage {
       const bookings = await this.getBookingsByTimeSlot(slot.id);
       const activeBookings = bookings.filter(b => b.status !== "cancelled");
       const confirmedBookings = bookings.filter(b => b.status === "confirmed");
+      const withSource = this.attachBookingSources(activeBookings);
       
       return {
         ...slot,
-        bookings: activeBookings,
+        bookings: withSource,
         availableSpots: Math.max(0, slot.maxCapacity - confirmedBookings.length)
       };
     }));
