@@ -323,6 +323,16 @@ export async function registerRoutes(
       if (existingUser) {
         return res.status(400).json({ message: "Пользователь с таким телефоном уже существует" });
       }
+      const duplicateFio = await storage.findStudentByFullName(
+        String(firstName).trim(),
+        String(lastName).trim(),
+        middleName ? String(middleName).trim() : null,
+      );
+      if (duplicateFio) {
+        return res.status(409).json({
+          message: "Ученик с таким ФИО уже зарегистрирован. Войдите в существующий аккаунт или обратитесь к тренеру.",
+        });
+      }
 
       const birthErr = birthDateValidationError(birthDate, "student-self");
       if (birthErr) {
@@ -1630,6 +1640,16 @@ export async function registerRoutes(
       const existing = await storage.getUserByPhone(normalizedPhone);
       if (existing) {
         return res.status(400).json({ message: "Ученик с таким телефоном уже существует" });
+      }
+      if (lastName) {
+        const duplicateFio = await storage.findStudentByFullName(
+          String(firstName).trim(),
+          String(lastName).trim(),
+          middleName ? String(middleName).trim() : null,
+        );
+        if (duplicateFio) {
+          return res.status(409).json({ message: "Ученик с таким ФИО уже есть в списке" });
+        }
       }
 
       if (birthDate) {

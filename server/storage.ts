@@ -44,7 +44,7 @@ import {
   eachDateStrInRange,
   nextCvAllowedDateStr,
 } from "./moscow-date";
-import { studentIdentityKey } from "./student-identity";
+import { studentIdentityKey, studentFullNameKey } from "./student-identity";
 
 export type AttendanceStats = {
   total: number;
@@ -66,6 +66,11 @@ export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByPhone(phone: string): Promise<User | undefined>;
+  findStudentByFullName(
+    firstName: string,
+    lastName: string,
+    middleName?: string | null,
+  ): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User>;
   verifyUser(id: string): Promise<User>;
@@ -426,6 +431,20 @@ export class MemStorage implements IStorage {
 
   async getUserByPhone(phone: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(user => user.phone === phone);
+  }
+
+  async findStudentByFullName(
+    firstName: string,
+    lastName: string,
+    middleName?: string | null,
+  ): Promise<User | undefined> {
+    const key = studentFullNameKey({ firstName, lastName, middleName });
+    if (!key) return undefined;
+    return Array.from(this.users.values()).find(
+      (user) =>
+        studentFullNameKey(user) === key &&
+        (user.role === "student" || (user.role === "parent" && user.isAlsoStudent)),
+    );
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {

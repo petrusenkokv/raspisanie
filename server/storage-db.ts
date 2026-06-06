@@ -34,7 +34,7 @@ import {
   eachDateStrInRange,
   nextCvAllowedDateStr,
 } from "./moscow-date";
-import { studentIdentityKey } from "./student-identity";
+import { studentIdentityKey, studentFullNameKey } from "./student-identity";
 import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
 
 // Sick periods table (not in shared schema, defined locally)
@@ -375,6 +375,7 @@ export class DbStorage implements IStorage {
 
     try {
       await this.repairAllScheduleIntegrity();
+      await this.repairDuplicateStudentAccounts();
       await db.execute(drizzleSql`
         CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_active_per_student_slot
         ON bookings (student_id, time_slot_id)
@@ -395,6 +396,147 @@ export class DbStorage implements IStorage {
   async getUserByPhone(phone: string): Promise<User | undefined> {
     const rows = await db.select().from(users).where(eq(users.phone, phone));
     return rows[0];
+  }
+
+  async findStudentByFullName(
+    firstName: string,
+    lastName: string,
+    middleName?: string | null,
+  ): Promise<User | undefined> {
+    const key = studentFullNameKey({ firstName, lastName, middleName });
+    if (!key) return undefined;
+    const candidates = await this.getStudentsList(true);
+    return candidates.find(
+      (student) =>
+        studentFullNameKey(student) === key &&
+        (student.role === "student" || (student.role === "parent" && student.isAlsoStudent)),
+    );
+  }
+
+  private async studentMergeScore(userId: string): Promise<number> {
+    const activeBookings = await db
+      .select({ id: bookings.id })
+      .from(bookings)
+      .where(and(eq(bookings.studentId, userId), ne(bookings.status, "cancelled")));
+    const recurring = await db
+      .select({ id: recurringBookings.id })
+      .from(recurringBookings)
+      .where(eq(recurringBookings.studentId, userId));
+    const membership = await db
+      .select({ id: membershipPayments.id })
+      .from(membershipPayments)
+      .where(eq(membershipPayments.studentId, userId));
+    const trainerPay = await db
+      .select({ id: trainerPayments.id })
+      .from(trainerPayments)
+      .where(eq(trainerPayments.studentId, userId));
+    return (
+      activeBookings.length * 10 +
+      recurring.length * 8 +
+      membership.length * 5 +
+      trainerPay.length * 5
+    );
+  }
+
+  private async mergeStudentInto(keeperId: string, dupId: string): Promise<void> {
+    if (keeperId === dupId) return;
+
+    const dupBookings = await db.select().from(bookings).where(eq(bookings.studentId, dupId));
+    for (const booking of dupBookings) {
+      if (booking.status === "cancelled") continue;
+      const onKeeper = await db.select().from(bookings).where(
+        and(
+          eq(bookings.studentId, keeperId),
+          eq(bookings.timeSlotId, booking.timeSlotId),
+          ne(bookings.status, "cancelled"),
+        ),
+      );
+      if (onKeeper.length > 0) {
+        if (booking.consumedTrainerPaymentId) {
+          await this.refundTrainerSession(booking.consumedTrainerPaymentId);
+        }
+        await db.update(bookings).set({
+          status: "cancelled",
+          cancelledAt: new Date(),
+          consumedTrainerPaymentId: null,
+        }).where(eq(bookings.id, booking.id));
+        continue;
+      }
+      await db.update(bookings).set({ studentId: keeperId }).where(eq(bookings.id, booking.id));
+    }
+
+    await db.update(recurringBookings).set({ studentId: keeperId }).where(eq(recurringBookings.studentId, dupId));
+    await db.update(membershipPayments).set({ studentId: keeperId }).where(eq(membershipPayments.studentId, dupId));
+    await db.update(trainerPayments).set({ studentId: keeperId }).where(eq(trainerPayments.studentId, dupId));
+    await this.ensureSickPeriodsSchema();
+    await db.update(sickPeriods).set({ studentId: keeperId }).where(eq(sickPeriods.studentId, dupId));
+    await db.update(notifications).set({ userId: keeperId }).where(eq(notifications.userId, dupId));
+    await db.update(notifications).set({ relatedUserId: keeperId }).where(eq(notifications.relatedUserId, dupId));
+
+    const dupConsents = await db.select().from(userConsents).where(eq(userConsents.userId, dupId));
+    for (const consent of dupConsents) {
+      const exists = await db.select().from(userConsents).where(
+        and(eq(userConsents.userId, keeperId), eq(userConsents.documentId, consent.documentId)),
+      );
+      if (exists.length === 0) {
+        await db.update(userConsents).set({ userId: keeperId }).where(eq(userConsents.id, consent.id));
+      } else {
+        await db.delete(userConsents).where(eq(userConsents.id, consent.id));
+      }
+    }
+
+    await db.delete(parentChildren).where(
+      or(eq(parentChildren.parentId, dupId), eq(parentChildren.childId, dupId)),
+    );
+
+    const keeper = await this.getUser(keeperId);
+    const dup = await this.getUser(dupId);
+    if (keeper && dup) {
+      await this.updateUser(keeperId, {
+        exemptMembership: keeper.exemptMembership || dup.exemptMembership,
+        exemptTrainerPayment: keeper.exemptTrainerPayment || dup.exemptTrainerPayment,
+        isPendingApproval: keeper.isPendingApproval && dup.isPendingApproval,
+        middleName: keeper.middleName || dup.middleName,
+        birthDate: keeper.birthDate || dup.birthDate,
+        trainerNotes: [keeper.trainerNotes, dup.trainerNotes].filter(Boolean).join("\n") || keeper.trainerNotes,
+      });
+    }
+
+    await db.delete(users).where(eq(users.id, dupId));
+  }
+
+  async repairDuplicateStudentAccounts(): Promise<{ merged: number }> {
+    const students = await this.getStudentsList(true);
+    const groups = new Map<string, User[]>();
+    for (const student of students) {
+      const key = studentFullNameKey(student);
+      if (!key) continue;
+      const list = groups.get(key) ?? [];
+      list.push(student);
+      groups.set(key, list);
+    }
+
+    let merged = 0;
+    for (const list of Array.from(groups.values())) {
+      if (list.length <= 1) continue;
+      const scored = await Promise.all(
+        list.map(async (student) => ({
+          student,
+          score: await this.studentMergeScore(student.id),
+          createdAt: student.createdAt?.getTime() ?? 0,
+        })),
+      );
+      scored.sort((a, b) => b.score - a.score || a.createdAt - b.createdAt);
+      const keeper = scored[0].student;
+      for (const { student: dup } of scored.slice(1)) {
+        await this.mergeStudentInto(keeper.id, dup.id);
+        merged++;
+      }
+    }
+    if (merged > 0) {
+      console.log(`[storage] merged ${merged} duplicate student account(s)`);
+    }
+    return { merged };
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
