@@ -19,6 +19,7 @@ import {
   isSlotInWorkingHours,
   isWorkingDayByTemplate,
   shouldShowMembershipBadge,
+  shouldShowTrainerPaymentBadge,
 } from "@/lib/utils-gym";
 import { BookingPaymentBadges, useStudentPaymentStatus } from "./booking-payment-badges";
 import { MEMBERSHIP_BOOKING_BLOCK_MESSAGE } from "@shared/membership-booking";
@@ -815,6 +816,12 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                   {booking.bookingSource && (
                     <BookingSourceBadge source={booking.bookingSource} />
                   )}
+                  <BookingPaymentBadges
+                    studentId={booking.studentId}
+                    dateStr={timeSlot.date}
+                    showMembership={shouldShowMembershipBadge(booking.student)}
+                    showTrainerPayment={shouldShowTrainerPaymentBadge(booking.student)}
+                  />
                 </div>
                 <div className="flex gap-1 shrink-0">
                   {booking.status === "pending" && (

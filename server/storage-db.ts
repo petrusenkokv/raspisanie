@@ -1724,7 +1724,6 @@ export class DbStorage implements IStorage {
     await this.ensureRecurringExceptionsSchema();
     this.recurringMembershipCache.clear();
     await this.dedupeDuplicateStudentSlotBookings();
-    await this.cancelRecurringBookingsWithoutMembership(untilDate);
     const settings = await this.loadSettings();
     const rules = await db.select().from(recurringBookings);
     let created = 0;
@@ -1752,10 +1751,6 @@ export class DbStorage implements IStorage {
         await this.dedupeTimeSlotsForDate(dateStr);
         const slot = await this.ensureSlot(dateStr, rule.hour, settings);
         if (slot.isBlocked) { skipped++; continue; }
-        if (!(await this.studentHasMembershipForDate(rule.studentId, dateStr))) {
-          skipped++;
-          continue;
-        }
         // Already has active booking for this rule on this slot?
         const anyForRule = await db.select().from(bookings).where(
           and(

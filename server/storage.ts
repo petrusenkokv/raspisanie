@@ -2044,7 +2044,6 @@ export class MemStorage implements IStorage {
   async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
     this.recurringMembershipCache.clear();
     this.dedupeDuplicateStudentSlotBookings();
-    await this.cancelRecurringBookingsWithoutMembership(untilDate);
     let created = 0;
     let skipped = 0;
     const today = localDateStr(new Date());
@@ -2065,10 +2064,6 @@ export class MemStorage implements IStorage {
         this.dedupeTimeSlotsForDate(dateStr);
         const slot = this.ensureSlot(dateStr, rule.hour);
         if (slot.isBlocked) { skipped++; continue; }
-        if (!(await this.studentHasMembershipForDate(rule.studentId, dateStr))) {
-          skipped++;
-          continue;
-        }
         // Already has active booking for this rule on this slot?
         const anyForRule = Array.from(this.bookings.values()).find(
           (b) =>

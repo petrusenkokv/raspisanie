@@ -417,32 +417,15 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                             Заявка
                           </Badge>
                         )}
-                        {isTrainer() && booking.bookingSource && (
+                        {booking.bookingSource && (
                           <BookingSourceBadge source={booking.bookingSource} />
                         )}
-                        {!isTrainer() && booking.recurringBookingId && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span
-                                className="inline-flex shrink-0 text-muted-foreground"
-                                aria-label="Повторяющаяся запись"
-                              >
-                                <Repeat className="h-3 w-3" />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="text-xs max-w-[220px]">
-                              Запись из правила повторяющихся тренировок. Отмена — только на этот день.
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        {booking.status === "confirmed" && (
-                          <BookingPaymentBadges
-                            studentId={booking.studentId}
-                            dateStr={timeSlot.date}
-                            showMembership={shouldShowMembershipBadge(booking.student)}
-                            showTrainerPayment={shouldShowTrainerPaymentBadge(booking.student)}
-                          />
-                        )}
+                        <BookingPaymentBadges
+                          studentId={booking.studentId}
+                          dateStr={timeSlot.date}
+                          showMembership={shouldShowMembershipBadge(booking.student)}
+                          showTrainerPayment={shouldShowTrainerPaymentBadge(booking.student)}
+                        />
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         {booking.status === "pending" && (
