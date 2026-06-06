@@ -978,17 +978,6 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                 {bookingStudentIds.length > 0 && (
                   <SlotSessionPrice studentIds={bookingStudentIds} />
                 )}
-                {showSelfMembershipBadge && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-600 dark:text-gray-400">Членский взнос:</span>
-                    <BookingPaymentBadges
-                      studentId={currentUser.id}
-                      dateStr={timeSlot.date}
-                      showMembership
-                      showTrainerPayment={false}
-                    />
-                  </div>
-                )}
                 <MembershipBlockedButton
                   className="w-full"
                   size="sm"

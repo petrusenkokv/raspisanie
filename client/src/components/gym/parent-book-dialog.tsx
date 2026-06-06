@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2 } from "lucide-react";
 import type { User } from "@shared/schema";
 import { MembershipBlockedButton } from "@/components/gym/membership-blocked-button";
-import { BookingPaymentBadges, useStudentPaymentStatus } from "@/components/gym/booking-payment-badges";
+import { useStudentPaymentStatus } from "@/components/gym/booking-payment-badges";
 import { shouldShowMembershipBadge } from "@/lib/utils-gym";
 import { MEMBERSHIP_BOOKING_BLOCK_MESSAGE } from "@shared/membership-booking";
 
@@ -107,17 +107,6 @@ export function ParentBookDialog({
               <p className="text-xs text-muted-foreground">
                 Все доступные ученики из семьи уже записаны в этот слот.
               </p>
-            )}
-            {showMembershipBadge && selectedId && slotDate && (
-              <div className="flex items-center gap-2 pt-1">
-                <span className="text-xs text-muted-foreground">Членский взнос:</span>
-                <BookingPaymentBadges
-                  studentId={selectedId}
-                  dateStr={slotDate}
-                  showMembership
-                  showTrainerPayment={false}
-                />
-              </div>
             )}
           </div>
           <div className="flex gap-2">

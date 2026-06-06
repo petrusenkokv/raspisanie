@@ -658,17 +658,6 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
           {!isFull && slotPriceStudentIds.length > 0 && familyBookings.length === 0 && (
             <SlotSessionPrice studentIds={slotPriceStudentIds} />
           )}
-          {showSelfMembershipBadge && familyBookings.length === 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-600 dark:text-gray-400">Членский взнос:</span>
-              <BookingPaymentBadges
-                studentId={currentUser.id}
-                dateStr={timeSlot.date}
-                showMembership
-                showTrainerPayment={false}
-              />
-            </div>
-          )}
           <div className="flex gap-2">
           {userBooking ? (
             isParentUser && !isFull ? (
