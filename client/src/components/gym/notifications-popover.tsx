@@ -180,8 +180,13 @@ export function NotificationsPopover({
         fresh.length === 1
           ? first.message
           : `${first.message} (и ещё ${fresh.length - 1})`;
-      showBrowserNotification(first.title, body, `gym-${first.type}`);
-      toast({ title: first.title, description: body });
+
+      // One alert channel: toast when tab is open, OS notification when in background
+      if (document.hidden) {
+        showBrowserNotification(first.title, body, `gym-${first.type}`);
+      } else {
+        toast({ title: first.title, description: body });
+      }
     }
   }, [notifications, isTrainer, toast]);
 
