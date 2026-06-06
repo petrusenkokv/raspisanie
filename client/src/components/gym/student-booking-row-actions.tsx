@@ -9,9 +9,7 @@ import {
 import {
   MEMBERSHIP_CANCEL_BLOCK_MESSAGE,
   MEMBERSHIP_RESCHEDULE_BLOCK_MESSAGE,
-  MEMBERSHIP_SLOT_BLOCK_HINT,
 } from "@shared/membership-booking";
-import { MembershipBlockHint } from "./membership-block-hint";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -144,12 +142,6 @@ export function StudentBookingRowActions({
           </TooltipContent>
         )}
       </Tooltip>
-      {blockedByMembership && (
-        <MembershipBlockHint
-          message={MEMBERSHIP_SLOT_BLOCK_HINT}
-          className="basis-full w-full"
-        />
-      )}
     </>
   );
 }
