@@ -110,6 +110,14 @@ export function GymSchedulePage() {
     }
     return ids;
   }, [parentChildren, canManageChildren, currentUser]);
+
+  const parentBookSlotDate = useMemo(() => {
+    if (!parentBookSlotId) return undefined;
+    const slot = schedule
+      .flatMap((d) => d.timeSlots)
+      .find((s) => s.id === parentBookSlotId);
+    return slot?.date;
+  }, [parentBookSlotId, schedule]);
   const { data: freshUserData } = useQuery<{ user: User }>({
     queryKey: [`/api/users/${currentUser?.id}`],
     enabled: !!currentUser?.id && isPendingApproval,
@@ -458,6 +466,7 @@ export function GymSchedulePage() {
         currentUser={currentUser}
         isAlsoStudent={isParentRole ? isAlsoStudent : true}
         bookedStudentIds={parentBookedStudentIds}
+        slotDate={parentBookSlotDate}
         loading={bookMutation.isPending}
         onConfirm={handleParentBookConfirm}
       />

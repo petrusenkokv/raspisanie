@@ -6,8 +6,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, CircleSlash, Heart, AlarmClock, ArrowLeftRight, Repeat } from "lucide-react";
 import { RescheduleDialog } from "./reschedule-dialog";
 import { Input } from "@/components/ui/input";
-import { type TimeSlotWithBookings, type AttendanceStatus, type StudentPaymentStatus } from "@shared/schema";
-import { Wallet, Dumbbell } from "lucide-react";
+import { type TimeSlotWithBookings, type AttendanceStatus } from "@shared/schema";
+import { BookingPaymentBadges, useStudentPaymentStatus } from "./booking-payment-badges";
+import { MEMBERSHIP_BOOKING_BLOCK_MESSAGE } from "@shared/membership-booking";
 import { useGymStore } from "@/store/gym-store";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -30,8 +31,6 @@ import {
   dayCardStudentFillClasses,
   getStudentSlotFillLevel,
 } from "@/lib/slot-availability-ui";
-import { format, parseISO, differenceInCalendarDays } from "date-fns";
-import { ru } from "date-fns/locale";
 import { getBlockedSlotLabel } from "@shared/block-display";
 import { BlockNoteDialog } from "./block-note-dialog";
 
@@ -211,6 +210,21 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     if (familyStudentIds.length > 0) return familyStudentIds;
     return currentUser.id ? [currentUser.id] : [];
   }, [currentUser, isTrainer, familyBookings, familyStudentIds]);
+  const isDirectSelfBooking = currentUser?.role === "student";
+  const showSelfMembershipBadge =
+    !!currentUser &&
+    !isTrainer() &&
+    isDirectSelfBooking &&
+    shouldShowMembershipBadge(currentUser);
+  const { data: selfPaymentStatus } = useStudentPaymentStatus(
+    showSelfMembershipBadge ? currentUser?.id : undefined,
+    timeSlot.date,
+    showSelfMembershipBadge,
+  );
+  const blockedByMembership =
+    showSelfMembershipBadge &&
+    selfPaymentStatus !== undefined &&
+    !selfPaymentStatus.hasMembership;
   const studentFillLevel = getStudentSlotFillLevel(
     isBlocked,
     isFull,
@@ -684,6 +698,17 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
           {!isFull && slotPriceStudentIds.length > 0 && familyBookings.length === 0 && (
             <SlotSessionPrice studentIds={slotPriceStudentIds} />
           )}
+          {showSelfMembershipBadge && familyBookings.length === 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-600 dark:text-gray-400">Членский взнос:</span>
+              <BookingPaymentBadges
+                studentId={currentUser.id}
+                dateStr={timeSlot.date}
+                showMembership
+                showTrainerPayment={false}
+              />
+            </div>
+          )}
           <div className="flex gap-2">
           {userBooking ? (
             isParentUser && !isFull ? (
@@ -698,19 +723,45 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
             ) : null
           ) : (
             !isFull && (
-              <Button
-                onClick={() => onBook(timeSlot.id)}
-                className="flex-1"
-                size="sm"
-                disabled={tooLateToBook}
-                title={tooLateToBook ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.` : undefined}
-                data-testid={`button-book-${timeSlot.id}`}
-              >
-                {tooLateToBook ? "Запись закрыта" : "Записаться"}
-              </Button>
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <span className="flex flex-1">
+                    <Button
+                      onClick={() => onBook(timeSlot.id)}
+                      className="flex-1 w-full"
+                      size="sm"
+                      disabled={tooLateToBook || blockedByMembership}
+                      title={
+                        blockedByMembership
+                          ? MEMBERSHIP_BOOKING_BLOCK_MESSAGE
+                          : tooLateToBook
+                            ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.`
+                            : undefined
+                      }
+                      data-testid={`button-book-${timeSlot.id}`}
+                    >
+                      {tooLateToBook
+                        ? "Запись закрыта"
+                        : blockedByMembership
+                          ? "Нет ЧВ"
+                          : "Записаться"}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {blockedByMembership && (
+                  <TooltipContent side="top" className="max-w-xs z-[100]">
+                    {MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
+                  </TooltipContent>
+                )}
+              </Tooltip>
             )
           )}
           </div>
+          {blockedByMembership && familyBookings.length === 0 && (
+            <p className="text-xs text-red-600 dark:text-red-400">
+              {MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
+            </p>
+          )}
         </div>
       )}
 
@@ -852,149 +903,5 @@ function AttendanceButton({
       {icon}
       <span className="hidden md:inline">{label}</span>
     </button>
-  );
-}
-
-
-function BookingPaymentBadges({
-  studentId,
-  dateStr,
-  showMembership = true,
-  showTrainerPayment = true,
-}: {
-  studentId: string;
-  dateStr: string;
-  showMembership?: boolean;
-  showTrainerPayment?: boolean;
-}) {
-  const showAny = showMembership || showTrainerPayment;
-  const { isTrainer } = useGymStore();
-  const paymentStatusUrl = isTrainer()
-    ? `/api/trainer/students/${studentId}/payment-status?date=${encodeURIComponent(dateStr)}`
-    : `/api/student/payment-status/${studentId}?date=${encodeURIComponent(dateStr)}`;
-
-  const { data, isLoading, isError } = useQuery<StudentPaymentStatus>({
-    queryKey: ["payment-status", studentId, dateStr, isTrainer() ? "trainer" : "student"],
-    queryFn: async () => {
-      const r = await apiRequest("GET", paymentStatusUrl);
-      return r.json();
-    },
-    staleTime: 30_000,
-    retry: 2,
-    enabled: Boolean(studentId && dateStr && showAny),
-  });
-
-  if (!showAny) return null;
-
-  if (isLoading) {
-    return (
-      <span className="inline-flex items-center gap-1 shrink-0" aria-hidden>
-        <span className="h-5 w-9 rounded border border-gray-200 bg-gray-100 dark:bg-gray-800 animate-pulse" />
-        <span className="h-5 w-9 rounded border border-gray-200 bg-gray-100 dark:bg-gray-800 animate-pulse" />
-      </span>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <span
-        className="inline-flex items-center gap-1 shrink-0 text-[10px] text-gray-500"
-        title="Не удалось загрузить статус оплаты"
-      >
-        <span className="px-1 py-0.5 rounded border border-gray-300 bg-gray-50 dark:bg-gray-800">ЧВ ?</span>
-        <span className="px-1 py-0.5 rounded border border-gray-300 bg-gray-50 dark:bg-gray-800">Тр ?</span>
-      </span>
-    );
-  }
-
-  const cvOk = data.hasMembership;
-  const cvLabel = data.membershipKind === "monthly_cv" ? "ЧВ" : data.membershipKind === "one_time_bv" ? "БВ" : "ЧВ";
-  const trainerOk = data.hasTrainerPayment;
-  const trainerLabel = data.activeTrainerPayment
-    ? `${Math.max(0, data.activeTrainerPayment.totalSessions - data.activeTrainerPayment.usedSessions)}/${data.activeTrainerPayment.totalSessions}`
-    : "—";
-
-  // Подробное содержимое подсказки для значка ЧВ/БВ.
-  let cvTooltipNode: React.ReactNode;
-  // Сколько дней осталось до окончания ЧВ (для подсветки "скоро истекает").
-  let cvDaysLeft: number | null = null;
-  if (cvOk && data.membershipKind === "monthly_cv" && data.cvPaidDate && data.cvValidUntil) {
-    const paid = parseISO(data.cvPaidDate);
-    const validUntil = parseISO(data.cvValidUntil);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const daysLeft = Math.max(0, differenceInCalendarDays(validUntil, today));
-    cvDaysLeft = daysLeft;
-    cvTooltipNode = (
-      <div className="space-y-1 text-xs">
-        <div className="font-semibold">ЧВ оплачен</div>
-        <div>Оплата: {format(paid, "d MMMM yyyy", { locale: ru })}</div>
-        <div>Действует до: {format(validUntil, "d MMMM yyyy", { locale: ru })} вкл.</div>
-        <div className={daysLeft <= 3 ? "text-orange-300 font-medium" : "text-gray-300 dark:text-gray-400"}>
-          Осталось дней: {daysLeft}
-          {daysLeft <= 3 && " — скоро нужна оплата"}
-        </div>
-      </div>
-    );
-  } else if (cvOk && data.membershipKind === "one_time_bv" && data.cvPaidDate) {
-    cvTooltipNode = (
-      <div className="space-y-1 text-xs">
-        <div className="font-semibold">БВ оплачен</div>
-        <div>Дата: {format(parseISO(data.cvPaidDate), "d MMMM yyyy", { locale: ru })}</div>
-        <div className="text-gray-300 dark:text-gray-400">Разовая оплата на этот день</div>
-      </div>
-    );
-  } else if (cvOk) {
-    cvTooltipNode = <span className="text-xs">ЧВ/БВ оплачено</span>;
-  } else {
-    cvTooltipNode = <span className="text-xs">ЧВ/БВ не оплачено</span>;
-  }
-
-  return (
-    <span className="inline-flex items-center gap-1 shrink-0">
-      {showMembership && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border cursor-help ${
-                !cvOk
-                  ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
-                  : cvDaysLeft !== null && cvDaysLeft <= 3
-                  ? "bg-orange-100 text-orange-700 border-orange-400 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700"
-                  : "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
-              }`}
-              data-testid={`badge-payment-cv-${studentId}`}
-            >
-              <Wallet className="h-2.5 w-2.5" />
-              {cvOk ? (
-                <>
-                  {cvLabel}
-                  {cvDaysLeft !== null && cvDaysLeft <= 3 && (
-                    <span className="ml-0.5">·{cvDaysLeft}д</span>
-                  )}
-                </>
-              ) : (
-                "ЧВ ✗"
-              )}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-xs">{cvTooltipNode}</TooltipContent>
-        </Tooltip>
-      )}
-      {showTrainerPayment && (
-        <span
-          className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border ${
-            trainerOk
-              ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
-              : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
-          }`}
-          title={trainerOk ? "Оплата тренеру есть" : "Нет оплаты тренеру"}
-          data-testid={`badge-payment-trainer-${studentId}`}
-        >
-          <Dumbbell className="h-2.5 w-2.5" />
-          {trainerOk ? trainerLabel : "✗"}
-        </span>
-      )}
-    </span>
   );
 }

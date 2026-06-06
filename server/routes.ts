@@ -1171,6 +1171,15 @@ export async function registerRoutes(
         return res.status(403).json({ message: consentBlock });
       }
 
+      if (!isSessionTrainer(req)) {
+        const payStatus = await storage.getStudentPaymentStatus(studentId, targetSlot.date);
+        if (!payStatus.hasMembership) {
+          return res.status(403).json({
+            message: "Нельзя записаться: не оплачен членский взнос (ЧВ). Свяжитесь с тренером.",
+          });
+        }
+      }
+
       // Check if time slot is available
       const existingBookings = await storage.getBookingsByTimeSlot(timeSlotId);
       const confirmedBookings = existingBookings.filter(b => b.status === "confirmed");

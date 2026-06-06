@@ -18,7 +18,10 @@ import {
   formatStudentShortName,
   isSlotInWorkingHours,
   isWorkingDayByTemplate,
+  shouldShowMembershipBadge,
 } from "@/lib/utils-gym";
+import { BookingPaymentBadges, useStudentPaymentStatus } from "./booking-payment-badges";
+import { MEMBERSHIP_BOOKING_BLOCK_MESSAGE } from "@shared/membership-booking";
 import {
   monthDayStudentTooltip,
   monthDayGuestTooltip,
@@ -647,6 +650,21 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
     : "";
   const isParentUser = currentUser?.role === "parent" || !!(currentUser as any)?.isParent;
   const isGuest = !currentUser && !isTrainer;
+  const isDirectSelfBooking = currentUser?.role === "student";
+  const showSelfMembershipBadge =
+    !!currentUser &&
+    !isTrainer &&
+    isDirectSelfBooking &&
+    shouldShowMembershipBadge(currentUser);
+  const { data: selfPaymentStatus } = useStudentPaymentStatus(
+    showSelfMembershipBadge ? currentUser?.id : undefined,
+    timeSlot.date,
+    showSelfMembershipBadge,
+  );
+  const blockedByMembership =
+    showSelfMembershipBadge &&
+    selfPaymentStatus !== undefined &&
+    !selfPaymentStatus.hasMembership;
 
   const isFull    = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
@@ -930,15 +948,52 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                 {bookingStudentIds.length > 0 && (
                   <SlotSessionPrice studentIds={bookingStudentIds} />
                 )}
-                <Button
-                  className="w-full"
-                  size="sm"
-                  onClick={() => { onBook(timeSlot.id); setOpen(false); }}
-                  disabled={tooLateToBook}
-                  title={tooLateToBook ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.` : undefined}
-                >
-                  {tooLateToBook ? "Запись закрыта" : "Записаться"}
-                </Button>
+                {showSelfMembershipBadge && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Членский взнос:</span>
+                    <BookingPaymentBadges
+                      studentId={currentUser.id}
+                      dateStr={timeSlot.date}
+                      showMembership
+                      showTrainerPayment={false}
+                    />
+                  </div>
+                )}
+                <Tooltip delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <span className="block w-full">
+                      <Button
+                        className="w-full"
+                        size="sm"
+                        onClick={() => { onBook(timeSlot.id); setOpen(false); }}
+                        disabled={tooLateToBook || blockedByMembership}
+                        title={
+                          blockedByMembership
+                            ? MEMBERSHIP_BOOKING_BLOCK_MESSAGE
+                            : tooLateToBook
+                              ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.`
+                              : undefined
+                        }
+                      >
+                        {tooLateToBook
+                          ? "Запись закрыта"
+                          : blockedByMembership
+                            ? "Нет ЧВ"
+                            : "Записаться"}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {blockedByMembership && (
+                    <TooltipContent side="top" className="max-w-xs z-[100]">
+                      {MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+                {blockedByMembership && (
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    {MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
+                  </p>
+                )}
               </>
             )}
           </div>

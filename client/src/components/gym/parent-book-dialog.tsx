@@ -5,6 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import type { User } from "@shared/schema";
+import { BookingPaymentBadges, useStudentPaymentStatus } from "@/components/gym/booking-payment-badges";
+import { shouldShowMembershipBadge } from "@/lib/utils-gym";
+import { MEMBERSHIP_BOOKING_BLOCK_MESSAGE } from "@shared/membership-booking";
 
 interface ParentBookDialogProps {
   open: boolean;
@@ -13,6 +16,7 @@ interface ParentBookDialogProps {
   currentUser: User | null;
   isAlsoStudent: boolean;
   bookedStudentIds?: string[];
+  slotDate?: string;
   loading?: boolean;
   onConfirm: (studentId: string) => void;
 }
@@ -24,6 +28,7 @@ export function ParentBookDialog({
   currentUser,
   isAlsoStudent,
   bookedStudentIds = [],
+  slotDate = "",
   loading,
   onConfirm,
 }: ParentBookDialogProps) {
@@ -44,8 +49,28 @@ export function ParentBookDialog({
     setSelectedId(availableChildren[0]?.id ?? "");
   }, [open, selectedId, canBookSelf, currentUser?.id, availableChildren.length]);
 
+  const selectedStudent =
+    selectedId === currentUser?.id
+      ? currentUser
+      : availableChildren.find((c) => c.id === selectedId) ??
+        children.find((c) => c.id === selectedId) ??
+        null;
+  const showMembershipBadge =
+    !!selectedStudent &&
+    !!slotDate &&
+    shouldShowMembershipBadge(selectedStudent);
+  const { data: selectedPaymentStatus } = useStudentPaymentStatus(
+    showMembershipBadge ? selectedId : undefined,
+    slotDate,
+    open && showMembershipBadge,
+  );
+  const blockedByMembership =
+    showMembershipBadge &&
+    selectedPaymentStatus !== undefined &&
+    !selectedPaymentStatus.hasMembership;
+
   const handleConfirm = () => {
-    if (!selectedId) return;
+    if (!selectedId || blockedByMembership) return;
     onConfirm(selectedId);
   };
 
@@ -82,14 +107,35 @@ export function ParentBookDialog({
                 Все доступные ученики из семьи уже записаны в этот слот.
               </p>
             )}
+            {showMembershipBadge && selectedId && slotDate && (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs text-muted-foreground">Членский взнос:</span>
+                <BookingPaymentBadges
+                  studentId={selectedId}
+                  dateStr={slotDate}
+                  showMembership
+                  showTrainerPayment={false}
+                />
+              </div>
+            )}
+            {blockedByMembership && (
+              <p className="text-xs text-red-600 dark:text-red-400">
+                {MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} disabled={loading}>
               Отмена
             </Button>
-            <Button className="flex-1" onClick={handleConfirm} disabled={loading || !selectedId}>
+            <Button
+              className="flex-1"
+              onClick={handleConfirm}
+              disabled={loading || !selectedId || blockedByMembership}
+              title={blockedByMembership ? MEMBERSHIP_BOOKING_BLOCK_MESSAGE : undefined}
+            >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Записать
+              {blockedByMembership ? "Нет ЧВ" : "Записать"}
             </Button>
           </div>
         </div>
