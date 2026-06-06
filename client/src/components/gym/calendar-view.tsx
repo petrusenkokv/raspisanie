@@ -22,7 +22,11 @@ import {
   shouldShowTrainerPaymentBadge,
 } from "@/lib/utils-gym";
 import { BookingPaymentBadges, useStudentPaymentStatus } from "./booking-payment-badges";
-import { MEMBERSHIP_BOOKING_BLOCK_MESSAGE } from "@shared/membership-booking";
+import { MembershipBlockedButton } from "./membership-blocked-button";
+import {
+  MEMBERSHIP_BOOKING_BLOCK_MESSAGE,
+  MEMBERSHIP_CANCEL_BLOCK_MESSAGE,
+} from "@shared/membership-booking";
 import {
   monthDayStudentTooltip,
   monthDayGuestTooltip,
@@ -666,6 +670,18 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
     showSelfMembershipBadge &&
     selfPaymentStatus !== undefined &&
     !selfPaymentStatus.hasMembership;
+  const bookingMembershipCheck = userBooking
+    ? shouldShowMembershipBadge(userBooking.student)
+    : false;
+  const { data: bookingPaymentStatus } = useStudentPaymentStatus(
+    bookingMembershipCheck ? userBooking?.studentId : undefined,
+    timeSlot.date,
+    bookingMembershipCheck && !!userBooking,
+  );
+  const bookingBlockedByMembership =
+    bookingMembershipCheck &&
+    bookingPaymentStatus !== undefined &&
+    !bookingPaymentStatus.hasMembership;
 
   const isFull    = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
@@ -912,11 +928,14 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                     </div>
                   </div>
                 )}
-                <Button
+                <MembershipBlockedButton
                   variant="outline"
                   size="sm"
                   className="w-full text-red-600"
+                  membershipBlocked={bookingBlockedByMembership}
+                  membershipMessage={MEMBERSHIP_CANCEL_BLOCK_MESSAGE}
                   onClick={() => {
+                    if (bookingBlockedByMembership) return;
                     requestStudentCancel({
                       bookingId: userBooking.id,
                       personName: bookedPersonName || undefined,
@@ -924,10 +943,14 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                     setOpen(false);
                   }}
                   disabled={tooLateToCancel}
-                  title={tooLateToCancel ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.` : undefined}
+                  title={
+                    tooLateToCancel
+                      ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.`
+                      : undefined
+                  }
                 >
                   {tooLateToCancel ? "Отмена закрыта" : "Отменить запись"}
-                </Button>
+                </MembershipBlockedButton>
                 {tooLateToCancel && (
                   <p className="text-xs text-gray-500 text-center">
                     Свяжитесь с тренером для отмены.
@@ -966,41 +989,21 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                     />
                   </div>
                 )}
-                <Tooltip delayDuration={0}>
-                  <TooltipTrigger asChild>
-                    <span className="block w-full">
-                      <Button
-                        className="w-full"
-                        size="sm"
-                        onClick={() => { onBook(timeSlot.id); setOpen(false); }}
-                        disabled={tooLateToBook || blockedByMembership}
-                        title={
-                          blockedByMembership
-                            ? MEMBERSHIP_BOOKING_BLOCK_MESSAGE
-                            : tooLateToBook
-                              ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.`
-                              : undefined
-                        }
-                      >
-                        {tooLateToBook
-                          ? "Запись закрыта"
-                          : blockedByMembership
-                            ? "Нет ЧВ"
-                            : "Записаться"}
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  {blockedByMembership && (
-                    <TooltipContent side="top" className="max-w-xs z-[100]">
-                      {MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-                {blockedByMembership && (
-                  <p className="text-xs text-red-600 dark:text-red-400">
-                    {MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
-                  </p>
-                )}
+                <MembershipBlockedButton
+                  className="w-full"
+                  size="sm"
+                  membershipBlocked={blockedByMembership}
+                  membershipMessage={MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
+                  onClick={() => { onBook(timeSlot.id); setOpen(false); }}
+                  disabled={tooLateToBook}
+                  title={
+                    tooLateToBook
+                      ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.`
+                      : undefined
+                  }
+                >
+                  {tooLateToBook ? "Запись закрыта" : "Записаться"}
+                </MembershipBlockedButton>
               </>
             )}
           </div>

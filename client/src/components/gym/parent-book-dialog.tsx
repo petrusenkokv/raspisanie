@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import type { User } from "@shared/schema";
+import { MembershipBlockedButton } from "@/components/gym/membership-blocked-button";
 import { BookingPaymentBadges, useStudentPaymentStatus } from "@/components/gym/booking-payment-badges";
 import { shouldShowMembershipBadge } from "@/lib/utils-gym";
 import { MEMBERSHIP_BOOKING_BLOCK_MESSAGE } from "@shared/membership-booking";
@@ -118,25 +119,21 @@ export function ParentBookDialog({
                 />
               </div>
             )}
-            {blockedByMembership && (
-              <p className="text-xs text-red-600 dark:text-red-400">
-                {MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
-              </p>
-            )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} disabled={loading}>
               Отмена
             </Button>
-            <Button
+            <MembershipBlockedButton
               className="flex-1"
+              membershipBlocked={blockedByMembership}
+              membershipMessage={MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
               onClick={handleConfirm}
-              disabled={loading || !selectedId || blockedByMembership}
-              title={blockedByMembership ? MEMBERSHIP_BOOKING_BLOCK_MESSAGE : undefined}
+              disabled={loading || !selectedId}
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {blockedByMembership ? "Нет ЧВ" : "Записать"}
-            </Button>
+              Записать
+            </MembershipBlockedButton>
           </div>
         </div>
       </DialogContent>

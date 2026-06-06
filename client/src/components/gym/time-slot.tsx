@@ -33,6 +33,8 @@ import {
 } from "@/lib/slot-availability-ui";
 import { getBlockedSlotLabel } from "@shared/block-display";
 import { BlockNoteDialog } from "./block-note-dialog";
+import { StudentBookingRowActions } from "./student-booking-row-actions";
+import { MembershipBlockedButton } from "./membership-blocked-button";
 
 function minutesUntilSlotMoscow(date: string, time: string): number {
   const t = time.length >= 5 ? time.slice(0, 5) : time;
@@ -576,52 +578,27 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                           showTrainerPayment={shouldShowTrainerPaymentBadge(booking.student)}
                         />
                         {showFamilyRowActions && (
-                          <>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setRescheduleBooking({
-                                    id: booking.id,
-                                    studentId: booking.studentId,
-                                  });
-                                }}
-                                disabled={tooLateToCancel}
-                                className="h-6 w-6 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
-                                title={
-                                  tooLateToCancel
-                                    ? `Перенос закрыт менее чем за ${cancelDeadlineH} ч.`
-                                    : "Перенести запись"
-                                }
-                                aria-label={`Перенести запись: ${personName}`}
-                                data-testid={`button-reschedule-${booking.id}`}
-                              >
-                                <ArrowLeftRight className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  requestStudentCancel({
-                                    bookingId: booking.id,
-                                    personName,
-                                  });
-                                }}
-                                disabled={tooLateToCancel}
-                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30"
-                                title={
-                                  tooLateToCancel
-                                    ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.`
-                                    : "Отменить запись"
-                                }
-                                aria-label={`Отменить запись: ${personName}`}
-                                data-testid={`button-cancel-${booking.id}`}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                          </>
+                          <StudentBookingRowActions
+                            bookingId={booking.id}
+                            studentId={booking.studentId}
+                            student={booking.student}
+                            dateStr={timeSlot.date}
+                            personName={personName}
+                            cancelDeadlineH={cancelDeadlineH}
+                            tooLateToCancel={tooLateToCancel}
+                            onReschedule={() =>
+                              setRescheduleBooking({
+                                id: booking.id,
+                                studentId: booking.studentId,
+                              })
+                            }
+                            onCancel={() =>
+                              requestStudentCancel({
+                                bookingId: booking.id,
+                                personName,
+                              })
+                            }
+                          />
                         )}
                       </div>
                     );
@@ -706,45 +683,25 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
             ) : null
           ) : (
             !isFull && (
-              <Tooltip delayDuration={0}>
-                <TooltipTrigger asChild>
-                  <span className="flex flex-1">
-                    <Button
-                      onClick={() => onBook(timeSlot.id)}
-                      className="flex-1 w-full"
-                      size="sm"
-                      disabled={tooLateToBook || blockedByMembership}
-                      title={
-                        blockedByMembership
-                          ? MEMBERSHIP_BOOKING_BLOCK_MESSAGE
-                          : tooLateToBook
-                            ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.`
-                            : undefined
-                      }
-                      data-testid={`button-book-${timeSlot.id}`}
-                    >
-                      {tooLateToBook
-                        ? "Запись закрыта"
-                        : blockedByMembership
-                          ? "Нет ЧВ"
-                          : "Записаться"}
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                {blockedByMembership && (
-                  <TooltipContent side="top" className="max-w-xs z-[100]">
-                    {MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
-                  </TooltipContent>
-                )}
-              </Tooltip>
+              <MembershipBlockedButton
+                onClick={() => onBook(timeSlot.id)}
+                className="flex-1 w-full"
+                size="sm"
+                membershipBlocked={blockedByMembership}
+                membershipMessage={MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
+                disabled={tooLateToBook}
+                title={
+                  tooLateToBook
+                    ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.`
+                    : undefined
+                }
+                data-testid={`button-book-${timeSlot.id}`}
+              >
+                {tooLateToBook ? "Запись закрыта" : "Записаться"}
+              </MembershipBlockedButton>
             )
           )}
           </div>
-          {blockedByMembership && familyBookings.length === 0 && (
-            <p className="text-xs text-red-600 dark:text-red-400">
-              {MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
-            </p>
-          )}
         </div>
       )}
 

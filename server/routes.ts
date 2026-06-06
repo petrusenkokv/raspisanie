@@ -31,6 +31,11 @@ import {
 import { documentInputSchema, trainerServiceInputSchema } from "@shared/schema";
 import { sanitizeBlockNote } from "@shared/block-display";
 import {
+  MEMBERSHIP_BOOKING_BLOCK_MESSAGE,
+  MEMBERSHIP_CANCEL_BLOCK_MESSAGE,
+  MEMBERSHIP_RESCHEDULE_BLOCK_MESSAGE,
+} from "@shared/membership-booking";
+import {
   establishSession,
   destroySession,
   hashPassword,
@@ -129,6 +134,14 @@ function sanitizeScheduleForPublic<T extends any>(schedule: T): T {
     return schedule.map(maskOneDay) as T;
   }
   return maskOneDay(schedule) as T;
+}
+
+async function studentHasMembershipForDate(
+  studentId: string,
+  dateStr: string,
+): Promise<boolean> {
+  const status = await storage.getStudentPaymentStatus(studentId, dateStr);
+  return status.hasMembership;
 }
 
 /** Unique login phone for a child card (parent phone + suffix 01, 02, …). */
@@ -1175,7 +1188,7 @@ export async function registerRoutes(
         const payStatus = await storage.getStudentPaymentStatus(studentId, targetSlot.date);
         if (!payStatus.hasMembership) {
           return res.status(403).json({
-            message: "Нельзя записаться: не оплачен членский взнос (ЧВ). Свяжитесь с тренером.",
+            message: MEMBERSHIP_BOOKING_BLOCK_MESSAGE,
           });
         }
       }
@@ -1305,6 +1318,9 @@ export async function registerRoutes(
         (await storage.isParentOfChild(canceller.id, existing.studentId));
 
       if (cancelledByStudent || cancelledByParentForChild) {
+        if (!(await studentHasMembershipForDate(existing.studentId, existing.timeSlot.date))) {
+          return res.status(403).json({ message: MEMBERSHIP_CANCEL_BLOCK_MESSAGE });
+        }
         const settings = await storage.getTrainerSettings();
         if (settings.cancelDeadlineHours > 0) {
           const startIso = `${existing.timeSlot.date}T${existing.timeSlot.time.slice(0, 5)}:00+03:00`;
@@ -1408,8 +1424,11 @@ export async function registerRoutes(
 
       // Enforce cancel deadline for students
       if (byRole === "student") {
-        const settings = await storage.getTrainerSettings();
         const oldSlotRaw = await storage.getTimeSlotById(booking.timeSlotId);
+        if (oldSlotRaw && !(await studentHasMembershipForDate(booking.studentId, oldSlotRaw.date))) {
+          return res.status(403).json({ message: MEMBERSHIP_RESCHEDULE_BLOCK_MESSAGE });
+        }
+        const settings = await storage.getTrainerSettings();
         if (oldSlotRaw && settings.cancelDeadlineHours > 0) {
           const slotMs = new Date(`${oldSlotRaw.date}T${oldSlotRaw.time.slice(0,5)}:00+03:00`).getTime();
           const minutesUntil = Math.round((slotMs - Date.now()) / 60_000);
