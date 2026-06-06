@@ -270,17 +270,17 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const cardContent = (
     <Card
       className={cn(
-        "p-4 transition-all duration-200 hover:shadow-md",
+        "p-2.5 sm:p-4 transition-all duration-200 sm:hover:shadow-md",
         !currentUser && !isBlocked && !isFull && "cursor-pointer",
         cardStatusStyle,
       )}
       onClick={handleCardClick}
     >
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-          <span className="font-semibold text-gray-900 dark:text-white">
+      <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-600 dark:text-gray-400" />
+          <span className="text-sm sm:text-base font-semibold text-gray-900 dark:text-white tabular-nums">
             {timeSlot.time}
           </span>
         </div>
@@ -375,19 +375,21 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
       </div>
 
       {isBlocked && (
-        <div className="mb-3 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-100/80 dark:bg-gray-800/60 px-3 py-2">
-          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{blockedLabel}</p>
+        <div className="mb-1.5 sm:mb-3 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-100/80 dark:bg-gray-800/60 px-2 py-1 sm:px-3 sm:py-2">
+          <p className="text-xs sm:text-sm font-medium text-gray-800 dark:text-gray-200 leading-snug">
+            {blockedLabel}
+          </p>
         </div>
       )}
 
       {/* Booking Info */}
       {!isBlocked && (
-        <div className="space-y-2 mb-3">
+        <div className="space-y-1 sm:space-y-2 mb-1.5 sm:mb-3">
           {isTrainer() ? (
             // Trainer view — show each student with cancel button
-            <div className="space-y-2">
+            <div className="space-y-1 sm:space-y-2">
               {allActiveBookings.length === 0 && (
-                <p className="text-sm text-gray-500 dark:text-gray-400">Нет записей</p>
+                <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Нет записей</p>
               )}
               {allActiveBookings.map((booking) => {
                 const att = (booking as any).attendanceStatus as AttendanceStatus | null | undefined;
@@ -395,7 +397,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                 return (
                   <div
                     key={booking.id}
-                    className={`rounded px-2 py-1 space-y-1 ${
+                    className={`rounded px-1.5 py-1 sm:px-2 sm:py-1 space-y-0.5 sm:space-y-1 ${
                       booking.status === "pending"
                         ? "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800"
                         : "bg-white dark:bg-gray-900"
@@ -533,9 +535,9 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
             </div>
           ) : (
             // Student view
-            <div className="space-y-2">
+            <div className="space-y-1 sm:space-y-2">
               {familyBookings.length > 0 ? (
-                <div className="space-y-1.5">
+                <div className="space-y-1 sm:space-y-1.5">
                   {familyBookings.map((booking) => {
                     const personName = formatStudentShortName(booking.student);
                     const isPending = booking.status === "pending";
@@ -543,11 +545,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                       <div
                         key={booking.id}
                         className={cn(
-                          "rounded px-2 py-1.5 border flex flex-wrap items-center gap-x-1.5 gap-y-1",
+                          "rounded px-1.5 py-1 sm:px-2 sm:py-1.5 border flex flex-wrap items-center gap-x-1 gap-y-0.5 sm:gap-x-1.5 sm:gap-y-1",
                           "bg-blue-50/80 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700",
                         )}
                       >
-                        <span className="text-sm font-medium truncate text-gray-900 dark:text-white shrink-0 max-w-[45%] sm:max-w-none">
+                        <span className="text-xs sm:text-sm font-medium truncate text-gray-900 dark:text-white shrink-0 max-w-[40%] sm:max-w-none">
                           {personName}
                         </span>
                         {isPending ? (
@@ -647,47 +649,49 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
 
       {/* Student: own booking actions */}
       {!isBlocked && currentUser && !isTrainer() && (currentUser as any).isPendingApproval && (
-        <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1 sm:px-2 sm:py-1.5" onClick={(e) => e.stopPropagation()}>
           <Clock className="h-3.5 w-3.5 flex-shrink-0" />
           Ожидает одобрения тренера
         </div>
       )}
 
       {!isBlocked && currentUser && !isTrainer() && !(currentUser as any).isPendingApproval && (
-        <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-          {!isFull && slotPriceStudentIds.length > 0 && familyBookings.length === 0 && (
-            <SlotSessionPrice studentIds={slotPriceStudentIds} />
-          )}
-          <div className="flex gap-2">
+        <div className="space-y-1 sm:space-y-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-col sm:items-stretch">
           {userBooking ? (
             isParentUser && !isFull ? (
               <Button
                 size="sm"
                 onClick={() => onBook(timeSlot.id)}
                 data-testid={`button-parent-book-more-${timeSlot.id}`}
-                className="w-full"
+                className="h-8 text-xs sm:text-sm sm:h-9 sm:w-full ml-auto sm:ml-0"
               >
                 Записать ещё
               </Button>
             ) : null
           ) : (
             !isFull && (
-              <MembershipBlockedButton
-                onClick={() => onBook(timeSlot.id)}
-                className="flex-1 w-full"
-                size="sm"
-                membershipBlocked={blockedByMembership}
-                membershipMessage={MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
-                disabled={tooLateToBook}
-                title={
-                  tooLateToBook
-                    ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.`
-                    : undefined
-                }
-                data-testid={`button-book-${timeSlot.id}`}
-              >
-                {tooLateToBook ? "Запись закрыта" : "Записаться"}
-              </MembershipBlockedButton>
+              <>
+                {slotPriceStudentIds.length > 0 && familyBookings.length === 0 && (
+                  <SlotSessionPrice studentIds={slotPriceStudentIds} inline />
+                )}
+                <MembershipBlockedButton
+                  onClick={() => onBook(timeSlot.id)}
+                  className="h-8 px-4 text-xs sm:text-sm sm:h-9 sm:w-full sm:flex-1 ml-auto sm:ml-0 shrink-0"
+                  size="sm"
+                  membershipBlocked={blockedByMembership}
+                  membershipMessage={MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
+                  disabled={tooLateToBook}
+                  title={
+                    tooLateToBook
+                      ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.`
+                      : undefined
+                  }
+                  data-testid={`button-book-${timeSlot.id}`}
+                >
+                  {tooLateToBook ? "Запись закрыта" : "Записаться"}
+                </MembershipBlockedButton>
+              </>
             )
           )}
           </div>

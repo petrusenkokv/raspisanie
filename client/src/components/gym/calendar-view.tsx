@@ -110,7 +110,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
     const viewerIsTrainer = isTrainer();
     return (
       <div>
-        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-1.5 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {timeSlots.length > 0 ? (
             timeSlots.map((ts) => (
               <TimeSlot

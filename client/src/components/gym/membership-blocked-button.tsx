@@ -55,7 +55,7 @@ export function MembershipBlockedButton({
   return (
     <Tooltip delayDuration={0}>
       <TooltipTrigger asChild>
-        <span className="flex flex-1 w-full min-w-0">{button}</span>
+        <span className="inline-flex sm:flex sm:flex-1 sm:w-full sm:min-w-0">{button}</span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-xs z-[100]">
         {membershipMessage}
