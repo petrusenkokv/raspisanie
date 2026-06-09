@@ -16,7 +16,7 @@ export async function createApp(options: AppOptions = {}) {
   await ensureStorageReady();
 
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: "12mb" }));
   app.use(express.urlencoded({ extended: false }));
   setupSession(app);
 
