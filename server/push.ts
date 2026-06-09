@@ -16,13 +16,28 @@ export type PushSubscriptionData = {
   keys: { p256dh: string; auth: string };
 };
 
+export type PushPayload = {
+  title: string;
+  body: string;
+  icon?: string;
+  tag?: string;
+  url?: string;
+};
+
 export async function sendPushToUser(
   subscriptions: PushSubscriptionData[],
-  payload: { title: string; body: string; icon?: string }
+  payload: PushPayload,
 ): Promise<void> {
   if (!vapidPublicKey || !vapidPrivateKey) return;
+  if (subscriptions.length === 0) return;
 
-  const payloadStr = JSON.stringify(payload);
+  const payloadStr = JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    icon: payload.icon ?? "/icon-192.svg",
+    tag: payload.tag,
+    url: payload.url ?? "/",
+  });
   await Promise.allSettled(
     subscriptions.map((sub) =>
       webpush.sendNotification(

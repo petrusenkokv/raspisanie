@@ -514,8 +514,8 @@ export function NotificationsPopover({
 
         {pushStatus && pushStatus !== "unsupported" && onPushSubscribe && onPushUnsubscribe && (
           <div className="border-t px-4 py-3 bg-gray-50 dark:bg-gray-900/50">
-            <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-              Уведомления в браузере
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-snug">
+              Звук на телефоне при закрытом приложении. iPhone: «Поделиться» → «На экран Домой», затем включите push.
             </p>
             <Button
               type="button"

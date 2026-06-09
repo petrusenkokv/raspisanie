@@ -16,10 +16,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare, Send, Lock, Unlock, Banknote, Image } from "lucide-react";
+import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare, Send, Lock, Unlock, Banknote } from "lucide-react";
 import { TrainerServicesSection } from "./trainer-services-section";
 import { TrainerPricingSettings } from "./trainer-pricing-settings";
-import { SchedulePosterSettings } from "./schedule-poster-settings";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { type WeeklyTemplate, type WeekdayTemplateEntry, type Holiday } from "@shared/schema";
@@ -252,10 +251,6 @@ export function ScheduleSettingsDialog({
                 <TabsTrigger value="pricing" data-testid="tab-pricing" className="text-xs sm:text-sm">
                   <Banknote className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
                   Цены
-                </TabsTrigger>
-                <TabsTrigger value="poster" data-testid="tab-poster" className="text-xs sm:text-sm">
-                  <Image className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
-                  Картинка
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -680,10 +675,6 @@ export function ScheduleSettingsDialog({
               <div className="border-t pt-4">
                 <TrainerPricingSettings enabled={open} />
               </div>
-            </TabsContent>
-
-            <TabsContent value="poster" className="space-y-4 pt-4">
-              <SchedulePosterSettings enabled={open} />
             </TabsContent>
           </Tabs>
         )}

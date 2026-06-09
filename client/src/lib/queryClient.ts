@@ -12,9 +12,6 @@ async function readErrorMessage(res: Response): Promise<string> {
   } catch {
     /* not JSON */
   }
-  if (res.status === 413 || /entity too large/i.test(trimmed)) {
-    return "Файл слишком большой. Сделайте скрин меньше — приложение сожмёт его автоматически.";
-  }
   return trimmed.length > 200 ? `${trimmed.slice(0, 200)}…` : trimmed;
 }
 

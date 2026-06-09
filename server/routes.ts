@@ -5,6 +5,7 @@ import type { User, Document } from "@shared/schema";
 import { storage } from "./storage-instance";
 import { setupWebSocket, broadcast, setRealtimeEnabled } from "./ws";
 import { sendPushToUser, vapidPublicKey } from "./push";
+import { pushNotifyUser } from "./push-notify-user";
 import { 
   insertUserSchema, 
   insertBookingSchema, 
@@ -48,18 +49,10 @@ import {
   toPublicUser,
   requireAuth,
   requireTrainer,
-  requireTrainerOrPosterUploadToken,
   requireSelfOrTrainer,
   sessionUserId,
   isSessionTrainer,
 } from "./auth";
-import {
-  getSchedulePoster,
-  saveSchedulePoster,
-  readLocalSchedulePoster,
-} from "./schedule-poster";
-import { handleSchedulePosterUpload } from "./schedule-poster-upload";
-import type { HandleUploadBody } from "@vercel/blob/client";
 
 function normalizePhone(input: string): string | null {
   let digits = String(input || "").replace(/\D/g, "");
@@ -67,15 +60,6 @@ function normalizePhone(input: string): string | null {
   else if (digits.length === 11 && digits.startsWith("8")) digits = "7" + digits.slice(1);
   if (digits.length !== 11 || !digits.startsWith("7")) return null;
   return digits;
-}
-
-async function pushNotifyUser(userId: string, title: string, body: string) {
-  try {
-    const subs = await storage.getPushSubscriptionsByUser(userId);
-    if (subs.length > 0) {
-      sendPushToUser(subs, { title, body }).catch(() => {});
-    }
-  } catch {}
 }
 
 async function recordConsents(userId: string, documentIds: string[] | undefined) {
@@ -301,81 +285,7 @@ export async function registerRoutes(
   app: Express,
   options: { websocket?: boolean } = {},
 ): Promise<Server> {
-
-  // Schedule poster (no DB — works when PostgreSQL is unavailable)
-  app.get("/api/schedule-poster", async (_req, res) => {
-    try {
-      const poster = await getSchedulePoster();
-      res.json(poster);
-    } catch (error) {
-      console.error("schedule-poster get:", error);
-      res.status(500).json({ message: "Не удалось загрузить картинку расписания" });
-    }
-  });
-
-  app.get("/api/schedule-poster/file", async (_req, res) => {
-    try {
-      const buffer = await readLocalSchedulePoster();
-      if (!buffer) {
-        return res.status(404).json({ message: "Картинка не загружена" });
-      }
-      res.setHeader("Content-Type", "image/jpeg");
-      res.setHeader("Cache-Control", "public, max-age=60");
-      res.send(buffer);
-    } catch (error) {
-      console.error("schedule-poster file:", error);
-      res.status(500).json({ message: "Не удалось отдать файл" });
-    }
-  });
-
-  app.post(
-    "/api/trainer/schedule-poster/upload",
-    requireTrainerOrPosterUploadToken,
-    async (req, res) => {
-      try {
-        const jsonResponse = await handleSchedulePosterUpload(
-          req,
-          req.body as HandleUploadBody,
-        );
-        res.json(jsonResponse);
-      } catch (error) {
-        console.error("schedule-poster blob upload:", error);
-        const message =
-          error instanceof Error ? error.message : "Не удалось начать загрузку";
-        res.status(400).json({ message });
-      }
-    },
-  );
-
-  app.post(
-    "/api/trainer/schedule-poster",
-    requireTrainerOrPosterUploadToken,
-    async (req, res) => {
-      try {
-        const { data, contentType } = req.body as { data?: string; contentType?: string };
-        if (!data || typeof data !== "string") {
-          return res.status(400).json({ message: "Нужны данные изображения (data)" });
-        }
-        const mime = contentType?.startsWith("image/") ? contentType : "image/jpeg";
-        const base64 = data.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64, "base64");
-        if (buffer.length < 100) {
-          return res.status(400).json({ message: "Файл слишком маленький или повреждён" });
-        }
-        if (buffer.length > 4 * 1024 * 1024) {
-          return res.status(413).json({
-            message: "Файл слишком большой. Используйте JPG или уменьшите скрин — приложение сожмёт его автоматически.",
-          });
-        }
-        const poster = await saveSchedulePoster(buffer, mime);
-        res.json(poster);
-      } catch (error) {
-        console.error("schedule-poster upload:", error);
-        res.status(500).json({ message: "Не удалось сохранить картинку" });
-      }
-    },
-  );
-
+  
   // Auth routes
   app.post("/api/auth/send-verification", async (req, res) => {
     try {

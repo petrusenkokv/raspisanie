@@ -127,21 +127,6 @@ export function requireTrainer(req: Request, res: Response, next: NextFunction):
   next();
 }
 
-/** Trainer session or POSTER_UPLOAD_TOKEN header (works when DB is down). */
-export function requireTrainerOrPosterUploadToken(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
-  const secret = process.env.POSTER_UPLOAD_TOKEN?.trim();
-  const header = req.get("x-poster-upload-token")?.trim();
-  if (secret && header && header === secret) {
-    next();
-    return;
-  }
-  requireTrainer(req, res, next);
-}
-
 /** Param must match session user, unless caller is trainer. */
 export function requireSelfOrTrainer(paramName = "id") {
   return (req: Request, res: Response, next: NextFunction): void => {

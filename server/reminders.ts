@@ -1,5 +1,6 @@
 import { storage } from "./storage-instance";
 import { moscowDateString } from "./moscow-date";
+import { pushNotifyUser } from "./push-notify-user";
 
 const sent24h = new Set<string>();
 const sent1h = new Set<string>();
@@ -105,6 +106,12 @@ async function createTrainingReminder(params: {
     message: params.message,
     relatedBookingId: params.relatedBookingId,
   });
+
+  await pushNotifyUser(params.userId, params.title, params.message, {
+    tag: `${params.type}:${params.memoryKey}`,
+    url: "/",
+  });
+
   params.memorySet.add(params.memoryKey);
 }
 
