@@ -20,6 +20,10 @@ import {
   calculateAgeYears,
 } from "@shared/birth-date";
 import {
+  legalRepresentativeFieldsError,
+  trimRepresentativeFields,
+} from "@shared/legal-representative-fields";
+import {
   appendBookingMessage,
   sanitizeBookingMessage,
 } from "@shared/booking-message";
@@ -1063,21 +1067,11 @@ export async function registerRoutes(
     }
   });
 
-  // Helper: ensure recurring rules are materialized up to a given date
-  async function ensureMaterializedUntil(dateStr: string) {
-    try {
-      await storage.materializeRecurringBookings(dateStr);
-    } catch {
-      // ignore — non-fatal
-    }
-  }
-
   // Schedule routes (public read)
 
   app.get("/api/schedule/day/:date", async (req, res) => {
     try {
       const { date } = req.params;
-      await ensureMaterializedUntil(date);
       const schedule = await storage.getScheduleForDate(date);
       if (!req.session?.userId) {
         return res.json(sanitizeScheduleForPublic(schedule));
@@ -1093,7 +1087,6 @@ export async function registerRoutes(
       const { startDate } = req.params;
       const end = new Date(startDate + "T00:00:00");
       end.setDate(end.getDate() + 6);
-      await ensureMaterializedUntil(end.toISOString().split("T")[0]);
       const schedule = await storage.getScheduleForWeek(startDate);
       if (!req.session?.userId) {
         return res.json(sanitizeScheduleForPublic(schedule));
@@ -1108,7 +1101,6 @@ export async function registerRoutes(
     try {
       const { year, month } = req.params;
       const lastDay = new Date(parseInt(year), parseInt(month), 0);
-      await ensureMaterializedUntil(lastDay.toISOString().split("T")[0]);
       const schedule = await storage.getScheduleForMonth(parseInt(year), parseInt(month));
       if (!req.session?.userId) {
         return res.json(sanitizeScheduleForPublic(schedule));
@@ -1617,21 +1609,58 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "Ученик не найден" });
       if (user.role === "trainer") return res.status(400).json({ message: "Нельзя редактировать тренера здесь" });
 
-      const { firstName, lastName, middleName, birthDate, trainerNotes, exemptMembership, exemptTrainerPayment } = req.body;
+      const { firstName, lastName, middleName, birthDate, trainerNotes, exemptMembership, exemptTrainerPayment,
+        motherFullName, motherPhone, fatherFullName, fatherPhone,
+      } = req.body;
       const updates: any = {};
       if (firstName !== undefined) updates.firstName = String(firstName).trim();
       if (lastName !== undefined) updates.lastName = lastName ? String(lastName).trim() : null;
       if (middleName !== undefined) updates.middleName = middleName ? String(middleName).trim() : null;
+      let effectiveBirthDate = user.birthDate;
       if (birthDate !== undefined) {
         const birthErr = birthDateValidationError(birthDate, birthDate ? "optional" : "optional");
         if (birthErr) {
           return res.status(400).json({ message: birthErr });
         }
         updates.birthDate = birthDate || null;
+        effectiveBirthDate = birthDate || null;
       }
       if (trainerNotes !== undefined) updates.trainerNotes = trainerNotes ? String(trainerNotes) : null;
       if (exemptMembership !== undefined) updates.exemptMembership = !!exemptMembership;
       if (exemptTrainerPayment !== undefined) updates.exemptTrainerPayment = !!exemptTrainerPayment;
+
+      const repFieldsProvided =
+        motherFullName !== undefined ||
+        motherPhone !== undefined ||
+        fatherFullName !== undefined ||
+        fatherPhone !== undefined;
+      if (repFieldsProvided) {
+        const rep = trimRepresentativeFields({
+          motherFullName: motherFullName !== undefined ? motherFullName : user.motherFullName,
+          motherPhone: motherPhone !== undefined ? motherPhone : user.motherPhone,
+          fatherFullName: fatherFullName !== undefined ? fatherFullName : user.fatherFullName,
+          fatherPhone: fatherPhone !== undefined ? fatherPhone : user.fatherPhone,
+        });
+        const repErr = legalRepresentativeFieldsError(effectiveBirthDate, rep);
+        if (repErr) {
+          return res.status(400).json({ message: repErr });
+        }
+        updates.motherFullName = rep.motherFullName;
+        updates.motherPhone = rep.motherPhone ? (normalizePhone(rep.motherPhone) ?? rep.motherPhone) : null;
+        updates.fatherFullName = rep.fatherFullName;
+        updates.fatherPhone = rep.fatherPhone ? (normalizePhone(rep.fatherPhone) ?? rep.fatherPhone) : null;
+      } else if (birthDate !== undefined) {
+        const repErr = legalRepresentativeFieldsError(effectiveBirthDate, {
+          motherFullName: user.motherFullName,
+          motherPhone: user.motherPhone,
+          fatherFullName: user.fatherFullName,
+          fatherPhone: user.fatherPhone,
+        });
+        if (repErr) {
+          return res.status(400).json({ message: repErr });
+        }
+      }
+
       const updated = await storage.updateUser(id, updates);
       res.json(updated);
     } catch (error) {
@@ -1653,6 +1682,10 @@ export async function registerRoutes(
         selectedServiceId,
         exemptMembership,
         exemptTrainerPayment,
+        motherFullName,
+        motherPhone,
+        fatherFullName,
+        fatherPhone,
       } = req.body;
 
       if (!phone || !firstName) {
@@ -1687,6 +1720,17 @@ export async function registerRoutes(
         }
       }
 
+      const rep = trimRepresentativeFields({
+        motherFullName,
+        motherPhone,
+        fatherFullName,
+        fatherPhone,
+      });
+      const repErr = legalRepresentativeFieldsError(birthDate || null, rep);
+      if (repErr) {
+        return res.status(400).json({ message: repErr });
+      }
+
       const accepted = new Set<string>(Array.isArray(consentDocumentIds) ? consentDocumentIds : []);
 
       const user = await storage.createUser({
@@ -1698,6 +1742,11 @@ export async function registerRoutes(
         trainerNotes: trainerNotes ? String(trainerNotes) : null,
         parentFullName: null,
         parentPhone: null,
+        motherFullName: rep.motherFullName,
+        motherPhone: rep.motherPhone ? (normalizePhone(rep.motherPhone) ?? rep.motherPhone) : null,
+        fatherFullName: rep.fatherFullName,
+        fatherPhone: rep.fatherPhone ? (normalizePhone(rep.fatherPhone) ?? rep.fatherPhone) : null,
+        legalRepresentativeConfirmed: false,
         role: "student",
         isVerified: true,
         password: await hashPassword(initialPassword),
@@ -2023,6 +2072,19 @@ export async function registerRoutes(
       res.json({ slot: result.slot, cancelledCount: result.cancelledBookings.length });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Не удалось изменить слот" });
+    }
+  });
+
+  app.post("/api/trainer/sync-recurring", requireTrainer, async (_req, res) => {
+    try {
+      const horizon = new Date();
+      horizon.setDate(horizon.getDate() + 60);
+      const horizonStr = horizon.toISOString().split("T")[0];
+      const result = await storage.materializeRecurringBookings(horizonStr);
+      broadcast({ type: "schedule_update" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось синхронизировать постоянные записи" });
     }
   });
 

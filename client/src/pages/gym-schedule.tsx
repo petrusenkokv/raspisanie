@@ -69,16 +69,27 @@ export function GymSchedulePage() {
     void validateStoredUser();
   }, []);
 
-  // Force fresh data on auth/session switch (login/logout) so UI updates without full reload.
+  // One refresh after login/logout (invalidation refetches active queries once).
   useEffect(() => {
     queryClient.invalidateQueries({ queryKey: ["schedule"] });
     queryClient.invalidateQueries({ queryKey: ["/api/parent/children"] });
     queryClient.invalidateQueries({ queryKey: ["/api/schedule/settings"] });
-    void queryClient.refetchQueries({ queryKey: ["schedule"], type: "all" });
-    void queryClient.refetchQueries({ queryKey: ["/api/schedule/settings"], type: "all" });
   }, [currentUser?.id, isAuthenticated, queryClient]);
 
-  // Poll current user status every 5 seconds while pending approval
+  // Sync recurring bookings once per trainer session (not on every schedule read).
+  useEffect(() => {
+    if (!isTrainer || !currentUser?.id) return;
+    const key = `recurring-sync:${currentUser.id}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    void apiRequest("POST", "/api/trainer/sync-recurring")
+      .then(() => queryClient.invalidateQueries({ queryKey: ["schedule"] }))
+      .catch(() => {
+        sessionStorage.removeItem(key);
+      });
+  }, [isTrainer, currentUser?.id, queryClient]);
+
+  // Refresh approval status when tab regains focus (no background polling).
   const isParentRole = currentUser?.role === "parent";
   const isParentMode = !!(currentUser as any)?.isParent;
   const canManageChildren = !!currentUser && (isParentRole || isParentMode);
@@ -121,8 +132,7 @@ export function GymSchedulePage() {
   const { data: freshUserData } = useQuery<{ user: User }>({
     queryKey: [`/api/users/${currentUser?.id}`],
     enabled: !!currentUser?.id && isPendingApproval,
-    refetchInterval: 5000,
-    staleTime: 0,
+    staleTime: 60_000,
   });
 
   // When polling detects approval — update store and show welcome dialog
@@ -171,7 +181,7 @@ export function GymSchedulePage() {
 
   const { data: scheduleData, isLoading } = useQuery({
     queryKey: ["schedule", currentView, selectedDate.toISOString()],
-    staleTime: 0,
+    staleTime: 60_000,
     enabled: true,
     queryFn: async () => {
       const localDate = (d: Date) => {

@@ -2,9 +2,73 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useGymStore } from "@/store/gym-store";
 
+let wsHookCount = 0;
+let wsAlive = false;
+let wsReconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let wsInstance: WebSocket | undefined;
+
+function connectWebSocket(queryClient: ReturnType<typeof useQueryClient>) {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const url = `${protocol}//${window.location.host}/ws`;
+
+  wsInstance = new WebSocket(url);
+
+  wsInstance.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data as string);
+      if (msg.type === "schedule_update") {
+        queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      }
+      if (msg.type === "notification_update") {
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      }
+      if (msg.type === "user_update") {
+        const user = useGymStore.getState().currentUser;
+        if (user && (!msg.userId || msg.userId === user.id)) {
+          fetch(`/api/users/${user.id}`)
+            .then((r) => r.json())
+            .then((data) => {
+              if (data?.user) {
+                useGymStore.getState().setUser(data.user);
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    } catch {
+      /* ignore malformed messages */
+    }
+  };
+
+  wsInstance.onclose = () => {
+    if (wsAlive) {
+      wsReconnectTimer = setTimeout(() => connectWebSocket(queryClient), 3000);
+    }
+  };
+
+  wsInstance.onerror = () => {
+    wsInstance?.close();
+  };
+}
+
+function startWebSocket(queryClient: ReturnType<typeof useQueryClient>) {
+  if (wsHookCount === 1) {
+    wsAlive = true;
+    connectWebSocket(queryClient);
+  }
+}
+
+function stopWebSocket() {
+  if (wsHookCount > 0) return;
+  wsAlive = false;
+  clearTimeout(wsReconnectTimer);
+  wsInstance?.close();
+  wsInstance = undefined;
+}
+
+/** Real-time updates via WebSocket (local dev). On Vercel — no background polling. */
 export function useWebSocket() {
   const queryClient = useQueryClient();
-  const { currentUser, setUser } = useGymStore();
 
   useEffect(() => {
     const realtimeDisabled =
@@ -12,70 +76,14 @@ export function useWebSocket() {
       window.location.hostname.endsWith(".vercel.app");
 
     if (realtimeDisabled) {
-      const poll = setInterval(() => {
-        queryClient.invalidateQueries({ queryKey: ["schedule"] });
-        if (useGymStore.getState().currentUser) {
-          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-        }
-      }, 15000);
-
-      return () => clearInterval(poll);
+      return;
     }
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/ws`;
-
-    let ws: WebSocket;
-    let reconnectTimer: ReturnType<typeof setTimeout>;
-    let alive = true;
-
-    function connect() {
-      ws = new WebSocket(url);
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data as string);
-          if (msg.type === "schedule_update") {
-            queryClient.invalidateQueries({ queryKey: ["schedule"] });
-          }
-          if (msg.type === "notification_update") {
-            queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-          }
-          if (msg.type === "user_update") {
-            // Refresh current user data if it's our user
-            const user = useGymStore.getState().currentUser;
-            if (user && (!msg.userId || msg.userId === user.id)) {
-              fetch(`/api/users/${user.id}`)
-                .then((r) => r.json())
-                .then((data) => {
-                  if (data?.user) {
-                    useGymStore.getState().setUser(data.user);
-                  }
-                })
-                .catch(() => {});
-            }
-          }
-        } catch {
-        }
-      };
-
-      ws.onclose = () => {
-        if (alive) {
-          reconnectTimer = setTimeout(connect, 3000);
-        }
-      };
-
-      ws.onerror = () => {
-        ws.close();
-      };
-    }
-
-    connect();
-
+    wsHookCount += 1;
+    startWebSocket(queryClient);
     return () => {
-      alive = false;
-      clearTimeout(reconnectTimer);
-      ws?.close();
+      wsHookCount -= 1;
+      stopWebSocket();
     };
   }, [queryClient]);
 }

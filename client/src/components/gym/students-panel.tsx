@@ -61,6 +61,7 @@ import {
   studentNeedsLegalRepresentative,
   todayLocalStr,
 } from "@/lib/utils-gym";
+import { legalRepresentativeFieldsError } from "@shared/legal-representative-fields";
 
 type StudentWithConsentsExtended = StudentWithConsents & {
   exemptMembership?: boolean;
@@ -80,7 +81,99 @@ const emptyNewStudent = {
   password: "12345",
   birthDate: "",
   trainerNotes: "",
+  motherFullName: "",
+  motherPhone: "",
+  fatherFullName: "",
+  fatherPhone: "",
 };
+
+type RepresentativeFormValues = {
+  motherFullName: string;
+  motherPhone: string;
+  fatherFullName: string;
+  fatherPhone: string;
+};
+
+function LegalRepresentativesFields({
+  values,
+  onChange,
+  age,
+  disabled = false,
+}: {
+  values: RepresentativeFormValues;
+  onChange: (patch: Partial<RepresentativeFormValues>) => void;
+  age: number | null;
+  disabled?: boolean;
+}) {
+  if (age === null || age >= 18) return null;
+
+  const needsLegalRep = studentNeedsLegalRepresentative(age);
+  const hint = legalRepresentativeSectionHint(age);
+
+  return (
+    <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+          Законные представители
+        </p>
+        {hint && (
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{hint}</p>
+        )}
+        {needsLegalRep && (
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+            Укажите хотя бы одного родителя (ФИО и телефон). Подтверждение статуса представителя родители смогут дать при входе в приложение.
+          </p>
+        )}
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Мать</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs">ФИО</Label>
+            <Input
+              value={values.motherFullName}
+              onChange={(e) => onChange({ motherFullName: e.target.value })}
+              placeholder="Иванова Мария Петровна"
+              disabled={disabled}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Телефон</Label>
+            <Input
+              value={values.motherPhone}
+              onChange={(e) => onChange({ motherPhone: e.target.value })}
+              placeholder="79991234567"
+              disabled={disabled}
+            />
+          </div>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Отец</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs">ФИО</Label>
+            <Input
+              value={values.fatherFullName}
+              onChange={(e) => onChange({ fatherFullName: e.target.value })}
+              placeholder="Иванов Иван Иванович"
+              disabled={disabled}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Телефон</Label>
+            <Input
+              value={values.fatherPhone}
+              onChange={(e) => onChange({ fatherPhone: e.target.value })}
+              placeholder="79997654321"
+              disabled={disabled}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -299,6 +392,16 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
         return;
       }
     }
+    const repErr = legalRepresentativeFieldsError(newStudent.birthDate || null, {
+      motherFullName: newStudent.motherFullName,
+      motherPhone: newStudent.motherPhone,
+      fatherFullName: newStudent.fatherFullName,
+      fatherPhone: newStudent.fatherPhone,
+    });
+    if (repErr) {
+      toast({ title: repErr, variant: "destructive" });
+      return;
+    }
     const consentDocumentIds = documents
       .filter((d) => addStudentAcceptedDocs[d.id])
       .map((d) => d.id);
@@ -324,6 +427,11 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       signedDocumentIds: signed,
     });
   }, [trainerServices, addStudentServiceId, documents, addStudentAcceptedDocs]);
+
+  const newStudentAge = useMemo(
+    () => calculateAge(newStudent.birthDate || null),
+    [newStudent.birthDate],
+  );
 
   return (
     <>
@@ -607,6 +715,17 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 onChange={(e) => setNewStudent({ ...newStudent, birthDate: e.target.value })}
               />
             </div>
+            <LegalRepresentativesFields
+              age={newStudentAge}
+              values={{
+                motherFullName: newStudent.motherFullName,
+                motherPhone: newStudent.motherPhone,
+                fatherFullName: newStudent.fatherFullName,
+                fatherPhone: newStudent.fatherPhone,
+              }}
+              onChange={(patch) => setNewStudent({ ...newStudent, ...patch })}
+              disabled={addMutation.isPending}
+            />
             <div>
               <Label htmlFor="new-phone">Телефон ученика</Label>
               <Input
@@ -851,8 +970,10 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
         trainerNotes: student.trainerNotes || "",
         exemptMembership: student.exemptMembership === true,
         exemptTrainerPayment: student.exemptTrainerPayment === true,
-        parentFullName: student.parentFullName || s.guardianFullName || "",
-        parentPhone: student.parentPhone || s.guardianPhone || "",
+        motherFullName: s.motherFullName || "",
+        motherPhone: s.motherPhone || "",
+        fatherFullName: s.fatherFullName || "",
+        fatherPhone: s.fatherPhone || "",
       });
       setEditing(false);
     }
@@ -875,7 +996,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
     },
   });
 
-  const age = calculateAge(student?.birthDate);
+  const age = calculateAge(editing ? (form.birthDate || null) : (student?.birthDate ?? null));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -935,6 +1056,16 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                       <Field label="ФИО" value={s.fatherFullName || "—"} />
                       <Field label="Телефон" value={s.fatherPhone || "—"} />
                     </div>
+                  )}
+                  {(hasMother || hasFather) && (
+                    <Field
+                      label="Подтверждение представителя"
+                      value={
+                        student.legalRepresentativeConfirmed
+                          ? "Подтверждено родителем в приложении"
+                          : "Ожидает подтверждения родителем"
+                      }
+                    />
                   )}
                   {hasLegacyParent && (
                     <div className="space-y-1">
@@ -1037,25 +1168,17 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               </label>
             </div>
             {age !== null && age < 18 && (
-              <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-800 dark:bg-amber-950/20">
-                <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
-                  Законный представитель
-                </p>
-                <div>
-                  <Label>ФИО</Label>
-                  <Input
-                    value={form.parentFullName || ""}
-                    onChange={(e) => setForm({ ...form, parentFullName: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Телефон</Label>
-                  <Input
-                    value={form.parentPhone || ""}
-                    onChange={(e) => setForm({ ...form, parentPhone: e.target.value })}
-                  />
-                </div>
-              </div>
+              <LegalRepresentativesFields
+                age={age}
+                values={{
+                  motherFullName: form.motherFullName || "",
+                  motherPhone: form.motherPhone || "",
+                  fatherFullName: form.fatherFullName || "",
+                  fatherPhone: form.fatherPhone || "",
+                }}
+                onChange={(patch) => setForm({ ...form, ...patch })}
+                disabled={updateMutation.isPending}
+              />
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditing(false)}>Отмена</Button>
@@ -1067,6 +1190,16 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                       toast({ title: birthErr, variant: "destructive" });
                       return;
                     }
+                  }
+                  const repErr = legalRepresentativeFieldsError(form.birthDate || null, {
+                    motherFullName: form.motherFullName,
+                    motherPhone: form.motherPhone,
+                    fatherFullName: form.fatherFullName,
+                    fatherPhone: form.fatherPhone,
+                  });
+                  if (repErr) {
+                    toast({ title: repErr, variant: "destructive" });
+                    return;
                   }
                   updateMutation.mutate(form);
                 }}

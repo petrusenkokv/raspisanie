@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useWebSocket } from "@/hooks/use-websocket";
 import { Bell, BellOff, Check, CheckCheck, Trash2, X, UserCheck, Loader2 } from "lucide-react";
 import type { PushStatus } from "@/hooks/use-push-notifications";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -129,7 +128,6 @@ export function NotificationsPopover({
 }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  useWebSocket();
   const seenIdsRef = useRef<Set<string> | null>(null);
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
 
@@ -141,9 +139,12 @@ export function NotificationsPopover({
       return next;
     });
 
+  const [popoverOpen, setPopoverOpen] = useState(false);
+
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications", userId],
     enabled: !!userId,
+    staleTime: 60_000,
   });
 
   // Ask for browser-notifications permission once (trainer + students)
@@ -154,7 +155,7 @@ export function NotificationsPopover({
     }
   }, []);
 
-  // Detect new alerts since last poll → chime + browser notification + toast
+  // Detect new alerts when list updates → chime + browser notification + toast
   useEffect(() => {
     // First load: prime the seen set without firing alerts
     if (seenIdsRef.current === null) {
@@ -320,7 +321,7 @@ export function NotificationsPopover({
     confirmBookingMutation.isPending || cancelBookingMutation.isPending || approveStudentMutation.isPending;
 
   return (
-    <Popover>
+    <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
