@@ -150,8 +150,9 @@ export function DaySlotRow({
   })();
 
   const timeLabel = timeSlot.time.length >= 5 ? timeSlot.time.slice(0, 5) : timeSlot.time;
-  const priceStudentIds =
-    familyBookings.length > 0
+  const priceStudentIds = isTrainer()
+    ? allActiveBookings.map((b) => b.studentId)
+    : familyBookings.length > 0
       ? familyBookings.map((b) => b.studentId)
       : bookingStudentIds;
 

@@ -446,6 +446,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                         {booking.bookingSource && (
                           <BookingSourceBadge source={booking.bookingSource} />
                         )}
+                        <SlotSessionPrice studentIds={[booking.studentId]} inline />
                         <BookingPaymentBadges
                           studentId={booking.studentId}
                           dateStr={timeSlot.date}

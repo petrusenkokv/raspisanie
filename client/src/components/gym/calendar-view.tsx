@@ -853,6 +853,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                   {booking.bookingSource && (
                     <BookingSourceBadge source={booking.bookingSource} />
                   )}
+                  <SlotSessionPrice studentIds={[booking.studentId]} inline />
                   <BookingPaymentBadges
                     studentId={booking.studentId}
                     dateStr={timeSlot.date}
