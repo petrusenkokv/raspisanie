@@ -28,6 +28,14 @@ export async function createApp(options: AppOptions = {}) {
     });
   });
 
+  app.get("/api/healthz", (_req, res) => {
+    res.status(200).json({
+      status: "ok",
+      commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+      moscowToday: moscowDateString(),
+    });
+  });
+
   app.use((req, res, next) => {
     const start = Date.now();
     const path = req.path;
@@ -43,8 +51,13 @@ export async function createApp(options: AppOptions = {}) {
       const duration = Date.now() - start;
       if (path.startsWith("/api")) {
         let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-        if (capturedJsonResponse) {
-          logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        if (capturedJsonResponse !== undefined) {
+          const responseText = JSON.stringify(capturedJsonResponse);
+          const bytes = Buffer.byteLength(responseText);
+          logLine += ` ${bytes}b`;
+          if (res.statusCode >= 400 || bytes <= 1000) {
+            logLine += ` :: ${responseText}`;
+          }
         }
 
         if (logLine.length > 80) {

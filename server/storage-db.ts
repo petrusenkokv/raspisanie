@@ -849,40 +849,57 @@ export class DbStorage implements IStorage {
 
   async getTimeSlotsByDate(date: string): Promise<TimeSlotWithBookings[]> {
     const slots = await db.select().from(timeSlots).where(eq(timeSlots.date, date)).orderBy(asc(timeSlots.time));
-    return Promise.all(slots.map(s => this.enrichSlot(normalizeSlot(s))));
+    return this.enrichSlots(slots.map(normalizeSlot));
   }
 
   async getTimeSlotsByDateRange(startDate: string, endDate: string): Promise<TimeSlotWithBookings[]> {
     const slots = await db.select().from(timeSlots)
       .where(and(gte(timeSlots.date, startDate), lte(timeSlots.date, endDate)))
       .orderBy(asc(timeSlots.date), asc(timeSlots.time));
-    return Promise.all(slots.map(s => this.enrichSlot(normalizeSlot(s))));
+    return this.enrichSlots(slots.map(normalizeSlot));
   }
 
-  private async attachBookingSources<T extends Booking & { student: ScheduleBookingStudent }>(
-    bookings: T[],
-  ): Promise<(T & { bookingSource: BookingSource })[]> {
-    const userCache = new Map<string, User | undefined>();
-    const result: (T & { bookingSource: BookingSource })[] = [];
-    for (const booking of bookings) {
-      if (!userCache.has(booking.bookedBy)) {
-        userCache.set(booking.bookedBy, await this.getUser(booking.bookedBy));
-      }
-      const bookedByUser = userCache.get(booking.bookedBy);
-      result.push({
-        ...booking,
-        bookingSource: resolveBookingSource(booking, bookedByUser),
+  private async enrichSlots(slots: TimeSlot[]): Promise<TimeSlotWithBookings[]> {
+    if (slots.length === 0) return [];
+
+    const slotById = new Map(slots.map((slot) => [slot.id, slot]));
+    const rows = await db.select({ booking: bookings, student: users }).from(bookings)
+      .innerJoin(users, eq(bookings.studentId, users.id))
+      .where(inArray(bookings.timeSlotId, Array.from(slotById.keys())));
+
+    const bookedByIds = Array.from(new Set(rows.map((row) => row.booking.bookedBy)));
+    const bookedByRows = bookedByIds.length > 0
+      ? await db.select().from(users).where(inArray(users.id, bookedByIds))
+      : [];
+    const bookedByUsers = new Map(bookedByRows.map((user) => [user.id, user]));
+
+    const bySlotId = new Map<string, (BookingWithDetails & { bookingSource: BookingSource })[]>();
+    for (const row of rows) {
+      const slot = slotById.get(row.booking.timeSlotId);
+      if (!slot) continue;
+      const bookingWithDetails: BookingWithDetails = {
+        ...row.booking,
+        student: bookingStudentFromUser(row.student),
+        timeSlot: slot,
+      };
+      const list = bySlotId.get(row.booking.timeSlotId) ?? [];
+      list.push({
+        ...bookingWithDetails,
+        bookingSource: resolveBookingSource(row.booking, bookedByUsers.get(row.booking.bookedBy)),
       });
+      bySlotId.set(row.booking.timeSlotId, list);
     }
-    return result;
-  }
 
-  private async enrichSlot(slot: TimeSlot): Promise<TimeSlotWithBookings> {
-    const slotBookings = await this.getBookingsByTimeSlot(slot.id);
-    const active = slotBookings.filter(b => b.status !== "cancelled");
-    const confirmed = slotBookings.filter(b => b.status === "confirmed");
-    const bookings = await this.attachBookingSources(active);
-    return { ...slot, bookings, availableSpots: Math.max(0, slot.maxCapacity - confirmed.length) };
+    return slots.map((slot) => {
+      const slotBookings = bySlotId.get(slot.id) ?? [];
+      const active = slotBookings.filter((booking) => booking.status !== "cancelled");
+      const confirmed = slotBookings.filter((booking) => booking.status === "confirmed");
+      return {
+        ...slot,
+        bookings: active,
+        availableSpots: Math.max(0, slot.maxCapacity - confirmed.length),
+      };
+    });
   }
 
   async createTimeSlot(insertTS: InsertTimeSlot): Promise<TimeSlot> {
@@ -1013,15 +1030,18 @@ export class DbStorage implements IStorage {
     const holidayRows = await db.select().from(holidays).where(eq(holidays.date, date));
     const isHoliday = holidayRows.length > 0;
     const capacity = resolveCapacity(settings.weeklyTemplate, settings.defaultCapacity, date);
+    const existingRows = await db.select().from(timeSlots).where(eq(timeSlots.date, date));
+    const existingHours = new Set(existingRows.map((slot) => slotHourFromTime(slot.time)));
+    const values: InsertTimeSlot[] = [];
+
     for (let hour = settings.dayStartHour; hour < settings.dayEndHour; hour++) {
-      const existing = await this.findSlotsAtHour(date, hour);
-      if (existing.length > 0) continue;
+      if (existingHours.has(hour)) continue;
       const timeStr = `${hour.toString().padStart(2, "0")}:00`;
       const working = isWorkingHour(settings.weeklyTemplate, date, hour);
       let blockReason: string | null = null;
       if (isHoliday) blockReason = "holiday";
       else if (!working) blockReason = "template";
-      await db.insert(timeSlots).values({
+      values.push({
         date,
         time: timeStr,
         maxCapacity: capacity,
@@ -1029,6 +1049,10 @@ export class DbStorage implements IStorage {
         isBlocked: blockReason !== null,
         blockReason,
       });
+    }
+
+    if (values.length > 0) {
+      await db.insert(timeSlots).values(values);
     }
   }
 
@@ -1420,29 +1444,50 @@ export class DbStorage implements IStorage {
     }
     await this.repairScheduleIntegrity(date);
     const slotRows = await db.select().from(timeSlots).where(eq(timeSlots.date, date)).orderBy(asc(timeSlots.time));
-    const enriched = await Promise.all(slotRows.map(s => this.enrichSlot(normalizeSlot(s))));
+    const enriched = await this.enrichSlots(slotRows.map(normalizeSlot));
     return { date, timeSlots: enriched };
   }
 
   async getScheduleForWeek(startDate: string): Promise<DaySchedule[]> {
-    const schedules: DaySchedule[] = [];
     const start = new Date(startDate);
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      schedules.push(await this.getScheduleForDate(localDateStr(d)));
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return this.getScheduleForDateRange(localDateStr(start), localDateStr(end));
+  }
+
+  private async getScheduleForDateRange(startDate: string, endDate: string): Promise<DaySchedule[]> {
+    const dates = eachDateInRange(startDate, endDate).map(localDateStr);
+    const settings = await this.loadSettings();
+    const existingDates = await db
+      .selectDistinct({ date: timeSlots.date })
+      .from(timeSlots)
+      .where(inArray(timeSlots.date, dates));
+    const existingDateSet = new Set(
+      existingDates.map((row) =>
+        typeof row.date === "object" ? localDateStr(row.date as Date) : String(row.date),
+      ),
+    );
+    for (const date of dates) {
+      if (!existingDateSet.has(date)) {
+        await this.generateTimeSlotsForDate(date, settings);
+      }
     }
-    return schedules;
+
+    const enrichedSlots = await this.getTimeSlotsByDateRange(startDate, endDate);
+    const byDate = new Map<string, TimeSlotWithBookings[]>();
+    for (const slot of enrichedSlots) {
+      const list = byDate.get(slot.date) ?? [];
+      list.push(slot);
+      byDate.set(slot.date, list);
+    }
+    return dates.map((date) => ({ date, timeSlots: byDate.get(date) ?? [] }));
   }
 
   async getScheduleForMonth(year: number, month: number): Promise<DaySchedule[]> {
-    const schedules: DaySchedule[] = [];
     const daysInMonth = new Date(year, month, 0).getDate();
-    for (let day = 1; day <= daysInMonth; day++) {
-      const d = new Date(year, month - 1, day);
-      schedules.push(await this.getScheduleForDate(localDateStr(d)));
-    }
-    return schedules;
+    const startDate = localDateStr(new Date(year, month - 1, 1));
+    const endDate = localDateStr(new Date(year, month - 1, daysInMonth));
+    return this.getScheduleForDateRange(startDate, endDate);
   }
 
   // ======================== RECURRING BOOKINGS ========================
