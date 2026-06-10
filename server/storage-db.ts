@@ -902,8 +902,8 @@ export class DbStorage implements IStorage {
     });
   }
 
-  private async summarizeSlots(slots: TimeSlot[]): Promise<TimeSlotWithBookings[]> {
-    if (slots.length === 0) return [];
+  private async summarizeMonthDays(dates: string[], slots: TimeSlot[]): Promise<DaySchedule[]> {
+    if (slots.length === 0) return dates.map((date) => ({ date, timeSlots: [] }));
 
     const slotIds = slots.map((slot) => slot.id);
     const rows = await db
@@ -944,13 +944,41 @@ export class DbStorage implements IStorage {
       bySlotId.set(booking.timeSlotId, list);
     }
 
-    return slots.map((slot) => {
-      const active = bySlotId.get(slot.id) ?? [];
+    const slotsByDate = new Map<string, TimeSlot[]>();
+    for (const slot of slots) {
+      const list = slotsByDate.get(slot.date) ?? [];
+      list.push(slot);
+      slotsByDate.set(slot.date, list);
+    }
+
+    return dates.map((date) => {
+      const daySlots = slotsByDate.get(date) ?? [];
+      if (daySlots.length === 0) return { date, timeSlots: [] };
+
+      const openSlots = daySlots.filter((slot) => !slot.isBlocked);
+      const visibleSlots = openSlots.length > 0 ? openSlots : daySlots;
+      const active = visibleSlots.flatMap((slot) => bySlotId.get(slot.id) ?? []);
       const confirmed = active.filter((booking) => booking.status === "confirmed");
+      const capacity = openSlots.reduce((sum, slot) => sum + slot.maxCapacity, 0);
+      const representative = visibleSlots[0];
+      const manualOrHoliday = daySlots.find((slot) => slot.blockReason === "manual" || slot.blockReason === "holiday");
+
       return {
-        ...slot,
-        bookings: active,
-        availableSpots: Math.max(0, slot.maxCapacity - confirmed.length),
+        date,
+        timeSlots: [
+          {
+            ...representative,
+            id: `summary:${date}`,
+            time: "00:00",
+            maxCapacity: capacity,
+            isManualCapacity: false,
+            isBlocked: openSlots.length === 0,
+            blockReason: openSlots.length === 0 ? (manualOrHoliday?.blockReason ?? representative.blockReason) : null,
+            blockNote: openSlots.length === 0 ? (manualOrHoliday?.blockNote ?? representative.blockNote) : null,
+            bookings: active,
+            availableSpots: Math.max(0, capacity - confirmed.length),
+          },
+        ],
       };
     });
   }
@@ -1529,8 +1557,11 @@ export class DbStorage implements IStorage {
     const rangeSlots = await db.select().from(timeSlots)
       .where(and(gte(timeSlots.date, startDate), lte(timeSlots.date, endDate)))
       .orderBy(asc(timeSlots.date), asc(timeSlots.time));
+    if (summary) {
+      return this.summarizeMonthDays(dates, rangeSlots.map(normalizeSlot));
+    }
     const enrichedSlots = summary
-      ? await this.summarizeSlots(rangeSlots.map(normalizeSlot))
+      ? []
       : await this.enrichSlots(rangeSlots.map(normalizeSlot));
     const byDate = new Map<string, TimeSlotWithBookings[]>();
     for (const slot of enrichedSlots) {
