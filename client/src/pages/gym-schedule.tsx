@@ -154,6 +154,39 @@ export function GymSchedulePage() {
     return `${y}-${m}-${day}`;
   };
 
+  const scheduleRequest = useMemo(() => {
+    const mondayOf = (d: Date) => {
+      const copy = new Date(d);
+      const day = copy.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      copy.setDate(copy.getDate() + diff);
+      return localDate(copy);
+    };
+
+    if (currentView === "day") {
+      const date = localDate(selectedDate);
+      return {
+        key: ["schedule", "day", date] as const,
+        url: `/api/schedule/day/${date}`,
+      };
+    }
+
+    if (currentView === "week") {
+      const startDate = mondayOf(selectedDate);
+      return {
+        key: ["schedule", "week", startDate] as const,
+        url: `/api/schedule/week/${startDate}`,
+      };
+    }
+
+    const year = selectedDate.getFullYear();
+    const month = selectedDate.getMonth() + 1;
+    return {
+      key: ["schedule", "month", `${year}-${String(month).padStart(2, "0")}`] as const,
+      url: `/api/schedule/month/${year}/${month}`,
+    };
+  }, [currentView, selectedDate]);
+
   const dayBlockedState = useMemo(() => {
     if (currentView !== "day") return null;
     const dateStr = localDate(selectedDate);
@@ -180,34 +213,12 @@ export function GymSchedulePage() {
   });
 
   const { data: scheduleData, isLoading } = useQuery({
-    queryKey: ["schedule", currentView, selectedDate.toISOString()],
-    staleTime: 60_000,
+    queryKey: scheduleRequest.key,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
     enabled: true,
     queryFn: async () => {
-      const localDate = (d: Date) => {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        return `${y}-${m}-${day}`;
-      };
-      const mondayOf = (d: Date) => {
-        const copy = new Date(d);
-        const day = copy.getDay();
-        const diff = day === 0 ? -6 : 1 - day;
-        copy.setDate(copy.getDate() + diff);
-        return localDate(copy);
-      };
-      let url = "";
-      if (currentView === "day") {
-        url = `/api/schedule/day/${localDate(selectedDate)}`;
-      } else if (currentView === "week") {
-        url = `/api/schedule/week/${mondayOf(selectedDate)}`;
-      } else {
-        const year = selectedDate.getFullYear();
-        const month = selectedDate.getMonth() + 1;
-        url = `/api/schedule/month/${year}/${month}`;
-      }
-      const response = await apiRequest("GET", url);
+      const response = await apiRequest("GET", scheduleRequest.url);
       return response.json();
     }
   });

@@ -67,7 +67,8 @@ export function RescheduleDialog({
       return (json.timeSlots ?? []) as TimeSlotWithBookings[];
     },
     enabled: open && !!selectedDate,
-    staleTime: 0,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
   });
 
   const { data: scheduleSettings } = useQuery<{ bookingDeadlineHours?: number }>({

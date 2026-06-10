@@ -219,7 +219,8 @@ export function BookStudentDialog({
       return res.json();
     },
     enabled: open && !preselectedTimeSlotId && !!selectedDate,
-    staleTime: 0,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
   });
 
   const availableSlots = (dayData?.timeSlots || []).filter(

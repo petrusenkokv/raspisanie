@@ -77,7 +77,8 @@ export function SlotSessionPrice({
         const r = await apiRequest("GET", `/api/users/${id}/account-summary`);
         return r.json() as Promise<Summary>;
       },
-      staleTime: 0,
+      staleTime: 5 * 60_000,
+      gcTime: 30 * 60_000,
     })),
   });
 
@@ -141,4 +142,3 @@ export function SlotSessionPrice({
     </Tooltip>
   );
 }
-

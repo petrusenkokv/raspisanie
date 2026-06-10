@@ -132,6 +132,14 @@ function sanitizeScheduleForPublic<T extends any>(schedule: T): T {
   return maskOneDay(schedule) as T;
 }
 
+function setScheduleCacheHeaders(req: any, res: any) {
+  if (req.session?.userId) {
+    res.set("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
+  } else {
+    res.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
+  }
+}
+
 async function studentHasMembershipForDate(
   studentId: string,
   dateStr: string,
@@ -1065,6 +1073,7 @@ export async function registerRoutes(
     try {
       const { date } = req.params;
       const schedule = await storage.getScheduleForDate(date);
+      setScheduleCacheHeaders(req, res);
       if (!req.session?.userId) {
         return res.json(sanitizeScheduleForPublic(schedule));
       }
@@ -1080,6 +1089,7 @@ export async function registerRoutes(
       const end = new Date(startDate + "T00:00:00");
       end.setDate(end.getDate() + 6);
       const schedule = await storage.getScheduleForWeek(startDate);
+      setScheduleCacheHeaders(req, res);
       if (!req.session?.userId) {
         return res.json(sanitizeScheduleForPublic(schedule));
       }
@@ -1094,6 +1104,7 @@ export async function registerRoutes(
       const { year, month } = req.params;
       const lastDay = new Date(parseInt(year), parseInt(month), 0);
       const schedule = await storage.getScheduleForMonth(parseInt(year), parseInt(month));
+      setScheduleCacheHeaders(req, res);
       if (!req.session?.userId) {
         return res.json(sanitizeScheduleForPublic(schedule));
       }
