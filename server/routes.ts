@@ -1099,7 +1099,7 @@ export async function registerRoutes(
     try {
       const { year, month } = req.params;
       const lastDay = new Date(parseInt(year), parseInt(month), 0);
-      const schedule = await storage.getScheduleForMonth(parseInt(year), parseInt(month));
+      const schedule = await storage.getScheduleSummaryForMonth(parseInt(year), parseInt(month));
       setScheduleCacheHeaders(req, res);
       if (!req.session?.userId) {
         return res.json(sanitizeScheduleForPublic(schedule));

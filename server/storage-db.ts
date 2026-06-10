@@ -902,6 +902,59 @@ export class DbStorage implements IStorage {
     });
   }
 
+  private async summarizeSlots(slots: TimeSlot[]): Promise<TimeSlotWithBookings[]> {
+    if (slots.length === 0) return [];
+
+    const slotIds = slots.map((slot) => slot.id);
+    const rows = await db
+      .select({
+        id: bookings.id,
+        studentId: bookings.studentId,
+        timeSlotId: bookings.timeSlotId,
+        status: bookings.status,
+        bookedBy: bookings.bookedBy,
+        createdAt: bookings.createdAt,
+      })
+      .from(bookings)
+      .where(inArray(bookings.timeSlotId, slotIds));
+
+    const bySlotId = new Map<string, any[]>();
+    for (const booking of rows) {
+      if (booking.status === "cancelled") continue;
+      const list = bySlotId.get(booking.timeSlotId) ?? [];
+      list.push({
+        ...booking,
+        notes: null,
+        recurringBookingId: null,
+        attendanceStatus: null,
+        attendanceNote: null,
+        attendanceMarkedAt: null,
+        consumedTrainerPaymentId: null,
+        confirmedAt: null,
+        cancelledAt: null,
+        student: {
+          firstName: "",
+          lastName: "",
+          phone: "",
+          role: "student",
+          exemptMembership: false,
+          exemptTrainerPayment: false,
+        },
+      });
+      bySlotId.set(booking.timeSlotId, list);
+    }
+
+    return slots.map((slot) => {
+      const active = bySlotId.get(slot.id) ?? [];
+      const confirmed = active.filter((booking) => booking.status === "confirmed");
+      return {
+        ...slot,
+        bookings: active,
+        availableSpots: Math.max(0, slot.maxCapacity - confirmed.length),
+      };
+    });
+  }
+
   async createTimeSlot(insertTS: InsertTimeSlot): Promise<TimeSlot> {
     const settings = await this.loadSettings();
     const rows = await db.insert(timeSlots).values({
@@ -1455,7 +1508,7 @@ export class DbStorage implements IStorage {
     return this.getScheduleForDateRange(localDateStr(start), localDateStr(end));
   }
 
-  private async getScheduleForDateRange(startDate: string, endDate: string): Promise<DaySchedule[]> {
+  private async getScheduleForDateRange(startDate: string, endDate: string, summary = false): Promise<DaySchedule[]> {
     const dates = eachDateInRange(startDate, endDate).map(localDateStr);
     const settings = await this.loadSettings();
     const existingDates = await db
@@ -1473,7 +1526,12 @@ export class DbStorage implements IStorage {
       }
     }
 
-    const enrichedSlots = await this.getTimeSlotsByDateRange(startDate, endDate);
+    const rangeSlots = await db.select().from(timeSlots)
+      .where(and(gte(timeSlots.date, startDate), lte(timeSlots.date, endDate)))
+      .orderBy(asc(timeSlots.date), asc(timeSlots.time));
+    const enrichedSlots = summary
+      ? await this.summarizeSlots(rangeSlots.map(normalizeSlot))
+      : await this.enrichSlots(rangeSlots.map(normalizeSlot));
     const byDate = new Map<string, TimeSlotWithBookings[]>();
     for (const slot of enrichedSlots) {
       const list = byDate.get(slot.date) ?? [];
@@ -1488,6 +1546,13 @@ export class DbStorage implements IStorage {
     const startDate = localDateStr(new Date(year, month - 1, 1));
     const endDate = localDateStr(new Date(year, month - 1, daysInMonth));
     return this.getScheduleForDateRange(startDate, endDate);
+  }
+
+  async getScheduleSummaryForMonth(year: number, month: number): Promise<DaySchedule[]> {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const startDate = localDateStr(new Date(year, month - 1, 1));
+    const endDate = localDateStr(new Date(year, month - 1, daysInMonth));
+    return this.getScheduleForDateRange(startDate, endDate, true);
   }
 
   // ======================== RECURRING BOOKINGS ========================

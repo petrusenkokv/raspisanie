@@ -201,6 +201,7 @@ export interface IStorage {
   getScheduleForDate(date: string): Promise<DaySchedule>;
   getScheduleForWeek(startDate: string): Promise<DaySchedule[]>;
   getScheduleForMonth(year: number, month: number): Promise<DaySchedule[]>;
+  getScheduleSummaryForMonth(year: number, month: number): Promise<DaySchedule[]>;
 
   // Broadcast logs
   createBroadcastLog(log: Omit<BroadcastLog, "id" | "sentAt">): Promise<BroadcastLog>;
@@ -1695,6 +1696,10 @@ export class MemStorage implements IStorage {
     }
     
     return schedules;
+  }
+
+  async getScheduleSummaryForMonth(year: number, month: number): Promise<DaySchedule[]> {
+    return this.getScheduleForMonth(year, month);
   }
 
   // ----- Recurring bookings -----
