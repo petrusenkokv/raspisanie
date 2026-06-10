@@ -111,6 +111,7 @@ export function BookStudentDialog({
         description: student ? `${student.firstName} ${student.lastName} записан на занятие` : "Ученик записан"
       });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/day"] });
       handleClose();
     },
     onError: (err: any) => {
@@ -130,6 +131,7 @@ export function BookStudentDialog({
     onSuccess: () => {
       toast({ title: "Вы записаны", description: "Запись на тренировку подтверждена" });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/day"] });
       handleClose();
     },
     onError: (err: any) => {

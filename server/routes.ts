@@ -132,12 +132,8 @@ function sanitizeScheduleForPublic<T extends any>(schedule: T): T {
   return maskOneDay(schedule) as T;
 }
 
-function setScheduleCacheHeaders(req: any, res: any) {
-  if (req.session?.userId) {
-    res.set("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
-  } else {
-    res.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
-  }
+function setScheduleCacheHeaders(_req: any, res: any) {
+  res.set("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
 }
 
 async function studentHasMembershipForDate(

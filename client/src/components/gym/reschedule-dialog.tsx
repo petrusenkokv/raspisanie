@@ -112,6 +112,7 @@ export function RescheduleDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/day"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       toast({ title: "Запись перенесена" });
       onOpenChange(false);

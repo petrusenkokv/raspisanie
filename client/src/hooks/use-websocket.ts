@@ -18,6 +18,7 @@ function connectWebSocket(queryClient: ReturnType<typeof useQueryClient>) {
       const msg = JSON.parse(event.data as string);
       if (msg.type === "schedule_update") {
         queryClient.invalidateQueries({ queryKey: ["schedule"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/day"] });
       }
       if (msg.type === "notification_update") {
         queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
