@@ -113,6 +113,18 @@ function isWorkingHour(template: WeeklyTemplate, date: string, hour: number): bo
   return true;
 }
 
+function getDaySlotHourBounds(settings: TrainerSettings, date: string): { startHour: number; endHour: number } {
+  const wd = isoWeekday(new Date(date + "T00:00:00"));
+  const entry = settings.weeklyTemplate[String(wd) as "1"];
+  let startHour = settings.dayStartHour;
+  let endHour = settings.dayEndHour;
+  if (entry?.enabled) {
+    startHour = Math.min(startHour, entry.startHour);
+    endHour = Math.max(endHour, entry.endHour);
+  }
+  return { startHour, endHour };
+}
+
 function resolveCapacity(template: WeeklyTemplate, defaultCapacity: number, date: string): number {
   const wd = isoWeekday(new Date(date + "T00:00:00"));
   const entry = template[String(wd) as "1"];
@@ -1132,6 +1144,25 @@ export class DbStorage implements IStorage {
     await db.delete(timeSlots).where(eq(timeSlots.id, dupId));
   }
 
+  private async ensureRecurringSlotsForDate(date: string, settings: TrainerSettings): Promise<void> {
+    await this.ensureRecurringExceptionsSchema();
+    const wd = isoWeekday(new Date(date + "T00:00:00"));
+    const rules = await db.select().from(recurringBookings);
+    for (const rule of rules) {
+      if (!rule.weekdays.includes(wd)) continue;
+      if (date < rule.startDate) continue;
+      if (rule.endDate && date > rule.endDate) continue;
+      const slot = await this.ensureSlot(date, rule.hour, settings);
+      if (slot.isBlocked && slot.blockReason !== "manual" && slot.blockReason !== "holiday") {
+        await db.update(timeSlots).set({
+          isBlocked: false,
+          blockReason: null,
+          blockNote: null,
+        }).where(eq(timeSlots.id, slot.id));
+      }
+    }
+  }
+
   private async generateTimeSlotsForDate(date: string, settings: TrainerSettings): Promise<void> {
     const holidayRows = await db.select().from(holidays).where(eq(holidays.date, date));
     const isHoliday = holidayRows.length > 0;
@@ -1139,8 +1170,9 @@ export class DbStorage implements IStorage {
     const existingRows = await db.select().from(timeSlots).where(eq(timeSlots.date, date));
     const existingHours = new Set(existingRows.map((slot) => slotHourFromTime(slot.time)));
     const values: InsertTimeSlot[] = [];
+    const { startHour, endHour } = getDaySlotHourBounds(settings, date);
 
-    for (let hour = settings.dayStartHour; hour < settings.dayEndHour; hour++) {
+    for (let hour = startHour; hour < endHour; hour++) {
       if (existingHours.has(hour)) continue;
       const timeStr = `${hour.toString().padStart(2, "0")}:00`;
       const working = isWorkingHour(settings.weeklyTemplate, date, hour);
@@ -1544,6 +1576,7 @@ export class DbStorage implements IStorage {
 
   async getScheduleForDate(date: string): Promise<DaySchedule> {
     const settings = await this.loadSettings();
+    await this.ensureRecurringSlotsForDate(date, settings);
     const existing = await db.select().from(timeSlots).where(eq(timeSlots.date, date)).limit(1);
     if (existing.length === 0) {
       await this.generateTimeSlotsForDate(date, settings);
@@ -1574,6 +1607,7 @@ export class DbStorage implements IStorage {
       ),
     );
     for (const date of dates) {
+      await this.ensureRecurringSlotsForDate(date, settings);
       if (!existingDateSet.has(date)) {
         await this.generateTimeSlotsForDate(date, settings);
       }
@@ -1901,6 +1935,7 @@ export class DbStorage implements IStorage {
     let created = 0;
     let skipped = 0;
     const today = localDateStr(new Date());
+    const preparedDates = new Set<string>();
     for (const rule of rules) {
       const start = rule.startDate > today ? rule.startDate : today;
       const end = rule.endDate && rule.endDate < untilDate ? rule.endDate : untilDate;
@@ -1920,8 +1955,20 @@ export class DbStorage implements IStorage {
             ),
           );
         if (excepted.length > 0) { skipped++; continue; }
-        await this.dedupeTimeSlotsForDate(dateStr);
-        const slot = await this.ensureSlot(dateStr, rule.hour, settings);
+        if (!preparedDates.has(dateStr)) {
+          await this.dedupeTimeSlotsForDate(dateStr);
+          await this.ensureRecurringSlotsForDate(dateStr, settings);
+          preparedDates.add(dateStr);
+        }
+        let slot = await this.ensureSlot(dateStr, rule.hour, settings);
+        if (slot.isBlocked && slot.blockReason !== "manual" && slot.blockReason !== "holiday") {
+          await db.update(timeSlots).set({
+            isBlocked: false,
+            blockReason: null,
+            blockNote: null,
+          }).where(eq(timeSlots.id, slot.id));
+          slot = { ...slot, isBlocked: false, blockReason: null, blockNote: null };
+        }
         if (slot.isBlocked) { skipped++; continue; }
         // Already has active booking for this rule on this slot?
         const anyForRule = await db.select().from(bookings).where(
@@ -2137,18 +2184,33 @@ export class DbStorage implements IStorage {
       const dateStr = typeof date === 'object' ? localDateStr(date as any) : String(date);
       const slotsForDay = await db.select().from(timeSlots).where(eq(timeSlots.date, dateStr));
 
+      const { startHour: dayStart, endHour: dayEnd } = getDaySlotHourBounds(next, dateStr);
+      const recurringHours = new Set<number>();
+      const wd = isoWeekday(new Date(dateStr + "T00:00:00"));
+      const rules = await db.select().from(recurringBookings);
+      for (const rule of rules) {
+        if (!rule.weekdays.includes(wd)) continue;
+        if (dateStr < rule.startDate) continue;
+        if (rule.endDate && dateStr > rule.endDate) continue;
+        recurringHours.add(rule.hour);
+      }
+
       for (const s of slotsForDay) {
         const hour = parseInt(normalizeTime(s.time).slice(0, 2), 10);
-        const inRange = hour >= next.dayStartHour && hour < next.dayEndHour;
+        const inRange = (hour >= dayStart && hour < dayEnd) || recurringHours.has(hour);
         if (!inRange) {
           const c = await this.removeOutOfRangeSlot(s);
           cancelled.push(...c);
         }
       }
 
-      for (let h = next.dayStartHour; h < next.dayEndHour; h++) {
+      for (let h = dayStart; h < dayEnd; h++) {
         await this.ensureSlot(dateStr, h, next);
       }
+      for (const h of recurringHours) {
+        await this.ensureSlot(dateStr, h, next);
+      }
+      await this.ensureRecurringSlotsForDate(dateStr, next);
 
       const isHolidayDay = (await db.select().from(holidays).where(eq(holidays.date, dateStr))).length > 0;
       const refreshed = await db.select().from(timeSlots).where(eq(timeSlots.date, dateStr));
