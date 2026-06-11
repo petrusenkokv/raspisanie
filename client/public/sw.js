@@ -26,6 +26,9 @@ self.addEventListener("push", (event) => {
         type: "window",
         includeUncontrolled: true,
       });
+      for (const client of clients) {
+        client.postMessage({ type: "schedule_update", payload: data });
+      }
       const appVisible = clients.some((c) => c.visibilityState === "visible");
       if (appVisible) return;
 

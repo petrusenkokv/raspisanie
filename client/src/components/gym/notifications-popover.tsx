@@ -150,7 +150,7 @@ export function NotificationsPopover({
     queryKey: ["/api/notifications", userId],
     enabled: !!userId,
     staleTime: 0,
-    refetchInterval: isRealtimeDisabled() ? 15_000 : false,
+    refetchInterval: isRealtimeDisabled() ? (isTrainer ? 10_000 : 15_000) : false,
   });
 
   // Ask for browser-notifications permission once (trainer + students)
@@ -182,6 +182,8 @@ export function NotificationsPopover({
 
     if (fresh.length > 0) {
       playChime();
+      void queryClient.refetchQueries({ queryKey: ["schedule"] });
+      void queryClient.refetchQueries({ queryKey: ["/api/schedule/day"] });
       const first = fresh[0];
       const body =
         fresh.length === 1
@@ -195,7 +197,7 @@ export function NotificationsPopover({
         toast({ title: first.title, description: body });
       }
     }
-  }, [notifications, isTrainer, toast]);
+  }, [notifications, isTrainer, toast, queryClient]);
 
   const sorted = useMemo(
     () =>

@@ -4,6 +4,7 @@ import { pgTable, varchar, text, timestamp } from "drizzle-orm/pg-core";
 import {
   users, documents, userConsents, trainerServices, parentChildren, timeSlots, trainerSettings,
   holidays, recurringBookings, recurringBookingExceptions, bookings, membershipPayments, trainerPayments, notifications,
+  pushSubscriptions,
   type User, type InsertUser,
   type TimeSlot, type InsertTimeSlot,
   type Booking, type InsertBooking,
@@ -141,6 +142,23 @@ export class DbStorage implements IStorage {
   private blockedPeriodsSchemaReady = false;
   private servicesDocsSchemaReady = false;
   private sickPeriodsSchemaReady = false;
+  private pushSubscriptionsSchemaReady = false;
+
+  private async ensurePushSubscriptionsSchema(): Promise<void> {
+    if (this.pushSubscriptionsSchemaReady) return;
+    try {
+      await db.execute(drizzleSql`
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+          endpoint text PRIMARY KEY,
+          user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          p256dh text NOT NULL,
+          auth text NOT NULL,
+          created_at timestamp DEFAULT now()
+        )
+      `);
+    } catch { /* ignore */ }
+    this.pushSubscriptionsSchemaReady = true;
+  }
 
   private async ensureRecurringExceptionsSchema(): Promise<void> {
     if (this.recurringExceptionsSchemaReady) return;
@@ -2507,21 +2525,51 @@ export class DbStorage implements IStorage {
     return { deletedNotifications };
   }
 
-  private pushSubscriptions: Map<string, PushSubscriptionData> = new Map();
-
   async savePushSubscription(sub: PushSubscriptionData): Promise<void> {
-    this.pushSubscriptions.set(sub.endpoint, sub);
+    await this.ensurePushSubscriptionsSchema();
+    await db
+      .insert(pushSubscriptions)
+      .values({
+        endpoint: sub.endpoint,
+        userId: sub.userId,
+        p256dh: sub.keys.p256dh,
+        auth: sub.keys.auth,
+      })
+      .onConflictDoUpdate({
+        target: pushSubscriptions.endpoint,
+        set: {
+          userId: sub.userId,
+          p256dh: sub.keys.p256dh,
+          auth: sub.keys.auth,
+        },
+      });
   }
 
   async deletePushSubscription(endpoint: string): Promise<void> {
-    this.pushSubscriptions.delete(endpoint);
+    await this.ensurePushSubscriptionsSchema();
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
   }
 
   async getPushSubscriptionsByUser(userId: string): Promise<PushSubscriptionData[]> {
-    return Array.from(this.pushSubscriptions.values()).filter((s) => s.userId === userId);
+    await this.ensurePushSubscriptionsSchema();
+    const rows = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.userId, userId));
+    return rows.map((row) => ({
+      userId: row.userId,
+      endpoint: row.endpoint,
+      keys: { p256dh: row.p256dh, auth: row.auth },
+    }));
   }
 
   async getAllPushSubscriptions(): Promise<PushSubscriptionData[]> {
-    return Array.from(this.pushSubscriptions.values());
+    await this.ensurePushSubscriptionsSchema();
+    const rows = await db.select().from(pushSubscriptions);
+    return rows.map((row) => ({
+      userId: row.userId,
+      endpoint: row.endpoint,
+      keys: { p256dh: row.p256dh, auth: row.auth },
+    }));
   }
 }

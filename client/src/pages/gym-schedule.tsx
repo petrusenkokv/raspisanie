@@ -73,6 +73,18 @@ export function GymSchedulePage() {
   useWebSocket();
 
   useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "schedule_update") return;
+      void queryClient.refetchQueries({ queryKey: ["schedule"] });
+      void queryClient.refetchQueries({ queryKey: ["/api/schedule/day"] });
+      void queryClient.refetchQueries({ queryKey: ["/api/notifications"] });
+    };
+    navigator.serviceWorker.addEventListener("message", handleSwMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", handleSwMessage);
+  }, [queryClient]);
+
+  useEffect(() => {
     void validateStoredUser();
   }, []);
 
