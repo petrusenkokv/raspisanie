@@ -1344,18 +1344,28 @@ export async function registerRoutes(
         // Student or parent cancelled → notify the trainer
         const trainer = await storage.getTrainer();
         if (trainer) {
-          const studentName = canceller.firstName ?? "Ученик";
-          const studentLast = canceller.lastName ? ` ${canceller.lastName}` : "";
+          const bookedStudent = await storage.getUser(booking.studentId);
+          const studentName = bookedStudent?.firstName ?? canceller?.firstName ?? "Ученик";
+          const studentLast = bookedStudent?.lastName
+            ? ` ${bookedStudent.lastName}`
+            : canceller?.lastName
+              ? ` ${canceller.lastName}`
+              : "";
+          const cancelTitle = cancelledByParentForChild
+            ? "Родитель отменил запись"
+            : "Ученик отменил запись";
+          const cancelMessage = appendBookingMessage(
+            `${studentName}${studentLast} отменил(а) запись: ${when}`,
+            studentMessage,
+          );
           await storage.createNotification({
             userId: trainer.id,
             type: "booking_cancelled",
-            title: "Ученик отменил запись",
-            message: appendBookingMessage(
-              `${studentName}${studentLast} отменил(а) запись: ${when}`,
-              studentMessage,
-            ),
+            title: cancelTitle,
+            message: cancelMessage,
             relatedBookingId: booking.id,
           });
+          pushNotifyUser(trainer.id, cancelTitle, cancelMessage);
         }
       } else {
         // Trainer (or system) cancelled → notify the student
@@ -1451,16 +1461,19 @@ export async function registerRoutes(
         const student = await storage.getUser(booking.studentId);
         if (trainer) {
           const name = student ? `${student.firstName} ${student.lastName ?? ""}`.trim() : "Ученик";
+          const rescheduleTitle = "Ученик перенёс запись";
+          const rescheduleMessage = appendBookingMessage(
+            `${name} перенёс запись: ${fmtSlot(oldSlot)} → ${fmtSlot(newSlot)}${rescheduled.status === "pending" ? ". Требуется подтверждение." : ""}`,
+            studentMessage,
+          );
           await storage.createNotification({
             userId: trainer.id,
             type: "booking_request",
-            title: "Ученик перенёс запись",
-            message: appendBookingMessage(
-              `${name} перенёс запись: ${fmtSlot(oldSlot)} → ${fmtSlot(newSlot)}${rescheduled.status === "pending" ? ". Требуется подтверждение." : ""}`,
-              studentMessage,
-            ),
+            title: rescheduleTitle,
+            message: rescheduleMessage,
             relatedBookingId: rescheduled.id,
           });
+          pushNotifyUser(trainer.id, rescheduleTitle, rescheduleMessage);
         }
       }
 

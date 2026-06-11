@@ -17,6 +17,7 @@ import {
   todayLocalStr,
 } from "@shared/birth-date";
 import { filterRequiredDocuments, isPricingDocument } from "@shared/consents-pricing";
+import { BirthDateFields } from "./birth-date-fields";
 
 interface AuthModalProps {
   open: boolean;
@@ -510,17 +511,13 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                       <Input value={parentMiddleName} onChange={(e) => setParentMiddleName(e.target.value)} disabled={loading} data-testid="input-middleName" />
                     </div>
                     {registerSelf && (
-                      <div className="space-y-2">
-                        <Label>Дата рождения</Label>
-                        <Input
-                          type="date"
-                          max={maxBirthDate}
-                          value={selfBirthDate}
-                          onChange={(e) => setSelfBirthDate(e.target.value)}
-                          disabled={loading}
-                          data-testid="input-birthDate"
-                        />
-                      </div>
+                      <BirthDateFields
+                        value={selfBirthDate}
+                        onChange={setSelfBirthDate}
+                        disabled={loading}
+                        maxDate={maxBirthDate}
+                        testId="input-birthDate"
+                      />
                     )}
                   </div>
                 )}
@@ -596,32 +593,26 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                             />
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <Label>Отчество</Label>
-                            <Input
-                              value={row.middleName}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                setChildrenRows((rows) => rows.map((r, i) => (i === idx ? { ...r, middleName: v } : r)));
-                              }}
-                              disabled={loading}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label>Дата рождения</Label>
-                            <Input
-                              type="date"
-                              max={maxBirthDate}
-                              value={row.birthDate}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                setChildrenRows((rows) => rows.map((r, i) => (i === idx ? { ...r, birthDate: v } : r)));
-                              }}
-                              disabled={loading}
-                            />
-                          </div>
+                        <div className="space-y-1">
+                          <Label>Отчество</Label>
+                          <Input
+                            value={row.middleName}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setChildrenRows((rows) => rows.map((r, i) => (i === idx ? { ...r, middleName: v } : r)));
+                            }}
+                            disabled={loading}
+                          />
                         </div>
+                        <BirthDateFields
+                          value={row.birthDate}
+                          onChange={(v) => {
+                            setChildrenRows((rows) => rows.map((r, i) => (i === idx ? { ...r, birthDate: v } : r)));
+                          }}
+                          disabled={loading}
+                          maxDate={maxBirthDate}
+                          testId={`input-child-birthDate-${idx}`}
+                        />
                       </div>
                     ))}
                   </div>

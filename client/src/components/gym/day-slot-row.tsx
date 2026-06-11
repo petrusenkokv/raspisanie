@@ -201,7 +201,11 @@ export function DaySlotRow({
       </button>
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto rounded-t-2xl px-4 pb-8 pt-4">
+        <SheetContent
+          side="bottom"
+          data-pull-ignore
+          className="max-h-[88vh] overflow-y-auto rounded-t-2xl px-4 pb-8 pt-4"
+        >
           <SheetHeader className="text-left pb-3 border-b mb-3">
             <SheetTitle className="text-lg tabular-nums">{timeLabel}</SheetTitle>
           </SheetHeader>

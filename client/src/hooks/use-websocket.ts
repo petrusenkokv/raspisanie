@@ -7,6 +7,14 @@ let wsAlive = false;
 let wsReconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let wsInstance: WebSocket | undefined;
 
+export const isRealtimeDisabled = (): boolean => {
+  if (typeof window === "undefined") return true;
+  return (
+    import.meta.env.VITE_DISABLE_WEBSOCKET === "1" ||
+    window.location.hostname.endsWith(".vercel.app")
+  );
+};
+
 function connectWebSocket(queryClient: ReturnType<typeof useQueryClient>) {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const url = `${protocol}//${window.location.host}/ws`;
@@ -17,11 +25,11 @@ function connectWebSocket(queryClient: ReturnType<typeof useQueryClient>) {
     try {
       const msg = JSON.parse(event.data as string);
       if (msg.type === "schedule_update") {
-        queryClient.invalidateQueries({ queryKey: ["schedule"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/schedule/day"] });
+        void queryClient.refetchQueries({ queryKey: ["schedule"] });
+        void queryClient.refetchQueries({ queryKey: ["/api/schedule/day"] });
       }
       if (msg.type === "notification_update") {
-        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+        void queryClient.refetchQueries({ queryKey: ["/api/notifications"] });
       }
       if (msg.type === "user_update") {
         const user = useGymStore.getState().currentUser;
@@ -72,11 +80,7 @@ export function useWebSocket() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const realtimeDisabled =
-      import.meta.env.VITE_DISABLE_WEBSOCKET === "1" ||
-      window.location.hostname.endsWith(".vercel.app");
-
-    if (realtimeDisabled) {
+    if (isRealtimeDisabled()) {
       return;
     }
 

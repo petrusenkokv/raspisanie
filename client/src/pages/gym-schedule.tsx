@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { CalendarHeader } from "@/components/gym/calendar-header";
 import { CalendarView } from "@/components/gym/calendar-view";
@@ -26,6 +26,7 @@ import { Loader2, MessageSquare } from "lucide-react";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+import { PullToRefresh } from "@/components/gym/pull-to-refresh";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -59,8 +60,14 @@ export function GymSchedulePage() {
     isTrainer,
   } = useGymStore();
 
-  const { status: pushStatus, loading: pushLoading, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } =
-    usePushNotifications(currentUser?.id);
+  const {
+    status: pushStatus,
+    loading: pushLoading,
+    lastError: pushError,
+    unsupportedReason: pushUnsupportedReason,
+    subscribe: pushSubscribe,
+    unsubscribe: pushUnsubscribe,
+  } = usePushNotifications(currentUser?.id);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   useWebSocket();
@@ -351,8 +358,23 @@ export function GymSchedulePage() {
     toast({ title: "Выход выполнен", description: "Вы успешно вышли из системы" });
   };
 
+  const handlePullRefresh = useCallback(async () => {
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: ["schedule"] }),
+      queryClient.refetchQueries({ queryKey: ["/api/notifications"] }),
+      queryClient.refetchQueries({ queryKey: ["/api/schedule/settings"] }),
+      currentUser?.id
+        ? queryClient.refetchQueries({ queryKey: [`/api/users/${currentUser.id}`] })
+        : Promise.resolve(),
+      canManageChildren
+        ? queryClient.refetchQueries({ queryKey: ["/api/parent/children"] })
+        : Promise.resolve(),
+    ]);
+  }, [queryClient, currentUser?.id, canManageChildren]);
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-[env(safe-area-inset-bottom)]">
+      <PullToRefresh onRefresh={handlePullRefresh}>
       <CalendarHeader
         onStudentsOpen={() => setStudentsPanelOpen(true)}
         onSettingsOpen={() => setSettingsOpen(true)}
@@ -374,6 +396,8 @@ export function GymSchedulePage() {
         currentUser={currentUser}
         pushStatus={pushStatus}
         pushLoading={pushLoading}
+        pushError={pushError}
+        pushUnsupportedReason={pushUnsupportedReason}
         onPushSubscribe={pushSubscribe}
         onPushUnsubscribe={pushUnsubscribe}
       />
@@ -400,6 +424,7 @@ export function GymSchedulePage() {
           />
         )}
       </div>
+      </PullToRefresh>
 
       <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} initialMode={authModalMode} />
 

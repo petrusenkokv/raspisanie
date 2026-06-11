@@ -94,7 +94,7 @@ export async function createApp(options: AppOptions = {}) {
     }
   }
 
-  if (options.reminders) {
+  if (options.reminders && process.env.NODE_ENV === "production") {
     startReminderScheduler();
   }
 

@@ -14,7 +14,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmedBookingHint } from "./confirmed-booking-hint";
 import { BookingSourceBadge } from "./booking-source-badge";
 import { SlotSessionPrice } from "./slot-session-price";
@@ -576,22 +575,15 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                           {personName}
                         </span>
                         {isPending ? (
-                          <Tooltip delayDuration={0}>
-                            <TooltipTrigger asChild>
-                              <span
-                                className="inline-flex shrink-0 cursor-help"
-                                tabIndex={0}
-                                aria-label="Ожидаем подтверждения тренера"
-                                onClick={(e) => e.stopPropagation()}
-                                onKeyDown={(e) => e.stopPropagation()}
-                              >
-                                <Clock className="h-3.5 w-3.5 text-yellow-500 dark:text-yellow-400" />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="z-[100]">
-                              Ожидаем подтверждения тренера
-                            </TooltipContent>
-                          </Tooltip>
+                          <span
+                            className="inline-flex shrink-0"
+                            role="img"
+                            aria-label="Ожидаем подтверждения тренера"
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
+                            <Clock className="h-3.5 w-3.5 text-yellow-500 dark:text-yellow-400" aria-hidden />
+                          </span>
                         ) : (
                           <ConfirmedBookingHint iconClassName="h-3 w-3" />
                         )}

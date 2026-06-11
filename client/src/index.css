@@ -96,7 +96,13 @@
     @apply border-border;
   }
 
+  html {
+    -webkit-overflow-scrolling: touch;
+  }
+
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    min-height: 100%;
+    overscroll-behavior-y: auto;
   }
 }

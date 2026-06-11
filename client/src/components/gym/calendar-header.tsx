@@ -81,6 +81,8 @@ type HeaderToolbarProps = {
   currentUser: User | null;
   pushStatus: PushStatus;
   pushLoading: boolean;
+  pushError?: string | null;
+  pushUnsupportedReason?: string | null;
   onStudentsOpen: () => void;
   onSettingsOpen: () => void;
   onMyTrainingOpen: () => void;
@@ -103,6 +105,8 @@ function HeaderToolbar({
   currentUser,
   pushStatus,
   pushLoading,
+  pushError,
+  pushUnsupportedReason,
   onStudentsOpen,
   onSettingsOpen,
   onMyTrainingOpen,
@@ -168,6 +172,8 @@ function HeaderToolbar({
                 isTrainer={trainer}
                 pushStatus={pushStatus}
                 pushLoading={pushLoading}
+                pushError={pushError}
+                pushUnsupportedReason={pushUnsupportedReason}
                 onPushSubscribe={onPushSubscribe}
                 onPushUnsubscribe={onPushUnsubscribe}
               />
@@ -242,6 +248,8 @@ export interface CalendarHeaderProps {
   currentUser: User | null;
   pushStatus: PushStatus;
   pushLoading: boolean;
+  pushError?: string | null;
+  pushUnsupportedReason?: string | null;
   onPushSubscribe: () => void;
   onPushUnsubscribe: () => void;
 }
@@ -263,6 +271,8 @@ export function CalendarHeader({
   currentUser,
   pushStatus,
   pushLoading,
+  pushError,
+  pushUnsupportedReason,
   onPushSubscribe,
   onPushUnsubscribe,
 }: CalendarHeaderProps) {
@@ -350,6 +360,8 @@ export function CalendarHeader({
     currentUser,
     pushStatus,
     pushLoading,
+    pushError,
+    pushUnsupportedReason,
     onStudentsOpen,
     onSettingsOpen,
     onMyTrainingOpen,

@@ -18,6 +18,7 @@ import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { birthDateAgeSuffix, calculateAge, todayLocalStr, formatDateDMY } from "@/lib/utils-gym";
 import { StudentAccountSection } from "@/components/gym/student-account-section";
+import { BirthDateFields } from "@/components/gym/birth-date-fields";
 
 type FormValues = typeof updateStudentProfileSchema._type;
 
@@ -362,26 +363,23 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                     <FormItem><FormLabel>Отчество</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
                   )} />
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField control={form.control} name="birthDate" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Дата рождения *</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="date"
-                            max={todayLocalStr()}
-                            {...field}
-                            value={field.value ?? ""}
-                            className="block"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="phone" render={({ field }) => (
-                      <FormItem><FormLabel>Телефон *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                  </div>
+                  <FormField control={form.control} name="birthDate" render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <BirthDateFields
+                          value={field.value ?? ""}
+                          onChange={field.onChange}
+                          maxDate={todayLocalStr()}
+                          label="Дата рождения *"
+                          testId="profile-birthDate"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="phone" render={({ field }) => (
+                    <FormItem><FormLabel>Телефон *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
 
                   {/* Representatives section — visible only under 18 */}
                   {editShowRepresentative && <div className={editRequiresParent

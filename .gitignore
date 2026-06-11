@@ -11,3 +11,6 @@ vite.config.ts.*
 .env*.local
 .env*
 data/
+
+.env*
+.vercel

@@ -214,10 +214,10 @@ export function ScheduleSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Настройки расписания</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-2xl sm:w-full max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+        <DialogHeader className="pr-8 text-left">
+          <DialogTitle className="text-base sm:text-lg leading-snug">Настройки расписания</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
             Рабочие часы, шаблон недели, лимиты и праздники. Внизу — закрытие дня, отпуск и рассылка.
           </DialogDescription>
         </DialogHeader>
@@ -227,33 +227,55 @@ export function ScheduleSettingsDialog({
             <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
           </div>
         ) : (
-          <Tabs defaultValue="hours" className="w-full">
-            <div className="overflow-x-auto -mx-1 px-1 pb-1">
-              <TabsList className="inline-flex h-auto flex-wrap gap-1 w-max min-w-full">
-                <TabsTrigger value="hours" data-testid="tab-hours" className="text-xs sm:text-sm">
-                  <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
-                  Часы
-                </TabsTrigger>
-                <TabsTrigger value="week" data-testid="tab-week" className="text-xs sm:text-sm">
-                  Неделя
-                </TabsTrigger>
-                <TabsTrigger value="limits" data-testid="tab-limits" className="text-xs sm:text-sm">
-                  Лимиты
-                </TabsTrigger>
-                <TabsTrigger value="holidays" data-testid="tab-holidays" className="text-xs sm:text-sm">
-                  <CalendarOff className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
-                  Праздники
-                </TabsTrigger>
-                <TabsTrigger value="welcome" data-testid="tab-welcome" className="text-xs sm:text-sm">
-                  <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
-                  Привет
-                </TabsTrigger>
-                <TabsTrigger value="pricing" data-testid="tab-pricing" className="text-xs sm:text-sm">
-                  <Banknote className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
-                  Цены
-                </TabsTrigger>
-              </TabsList>
-            </div>
+          <Tabs defaultValue="hours" className="w-full min-w-0">
+            <TabsList className="grid h-auto w-full grid-cols-3 gap-1 p-1 sm:flex sm:flex-wrap">
+              <TabsTrigger
+                value="hours"
+                data-testid="tab-hours"
+                className="h-auto min-h-9 px-2 py-2 text-xs leading-tight whitespace-normal sm:text-sm"
+              >
+                <Clock className="h-3.5 w-3.5 shrink-0 sm:mr-1" />
+                Часы
+              </TabsTrigger>
+              <TabsTrigger
+                value="week"
+                data-testid="tab-week"
+                className="h-auto min-h-9 px-2 py-2 text-xs leading-tight whitespace-normal sm:text-sm"
+              >
+                Неделя
+              </TabsTrigger>
+              <TabsTrigger
+                value="limits"
+                data-testid="tab-limits"
+                className="h-auto min-h-9 px-2 py-2 text-xs leading-tight whitespace-normal sm:text-sm"
+              >
+                Лимиты
+              </TabsTrigger>
+              <TabsTrigger
+                value="holidays"
+                data-testid="tab-holidays"
+                className="h-auto min-h-9 px-2 py-2 text-xs leading-tight whitespace-normal sm:text-sm"
+              >
+                <CalendarOff className="h-3.5 w-3.5 shrink-0 sm:mr-1" />
+                Праздники
+              </TabsTrigger>
+              <TabsTrigger
+                value="welcome"
+                data-testid="tab-welcome"
+                className="h-auto min-h-9 px-2 py-2 text-xs leading-tight whitespace-normal sm:text-sm"
+              >
+                <MessageSquare className="h-3.5 w-3.5 shrink-0 sm:mr-1" />
+                Привет
+              </TabsTrigger>
+              <TabsTrigger
+                value="pricing"
+                data-testid="tab-pricing"
+                className="h-auto min-h-9 px-2 py-2 text-xs leading-tight whitespace-normal sm:text-sm"
+              >
+                <Banknote className="h-3.5 w-3.5 shrink-0 sm:mr-1" />
+                Цены
+              </TabsTrigger>
+            </TabsList>
 
             {/* Working hours tab */}
             <TabsContent value="hours" className="space-y-4 pt-4">
@@ -261,11 +283,11 @@ export function ScheduleSettingsDialog({
                 Диапазон часов, который виден в расписании. Внутри этого диапазона
                 для каждого дня недели можно задать свой график (вкладка «Неделя»).
               </p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
+              <div className="grid grid-cols-1 gap-4 min-w-0 sm:grid-cols-2">
+                <div className="min-w-0">
                   <Label>Начало дня</Label>
                   <select
-                    className="w-full border rounded px-3 py-2 bg-white dark:bg-gray-900"
+                    className="w-full min-w-0 border rounded px-3 py-2 bg-white dark:bg-gray-900"
                     value={dayStart}
                     onChange={(e) => setDayStart(Number(e.target.value))}
                     data-testid="select-day-start"
@@ -275,10 +297,10 @@ export function ScheduleSettingsDialog({
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <Label>Конец дня</Label>
                   <select
-                    className="w-full border rounded px-3 py-2 bg-white dark:bg-gray-900"
+                    className="w-full min-w-0 border rounded px-3 py-2 bg-white dark:bg-gray-900"
                     value={dayEnd}
                     onChange={(e) => setDayEnd(Number(e.target.value))}
                     data-testid="select-day-end"
@@ -338,20 +360,25 @@ export function ScheduleSettingsDialog({
                   return (
                     <div
                       key={k}
-                      className="border rounded p-3 space-y-2"
+                      className="border rounded p-3 space-y-3 min-w-0"
                       data-testid={`row-weekday-${k}`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-32 text-sm font-medium">{WEEKDAY_LABELS[k]}</div>
-                        <Switch
-                          checked={entry.enabled}
-                          onCheckedChange={(checked) => updateDayEntry(k, { enabled: checked })}
-                          data-testid={`switch-weekday-${k}`}
-                        />
-                        {entry.enabled ? (
-                          <div className="flex items-center gap-2 ml-auto">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="text-sm font-medium sm:w-28 shrink-0">{WEEKDAY_LABELS[k]}</div>
+                          <Switch
+                            checked={entry.enabled}
+                            onCheckedChange={(checked) => updateDayEntry(k, { enabled: checked })}
+                            data-testid={`switch-weekday-${k}`}
+                          />
+                          {!entry.enabled && (
+                            <span className="text-sm text-gray-500 sm:ml-auto">Выходной</span>
+                          )}
+                        </div>
+                        {entry.enabled && (
+                          <div className="flex items-center gap-2 w-full min-w-0 sm:ml-auto sm:w-auto">
                             <select
-                              className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
+                              className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900"
                               value={entry.startHour}
                               onChange={(e) => updateDayEntry(k, { startHour: Number(e.target.value) })}
                               data-testid={`select-start-${k}`}
@@ -360,9 +387,9 @@ export function ScheduleSettingsDialog({
                                 <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
                               ))}
                             </select>
-                            <span className="text-sm">—</span>
+                            <span className="text-sm shrink-0">—</span>
                             <select
-                              className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
+                              className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900"
                               value={entry.endHour}
                               onChange={(e) => updateDayEntry(k, { endHour: Number(e.target.value) })}
                               data-testid={`select-end-${k}`}
@@ -373,31 +400,31 @@ export function ScheduleSettingsDialog({
                               })}
                             </select>
                           </div>
-                        ) : (
-                          <span className="ml-auto text-sm text-gray-500">Выходной</span>
                         )}
                       </div>
 
                       {entry.enabled && (
-                        <div className="flex items-center gap-3 pl-32">
-                          <span className="text-xs text-gray-600 dark:text-gray-400">Перерыв</span>
-                          <Switch
-                            checked={breakOn}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                const bs = Math.max(entry.startHour, Math.min(13, entry.endHour - 1));
-                                const be = Math.min(entry.endHour, bs + 1);
-                                updateDayEntry(k, { breakStartHour: bs, breakEndHour: be });
-                              } else {
-                                updateDayEntry(k, { breakStartHour: null, breakEndHour: null });
-                              }
-                            }}
-                            data-testid={`switch-break-${k}`}
-                          />
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 sm:pl-28">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-600 dark:text-gray-400 shrink-0">Перерыв</span>
+                            <Switch
+                              checked={breakOn}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  const bs = Math.max(entry.startHour, Math.min(13, entry.endHour - 1));
+                                  const be = Math.min(entry.endHour, bs + 1);
+                                  updateDayEntry(k, { breakStartHour: bs, breakEndHour: be });
+                                } else {
+                                  updateDayEntry(k, { breakStartHour: null, breakEndHour: null });
+                                }
+                              }}
+                              data-testid={`switch-break-${k}`}
+                            />
+                          </div>
                           {breakOn ? (
-                            <div className="flex items-center gap-2 ml-auto">
+                            <div className="flex items-center gap-2 w-full min-w-0 sm:ml-auto sm:w-auto">
                               <select
-                                className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
+                                className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900"
                                 value={breakStart}
                                 onChange={(e) => updateDayEntry(k, { breakStartHour: Number(e.target.value) })}
                                 data-testid={`select-break-start-${k}`}
@@ -407,9 +434,9 @@ export function ScheduleSettingsDialog({
                                   return <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>;
                                 })}
                               </select>
-                              <span className="text-sm">—</span>
+                              <span className="text-sm shrink-0">—</span>
                               <select
-                                className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
+                                className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900"
                                 value={breakEnd}
                                 onChange={(e) => updateDayEntry(k, { breakEndHour: Number(e.target.value) })}
                                 data-testid={`select-break-end-${k}`}
@@ -421,21 +448,23 @@ export function ScheduleSettingsDialog({
                               </select>
                             </div>
                           ) : (
-                            <span className="ml-auto text-xs text-gray-500">Без перерыва</span>
+                            <span className="text-xs text-gray-500 sm:ml-auto">Без перерыва</span>
                           )}
                         </div>
                       )}
 
                       {entry.enabled && (
-                        <div className="flex items-center gap-3 pl-32">
-                          <span className="text-xs text-gray-600 dark:text-gray-400">Мест в час</span>
-                          <Switch
-                            checked={capOverride}
-                            onCheckedChange={(checked) =>
-                              updateDayEntry(k, { capacity: checked ? defaultCapacity : null })
-                            }
-                            data-testid={`switch-capacity-${k}`}
-                          />
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 sm:pl-28">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-600 dark:text-gray-400 shrink-0">Мест в час</span>
+                            <Switch
+                              checked={capOverride}
+                              onCheckedChange={(checked) =>
+                                updateDayEntry(k, { capacity: checked ? defaultCapacity : null })
+                              }
+                              data-testid={`switch-capacity-${k}`}
+                            />
+                          </div>
                           {capOverride ? (
                             <Input
                               type="number"
@@ -447,11 +476,11 @@ export function ScheduleSettingsDialog({
                                   capacity: Math.max(1, Math.min(50, Number(e.target.value) || 1)),
                                 })
                               }
-                              className="ml-auto w-24 h-8"
+                              className="w-full h-8 sm:ml-auto sm:w-24"
                               data-testid={`input-capacity-${k}`}
                             />
                           ) : (
-                            <span className="ml-auto text-xs text-gray-500">
+                            <span className="text-xs text-gray-500 sm:ml-auto">
                               По умолчанию ({defaultCapacity})
                             </span>
                           )}
@@ -564,8 +593,8 @@ export function ScheduleSettingsDialog({
 
               <div className="border rounded p-3 space-y-2">
                 <p className="text-sm font-medium">Добавить праздник</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="min-w-0">
                     <Label className="text-xs">Дата</Label>
                     <Input
                       type="date"
@@ -574,7 +603,7 @@ export function ScheduleSettingsDialog({
                       data-testid="input-holiday-date"
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <Label className="text-xs">Название (необязательно)</Label>
                     <Input
                       value={newHolidayName}
@@ -679,14 +708,14 @@ export function ScheduleSettingsDialog({
           </Tabs>
         )}
 
-        <DialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
+        <DialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0 min-w-0">
           {(onToggleBlockDay || onOpenBlockPeriod || onOpenBroadcast) && (
-            <div className="flex flex-col gap-2 w-full">
+            <div className="flex flex-col gap-2 w-full min-w-0">
               {onToggleBlockDay && dayBlockedState ? (
                 <Button
                   type="button"
                   variant={dayBlockedState.allBlocked ? "secondary" : "outline"}
-                  className="w-full justify-start"
+                  className="w-full justify-start h-auto min-h-10 py-2 text-left whitespace-normal"
                   disabled={blockDayPending}
                   onClick={onToggleBlockDay}
                   data-testid="button-settings-block-day"
@@ -698,9 +727,11 @@ export function ScheduleSettingsDialog({
                   ) : (
                     <Lock className="h-4 w-4 mr-2 flex-shrink-0" />
                   )}
-                  {dayBlockedState.allBlocked ? "Открыть день" : "Закрыть день"}
-                  <span className="ml-1 text-gray-500 font-normal">
-                    ({format(new Date(dayBlockedState.dateStr + "T12:00:00"), "d MMMM yyyy", { locale: ru })})
+                  <span className="min-w-0">
+                    {dayBlockedState.allBlocked ? "Открыть день" : "Закрыть день"}
+                    <span className="ml-1 text-gray-500 font-normal">
+                      ({format(new Date(dayBlockedState.dateStr + "T12:00:00"), "d MMMM yyyy", { locale: ru })})
+                    </span>
                   </span>
                 </Button>
               ) : onToggleBlockDay ? (
@@ -708,12 +739,12 @@ export function ScheduleSettingsDialog({
                   Закрытие одного дня доступно в виде «День» — выберите дату в расписании и откройте настройки снова.
                 </p>
               ) : null}
-              <div className="flex flex-col sm:flex-row gap-2 w-full">
+              <div className="flex flex-col gap-2 w-full min-w-0">
               {onOpenBlockPeriod && (
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full sm:flex-1 justify-start"
+                  className="w-full justify-start h-auto min-h-10 py-2 text-left whitespace-normal"
                   onClick={() => {
                     onOpenChange(false);
                     onOpenBlockPeriod();
@@ -728,7 +759,7 @@ export function ScheduleSettingsDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full sm:flex-1 justify-start"
+                  className="w-full justify-start h-auto min-h-10 py-2 text-left whitespace-normal"
                   onClick={() => {
                     onOpenChange(false);
                     onOpenBroadcast();

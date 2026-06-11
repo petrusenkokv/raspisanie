@@ -668,7 +668,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
 
       {/* Add student dialog */}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-md sm:w-full max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Новый ученик</DialogTitle>
             <DialogDescription>Добавление нового ученика в список.</DialogDescription>
@@ -1000,17 +1000,17 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Карточка ученика</DialogTitle>
-          <DialogDescription>Просмотр и редактирование данных ученика.</DialogDescription>
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-lg sm:w-full max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+        <DialogHeader className="pr-8 text-left">
+          <DialogTitle className="text-base sm:text-lg leading-snug">Карточка ученика</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">Просмотр и редактирование данных ученика.</DialogDescription>
         </DialogHeader>
         {isLoading || !student ? (
           <div className="flex items-center justify-center h-32">
             <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
           </div>
         ) : !editing ? (
-          <div className="space-y-3 text-sm">
+          <div className="space-y-3 text-sm min-w-0">
             <Field label="ФИО" value={`${student.lastName || ""} ${student.firstName} ${student.middleName || ""}`.trim()} />
             <Field label="Телефон" value={student.phone} />
             <Field
@@ -1109,27 +1109,27 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
             <PaymentsSection studentId={student.id} />
             <SickLeaveSection student={student} />
             <RecurringBookingsPanel studentId={student.id} />
-            <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Закрыть</Button>
-              <Button onClick={() => setEditing(true)}>
+            <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)}>Закрыть</Button>
+              <Button className="w-full sm:w-auto" onClick={() => setEditing(true)}>
                 <Edit className="h-4 w-4 mr-2" />
                 Редактировать
               </Button>
             </DialogFooter>
           </div>
         ) : (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
+          <div className="space-y-3 min-w-0">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="min-w-0">
                 <Label>Фамилия</Label>
                 <Input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <Label>Имя</Label>
                 <Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <Label>Отчество</Label>
               <Input value={form.middleName} onChange={(e) => setForm({ ...form, middleName: e.target.value })} />
             </div>
@@ -1180,9 +1180,10 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                 disabled={updateMutation.isPending}
               />
             )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setEditing(false)}>Отмена</Button>
+            <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" className="w-full sm:w-auto" onClick={() => setEditing(false)}>Отмена</Button>
               <Button
+                className="w-full sm:w-auto"
                 onClick={() => {
                   if (form.birthDate) {
                     const birthErr = birthDateValidationError(form.birthDate, "optional");
@@ -1429,18 +1430,18 @@ function SickLeaveSection({ student }: { student: User }) {
           {student.sickNote && <div className="text-gray-600 dark:text-gray-300 mt-1">{student.sickNote}</div>}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="min-w-0">
           <Label className="text-xs">Болеет до</Label>
           <Input
             type="date"
             value={until}
             onChange={(e) => setUntil(e.target.value)}
-            className="text-sm"
+            className="text-sm w-full min-w-0"
             data-testid="input-sick-until"
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <Label className="text-xs">Причина (необяз.)</Label>
           <Input
             value={note}
@@ -1451,10 +1452,10 @@ function SickLeaveSection({ student }: { student: User }) {
           />
         </div>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
         <Button
           size="sm"
-          className="flex-1"
+          className="w-full sm:flex-1"
           onClick={() => setMutation.mutate({ sickUntil: until || null, sickNote: note || null })}
           disabled={setMutation.isPending || !until}
           data-testid="button-set-sick"
@@ -1466,6 +1467,7 @@ function SickLeaveSection({ student }: { student: User }) {
           <Button
             size="sm"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => setMutation.mutate({ sickUntil: null, sickNote: null })}
             disabled={setMutation.isPending}
             data-testid="button-clear-sick"
@@ -1508,7 +1510,7 @@ function monthLabel(yyyymm: string): string {
 
 function PaymentsSection({ studentId }: { studentId: string }) {
   return (
-    <div className="border rounded p-3 space-y-3">
+    <div className="border rounded p-3 space-y-3 min-w-0 overflow-hidden">
       <p className="font-medium text-sm flex items-center gap-2">
         <Wallet className="h-4 w-4" />
         Оплаты
@@ -1588,13 +1590,13 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
   const hasCvCurrentMonth = payments.some(p => p.type === "monthly_cv" && p.month === currentMonthStr());
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+    <div className="space-y-2 min-w-0">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 shrink-0">
           Зал — членский взнос
         </p>
         <span
-          className={`text-[10px] px-1.5 py-0.5 rounded border ${
+          className={`text-[10px] px-1.5 py-0.5 rounded border w-fit max-w-full ${
             hasCvCurrentMonth
               ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
               : "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800"
@@ -1620,11 +1622,11 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
         </p>
       )}
 
-      <div className="flex gap-2 items-end">
-        <div className="flex-1">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-end">
+        <div className="min-w-0">
           <Label className="text-xs">Тип</Label>
           <select
-            className="w-full text-sm border rounded px-2 py-1 bg-background"
+            className="w-full min-w-0 text-sm border rounded px-2 py-1 bg-background"
             value={type}
             onChange={(e) => setType(e.target.value as "monthly_cv" | "one_time_bv")}
             data-testid="select-membership-type"
@@ -1634,13 +1636,13 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
           </select>
         </div>
         {type === "monthly_cv" ? (
-          <div className="flex-1">
+          <div className="min-w-0">
             <Label className="text-xs">Дата оплаты учеником</Label>
             <Input
               type="date"
               value={paidDate}
               onChange={(e) => setPaidDate(e.target.value)}
-              className="text-sm"
+              className="text-sm w-full min-w-0"
               data-testid="input-cv-paid-date"
             />
             <p className="text-[10px] text-gray-500 mt-0.5">
@@ -1648,13 +1650,13 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
             </p>
           </div>
         ) : (
-          <div className="flex-1">
+          <div className="min-w-0">
             <Label className="text-xs">Дата</Label>
             <Input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="text-sm"
+              className="text-sm w-full min-w-0"
               data-testid="input-bv-date"
             />
           </div>
@@ -1688,10 +1690,10 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
           {payments.map((p) => (
             <div
               key={p.id}
-              className="flex items-center justify-between text-xs border rounded px-2 py-1 bg-gray-50 dark:bg-gray-800"
+              className="flex items-start justify-between gap-2 text-xs border rounded px-2 py-1 bg-gray-50 dark:bg-gray-800 min-w-0"
               data-testid={`row-membership-${p.id}`}
             >
-              <div className="flex flex-col">
+              <div className="flex flex-col min-w-0 flex-1 break-words">
                 <span className="font-medium">
                   {p.type === "monthly_cv"
                     ? `ЧВ за ${monthLabel(p.month || "")}${
@@ -1797,14 +1799,14 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
   const remaining = active ? Math.max(0, active.totalSessions - active.usedSessions) : 0;
 
   return (
-    <div className="space-y-2 pt-2 border-t">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+    <div className="space-y-2 pt-2 border-t min-w-0">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 shrink-0">
           Тренер — абонемент
         </p>
         {active ? (
           <span
-            className="text-[10px] px-1.5 py-0.5 rounded border bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+            className="text-[10px] px-1.5 py-0.5 rounded border w-fit max-w-full bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
             data-testid="badge-trainer-active"
           >
             {TRAINER_TYPE_LABELS[active.type as TrainerPaymentType]}: {active.usedSessions}/{active.totalSessions}
@@ -1812,7 +1814,7 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
           </span>
         ) : (
           <span
-            className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800"
+            className="text-[10px] px-1.5 py-0.5 rounded border w-fit max-w-full bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800"
             data-testid="badge-trainer-none"
           >
             Нет активного абонемента
@@ -1820,11 +1822,11 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-2 items-end">
-        <div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-end">
+        <div className="min-w-0">
           <Label className="text-xs">Тип</Label>
           <select
-            className="w-full text-sm border rounded px-2 py-1 bg-background"
+            className="w-full min-w-0 text-sm border rounded px-2 py-1 bg-background"
             value={type}
             onChange={(e) => handleTypeChange(e.target.value as TrainerPaymentType)}
             data-testid="select-trainer-type"
@@ -1834,7 +1836,7 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
             <option value="monthly">Месяц</option>
           </select>
         </div>
-        <div>
+        <div className="min-w-0">
           <Label className="text-xs">Тренировок</Label>
           <Input
             type="number"
@@ -1843,17 +1845,17 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
             value={totalSessions}
             onChange={(e) => setTotalSessions(Number(e.target.value) || 1)}
             disabled={type === "single"}
-            className="text-sm"
+            className="text-sm w-full min-w-0"
             data-testid="input-trainer-sessions"
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <Label className="text-xs">Начало</Label>
           <Input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="text-sm"
+            className="text-sm w-full min-w-0"
             data-testid="input-trainer-start"
           />
         </div>
@@ -1893,14 +1895,14 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
             return (
               <div
                 key={p.id}
-                className={`flex items-center justify-between text-xs border rounded px-2 py-1 ${
+                className={`flex items-start justify-between gap-2 text-xs border rounded px-2 py-1 min-w-0 ${
                   p.status === "active"
                     ? "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900"
                     : "bg-gray-50 dark:bg-gray-800"
                 }`}
                 data-testid={`row-trainer-payment-${p.id}`}
               >
-                <div className="flex flex-col flex-1">
+                <div className="flex flex-col flex-1 min-w-0 break-words">
                   <span className="font-medium flex items-center gap-1">
                     <Dumbbell className="h-3 w-3" />
                     {TRAINER_TYPE_LABELS[p.type as TrainerPaymentType]} —{" "}

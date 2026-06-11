@@ -365,18 +365,25 @@ export class DbStorage implements IStorage {
         },
       ]);
     }
-    // Ensure time slots exist for next 30 days
-    const settings = await this.loadSettings();
-    const today = new Date();
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      await this.generateTimeSlotsForDate(localDateStr(d), settings);
+    // Ensure time slots exist for next 30 days (skip when already seeded — faster local startup)
+    const [{ slotCount }] = await db
+      .select({ slotCount: drizzleSql<number>`count(*)::int` })
+      .from(timeSlots);
+    if ((slotCount ?? 0) < 50) {
+      const settings = await this.loadSettings();
+      const today = new Date();
+      for (let i = 0; i < 30; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + i);
+        await this.generateTimeSlotsForDate(localDateStr(d), settings);
+      }
     }
 
     try {
-      await this.repairAllScheduleIntegrity();
-      await this.repairDuplicateStudentAccounts();
+      if (process.env.NODE_ENV !== "development") {
+        await this.repairAllScheduleIntegrity();
+        await this.repairDuplicateStudentAccounts();
+      }
       await db.execute(drizzleSql`
         CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_active_per_student_slot
         ON bookings (student_id, time_slot_id)

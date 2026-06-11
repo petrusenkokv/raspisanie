@@ -9,6 +9,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { apiRequest } from "@/lib/queryClient";
+import { isRealtimeDisabled } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { Notification } from "@shared/schema";
@@ -18,6 +19,8 @@ interface Props {
   isTrainer: boolean;
   pushStatus?: PushStatus;
   pushLoading?: boolean;
+  pushError?: string | null;
+  pushUnsupportedReason?: string | null;
   onPushSubscribe?: () => void;
   onPushUnsubscribe?: () => void;
 }
@@ -123,6 +126,8 @@ export function NotificationsPopover({
   isTrainer,
   pushStatus,
   pushLoading,
+  pushError,
+  pushUnsupportedReason,
   onPushSubscribe,
   onPushUnsubscribe,
 }: Props) {
@@ -144,7 +149,8 @@ export function NotificationsPopover({
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications", userId],
     enabled: !!userId,
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchInterval: isRealtimeDisabled() ? 15_000 : false,
   });
 
   // Ask for browser-notifications permission once (trainer + students)
@@ -512,28 +518,54 @@ export function NotificationsPopover({
           </div>
         )}
 
-        {pushStatus && pushStatus !== "unsupported" && onPushSubscribe && onPushUnsubscribe && (
+        {onPushSubscribe && onPushUnsubscribe && (
           <div className="border-t px-4 py-3 bg-gray-50 dark:bg-gray-900/50">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-snug">
-              Звук на телефоне при закрытом приложении. iPhone: «Поделиться» → «На экран Домой», затем включите push.
+            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Push-уведомления
             </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full h-8"
-              disabled={pushLoading}
-              onClick={pushStatus === "granted" ? onPushUnsubscribe : onPushSubscribe}
-            >
-              {pushLoading ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : pushStatus === "granted" ? (
-                <Bell className="h-4 w-4 mr-2 text-blue-600" />
-              ) : (
-                <BellOff className="h-4 w-4 mr-2" />
-              )}
-              {pushStatus === "granted" ? "Отключить push" : "Включить push"}
-            </Button>
+            {pushStatus === "unsupported" ? (
+              <p className="text-xs text-amber-700 dark:text-amber-400 leading-snug">
+                {pushUnsupportedReason ??
+                  "Push недоступен в этом браузере. На Android — Chrome; на iPhone — только с экрана «Домой»."}
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-snug">
+                  Звук при закрытом приложении. Android: разрешите уведомления в Chrome.
+                </p>
+                {pushStatus === "denied" ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Уведомления запрещены. Включите их в настройках сайта в браузере.
+                  </p>
+                ) : (
+                  <Button
+                    type="button"
+                    variant={pushStatus === "on" ? "secondary" : "outline"}
+                    size="sm"
+                    className={cn(
+                      "w-full h-9 whitespace-normal",
+                      pushStatus === "on" &&
+                        "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950/40 dark:text-green-300",
+                    )}
+                    disabled={pushLoading}
+                    onClick={pushStatus === "on" ? onPushUnsubscribe : onPushSubscribe}
+                    aria-pressed={pushStatus === "on"}
+                  >
+                    {pushLoading ? (
+                      <Loader2 className="h-4 w-4 mr-2 shrink-0 animate-spin" />
+                    ) : pushStatus === "on" ? (
+                      <Bell className="h-4 w-4 mr-2 shrink-0 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <BellOff className="h-4 w-4 mr-2 shrink-0" />
+                    )}
+                    {pushStatus === "on" ? "Push включён — отключить" : "Включить push"}
+                  </Button>
+                )}
+                {pushError && (
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-2 leading-snug">{pushError}</p>
+                )}
+              </>
+            )}
           </div>
         )}
       </PopoverContent>
