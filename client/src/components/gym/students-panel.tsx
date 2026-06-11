@@ -966,6 +966,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
         firstName: student.firstName || "",
         lastName: student.lastName || "",
         middleName: student.middleName || "",
+        phone: student.phone || "",
         birthDate: student.birthDate || "",
         trainerNotes: student.trainerNotes || "",
         exemptMembership: student.exemptMembership === true,
@@ -1133,6 +1134,19 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               <Label>Отчество</Label>
               <Input value={form.middleName} onChange={(e) => setForm({ ...form, middleName: e.target.value })} />
             </div>
+            <div className="min-w-0">
+              <Label htmlFor="student-card-phone">Телефон</Label>
+              <Input
+                id="student-card-phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                placeholder="+7 (999) 123-45-67"
+                data-testid="input-student-card-phone"
+              />
+            </div>
             <div>
               <Label>Дата рождения</Label>
               <Input
@@ -1185,6 +1199,10 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
               <Button
                 className="w-full sm:w-auto"
                 onClick={() => {
+                  if (form.phone.replace(/\D/g, "").length < 10) {
+                    toast({ title: "Укажите корректный телефон", variant: "destructive" });
+                    return;
+                  }
                   if (form.birthDate) {
                     const birthErr = birthDateValidationError(form.birthDate, "optional");
                     if (birthErr) {

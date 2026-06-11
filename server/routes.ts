@@ -1621,10 +1621,21 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "Ученик не найден" });
       if (user.role === "trainer") return res.status(400).json({ message: "Нельзя редактировать тренера здесь" });
 
-      const { firstName, lastName, middleName, birthDate, trainerNotes, exemptMembership, exemptTrainerPayment,
+      const { phone, firstName, lastName, middleName, birthDate, trainerNotes, exemptMembership, exemptTrainerPayment,
         motherFullName, motherPhone, fatherFullName, fatherPhone,
       } = req.body;
       const updates: any = {};
+      if (phone !== undefined) {
+        const normalizedPhone = normalizePhone(String(phone));
+        if (!normalizedPhone) {
+          return res.status(400).json({ message: "Некорректный номер телефона" });
+        }
+        const existing = await storage.getUserByPhone(normalizedPhone);
+        if (existing && existing.id !== id) {
+          return res.status(409).json({ message: "Ученик с таким телефоном уже существует" });
+        }
+        updates.phone = normalizedPhone;
+      }
       if (firstName !== undefined) updates.firstName = String(firstName).trim();
       if (lastName !== undefined) updates.lastName = lastName ? String(lastName).trim() : null;
       if (middleName !== undefined) updates.middleName = middleName ? String(middleName).trim() : null;
