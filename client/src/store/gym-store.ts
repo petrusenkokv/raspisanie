@@ -58,7 +58,6 @@ function loadUserFromStorage(): User | null {
 }
 
 const CALENDAR_VIEW_KEY = "gym_calendar_view";
-const SELECTED_DATE_KEY = "gym_selected_date";
 
 function loadCalendarViewFromStorage(): ViewType {
   try {
@@ -68,18 +67,7 @@ function loadCalendarViewFromStorage(): ViewType {
   return "day";
 }
 
-function loadSelectedDateFromStorage(): Date {
-  try {
-    const raw = localStorage.getItem(SELECTED_DATE_KEY);
-    const match = raw?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (match) {
-      const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-      if (!Number.isNaN(date.getTime())) {
-        date.setHours(0, 0, 0, 0);
-        return date;
-      }
-    }
-  } catch {}
+export function getTodayDate(): Date {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return today;
@@ -91,18 +79,8 @@ function saveCalendarViewToStorage(view: ViewType) {
   } catch {}
 }
 
-function saveSelectedDateToStorage(date: Date) {
-  try {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    localStorage.setItem(SELECTED_DATE_KEY, `${y}-${m}-${d}`);
-  } catch {}
-}
-
 const _savedUser = loadUserFromStorage();
 const _savedView = loadCalendarViewFromStorage();
-const _savedSelectedDate = loadSelectedDateFromStorage();
 
 /** Sync UI with server session cookie (source of truth for auth). */
 export async function validateStoredUser(): Promise<void> {
@@ -135,7 +113,7 @@ export const useGymStore = create<GymStore>((set, get) => ({
   currentUser: _savedUser,
   isAuthenticated: !!_savedUser,
   currentView: _savedView,
-  selectedDate: _savedSelectedDate,
+  selectedDate: getTodayDate(),
   schedule: [],
   loading: false,
   userBookings: [],
@@ -161,7 +139,6 @@ export const useGymStore = create<GymStore>((set, get) => ({
   setSelectedDate: (date) => {
     const normalized = new Date(date);
     normalized.setHours(0, 0, 0, 0);
-    saveSelectedDateToStorage(normalized);
     set({ selectedDate: normalized });
   },
   

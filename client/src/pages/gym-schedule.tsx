@@ -17,7 +17,7 @@ import { ParentBookDialog } from "@/components/gym/parent-book-dialog";
 import { RecurringBookingsDialog } from "@/components/gym/recurring-bookings-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { useGymStore, validateStoredUser, logoutFromServer } from "@/store/gym-store";
+import { useGymStore, validateStoredUser, logoutFromServer, getTodayDate } from "@/store/gym-store";
 import { type User } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -57,6 +57,7 @@ export function GymSchedulePage() {
     setSchedule,
     setLoading,
     setUser,
+    setSelectedDate,
     isTrainer,
   } = useGymStore();
 
@@ -87,6 +88,20 @@ export function GymSchedulePage() {
   useEffect(() => {
     void validateStoredUser();
   }, []);
+
+  // Always open on today; if PWA stayed open overnight, jump forward from a past day.
+  useEffect(() => {
+    setSelectedDate(getTodayDate());
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      const today = getTodayDate();
+      const current = useGymStore.getState().selectedDate;
+      if (current < today) setSelectedDate(today);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [setSelectedDate]);
 
   // One refresh after login/logout (invalidation refetches active queries once).
   useEffect(() => {
