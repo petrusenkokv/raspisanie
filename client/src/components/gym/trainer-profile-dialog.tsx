@@ -1,17 +1,16 @@
 import { useEffect, useState } from "react";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useGymStore } from "@/store/gym-store";
-import { Loader2, UserCog, Phone, KeyRound } from "lucide-react";
+import { Loader2, UserCog } from "lucide-react";
 
 interface TrainerProfileDialogProps {
   open: boolean;
@@ -58,235 +57,190 @@ export function TrainerProfileDialog({ open, onOpenChange }: TrainerProfileDialo
     }
   }, [open, currentUser]);
 
-  const exemptMutation = useMutation({
-    mutationFn: async (payload: { exemptMembership?: boolean; exemptTrainerPayment?: boolean }) => {
-      const res = await apiRequest("PATCH", "/api/trainer/profile", payload);
-      if (!res.ok) {
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const passwordTouched = !!(oldPassword || newPassword || repeatPassword);
+      const normalizedPhone = normalizePhone(phone);
+      const phoneChanged = normalizedPhone !== null && normalizedPhone !== currentUser?.phone;
+      const initialExemptMembership = (currentUser as { exemptMembership?: boolean })?.exemptMembership === true;
+      const initialExemptTrainerPayment = (currentUser as { exemptTrainerPayment?: boolean })?.exemptTrainerPayment === true;
+      const exemptChanged =
+        exemptMembership !== initialExemptMembership ||
+        exemptTrainerPayment !== initialExemptTrainerPayment;
+
+      if (phoneChanged && !normalizedPhone) {
+        throw new Error("Введите корректный номер телефона (11 цифр, начиная с 7 или 8)");
+      }
+
+      if (passwordTouched) {
+        if (!oldPassword || !newPassword || !repeatPassword) {
+          throw new Error("Заполните все поля для смены пароля");
+        }
+        if (newPassword.length < 4) {
+          throw new Error("Пароль не короче 4 символов");
+        }
+        if (newPassword !== repeatPassword) {
+          throw new Error("Пароли не совпадают");
+        }
+      }
+
+      if (!phoneChanged && !exemptChanged && !passwordTouched) {
+        return { changed: false as const };
+      }
+
+      let user = currentUser;
+
+      if (phoneChanged || exemptChanged) {
+        const payload: Record<string, unknown> = {};
+        if (phoneChanged) {
+          payload.phone = normalizedPhone;
+          payload.userId = currentUser?.id;
+        }
+        if (exemptChanged) {
+          payload.exemptMembership = exemptMembership;
+          payload.exemptTrainerPayment = exemptTrainerPayment;
+        }
+
+        const res = await apiRequest("PATCH", "/api/trainer/profile", payload);
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || "Ошибка сохранения профиля");
+        }
         const data = await res.json();
-        throw new Error(data.message || "Ошибка сохранения");
+        if (data.user) user = { ...currentUser!, ...data.user };
       }
-      return res.json();
+
+      if (passwordTouched) {
+        const res = await apiRequest("POST", "/api/auth/change-password", {
+          oldPassword,
+          newPassword,
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || "Ошибка при смене пароля");
+        }
+        user = { ...user!, mustChangePassword: false } as typeof user;
+      }
+
+      return { changed: true as const, user };
     },
-    onSuccess: (data) => {
-      if (currentUser && data.user) {
-        setUser({ ...currentUser, ...data.user });
+    onSuccess: (result) => {
+      if (!result.changed) {
+        toast({ title: "Изменений нет" });
+        return;
       }
+      if (result.user && currentUser) {
+        setUser({ ...currentUser, ...result.user });
+      }
+      setOldPassword("");
+      setNewPassword("");
+      setRepeatPassword("");
+      toast({ title: "Сохранено" });
+      onOpenChange(false);
     },
     onError: (error: Error) => {
       toast({ variant: "destructive", title: "Не удалось сохранить", description: error.message });
     },
   });
 
-  const handleExemptToggle = (
-    field: "exemptMembership" | "exemptTrainerPayment",
-    next: boolean,
-  ) => {
-    if (field === "exemptMembership") setExemptMembership(next);
-    else setExemptTrainerPayment(next);
-    exemptMutation.mutate({ [field]: next });
+  const handleClose = () => {
+    onOpenChange(false);
   };
 
-  const phoneMutation = useMutation({
-    mutationFn: async () => {
-      const normalized = normalizePhone(phone);
-      if (!normalized) throw new Error("Введите корректный номер телефона (11 цифр, начиная с 7 или 8)");
-      const res = await apiRequest("PATCH", "/api/trainer/profile", {
-        userId: currentUser?.id,
-        phone: normalized,
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Ошибка при сохранении");
-      }
-      return res.json();
-    },
-    onSuccess: (data) => {
-      toast({ title: "Номер телефона обновлён" });
-      if (currentUser && data.user) {
-        setUser({ ...currentUser, phone: data.user.phone });
-      }
-    },
-    onError: (error: any) => {
-      toast({ variant: "destructive", title: "Не удалось обновить телефон", description: error?.message });
-    },
-  });
-
-  const passwordMutation = useMutation({
-    mutationFn: async () => {
-      if (!oldPassword || !newPassword) throw new Error("Заполните все поля");
-      if (newPassword.length < 4) throw new Error("Пароль не короче 4 символов");
-      if (newPassword !== repeatPassword) throw new Error("Пароли не совпадают");
-      const res = await apiRequest("POST", "/api/auth/change-password", {
-        oldPassword,
-        newPassword,
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Ошибка при сохранении");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Пароль изменён" });
-      setOldPassword("");
-      setNewPassword("");
-      setRepeatPassword("");
-      if (currentUser) {
-        setUser({ ...currentUser, mustChangePassword: false } as any);
-      }
-    },
-    onError: (error: any) => {
-      toast({ variant: "destructive", title: "Не удалось сменить пароль", description: error?.message });
-    },
-  });
-
-  const handlePhoneSave = () => {
-    const normalized = normalizePhone(phone);
-    if (!normalized) {
-      toast({ variant: "destructive", title: "Некорректный номер", description: "Введите 11 цифр, начиная с 7 или 8" });
-      return;
-    }
-    if (normalized === currentUser?.phone) {
-      toast({ title: "Номер не изменился" });
-      return;
-    }
-    phoneMutation.mutate();
-  };
-
-  const handlePasswordSave = () => {
-    if (!oldPassword || !newPassword || !repeatPassword) {
-      toast({ variant: "destructive", title: "Заполните все поля" });
-      return;
-    }
-    if (newPassword.length < 4) {
-      toast({ variant: "destructive", title: "Пароль не короче 4 символов" });
-      return;
-    }
-    if (newPassword !== repeatPassword) {
-      toast({ variant: "destructive", title: "Пароли не совпадают" });
-      return;
-    }
-    passwordMutation.mutate();
+  const handleSave = () => {
+    saveMutation.mutate();
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserCog className="h-5 w-5 text-blue-600" />
+      <DialogContent
+        className="flex max-h-[90dvh] flex-col gap-3 p-4 sm:max-w-md"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader className="shrink-0 space-y-1 pr-8">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <UserCog className="h-4 w-4 text-blue-600" />
             Профиль тренера
           </DialogTitle>
-          <DialogDescription>
-            Изменение контактных данных и пароля
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
-          {/* Phone section */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
-              <Phone className="h-4 w-4 text-blue-500" />
-              Номер телефона
-            </div>
-            <div>
-              <Label htmlFor="trainer-phone">Новый номер</Label>
-              <Input
-                id="trainer-phone"
-                type="tel"
-                placeholder="+7 (999) 123-45-67"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <Button
-              onClick={handlePhoneSave}
-              disabled={phoneMutation.isPending}
-              className="w-full"
-            >
-              {phoneMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Сохранить номер
-            </Button>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+          <div className="space-y-1.5">
+            <Label htmlFor="trainer-phone">Телефон</Label>
+            <Input
+              id="trainer-phone"
+              type="tel"
+              placeholder="+7 (999) 123-45-67"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
           </div>
 
-          <Separator />
-
-          <div className="space-y-3">
-            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-              Записи в расписании
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Для вашей записи в расписании отметки ЧВ и оплаты тренеру скрыты автоматически.
-              Чекбоксы ниже сохраняют настройку в профиле (на случай смены логики или учётной записи).
-            </p>
-            <label className="flex items-start gap-2 cursor-pointer">
+          <div className="space-y-2 rounded-md border px-3 py-2">
+            <label className="flex cursor-pointer items-center gap-2">
               <Checkbox
                 checked={exemptMembership}
-                disabled={exemptMutation.isPending}
-                onCheckedChange={(v) => handleExemptToggle("exemptMembership", !!v)}
+                disabled={saveMutation.isPending}
+                onCheckedChange={(v) => setExemptMembership(!!v)}
               />
-              <span className="text-sm leading-tight">Не показывать членский взнос (ЧВ/БВ)</span>
+              <span className="text-sm">Не показывать членский взнос (ЧВ/БВ)</span>
             </label>
-            <label className="flex items-start gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <Checkbox
                 checked={exemptTrainerPayment}
-                disabled={exemptMutation.isPending}
-                onCheckedChange={(v) => handleExemptToggle("exemptTrainerPayment", !!v)}
+                disabled={saveMutation.isPending}
+                onCheckedChange={(v) => setExemptTrainerPayment(!!v)}
               />
-              <span className="text-sm leading-tight">Не показывать оплату тренеру</span>
+              <span className="text-sm">Не показывать оплату тренеру</span>
             </label>
           </div>
 
-          <Separator />
-
-          {/* Password section */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
-              <KeyRound className="h-4 w-4 text-blue-500" />
-              Смена пароля
-            </div>
-            <div>
-              <Label htmlFor="trainer-old-pwd">Текущий пароль</Label>
-              <Input
-                id="trainer-old-pwd"
-                type="password"
-                value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="trainer-new-pwd">Новый пароль</Label>
-              <Input
-                id="trainer-new-pwd"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="trainer-repeat-pwd">Повторите новый пароль</Label>
-              <Input
-                id="trainer-repeat-pwd"
-                type="password"
-                value={repeatPassword}
-                onChange={(e) => setRepeatPassword(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <Button
-              onClick={handlePasswordSave}
-              disabled={passwordMutation.isPending}
-              variant="outline"
-              className="w-full"
-            >
-              {passwordMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Сменить пароль
-            </Button>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium">Смена пароля</p>
+            <Input
+              id="trainer-old-pwd"
+              type="password"
+              placeholder="Текущий пароль"
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+            />
+            <Input
+              id="trainer-new-pwd"
+              type="password"
+              placeholder="Новый пароль"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+            <Input
+              id="trainer-repeat-pwd"
+              type="password"
+              placeholder="Повторите новый пароль"
+              value={repeatPassword}
+              onChange={(e) => setRepeatPassword(e.target.value)}
+            />
           </div>
         </div>
+
+        <DialogFooter className="shrink-0 gap-2 sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1 sm:flex-none"
+            onClick={handleClose}
+            disabled={saveMutation.isPending}
+          >
+            Закрыть
+          </Button>
+          <Button
+            type="button"
+            className="flex-1 sm:flex-none"
+            onClick={handleSave}
+            disabled={saveMutation.isPending}
+          >
+            {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Сохранить
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
