@@ -49,7 +49,7 @@ import {
 } from "./trainer-student-service-section";
 import { computeSessionPrice } from "@shared/consents-pricing";
 import type { TrainerService } from "@shared/schema";
-import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, BadgeAlert } from "lucide-react";
+import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
@@ -178,6 +178,8 @@ function LegalRepresentativesFields({
 export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [quickFilter, setQuickFilter] = useState<"all" | "debt" | "pending">("all");
+  const [compactMode, setCompactMode] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -332,8 +334,28 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
   });
 
-  const filteredStudents = students.filter(student => {
+  const getStudentFlags = (student: User & { pendingDocumentCount?: number }) => {
+    const isInactive = (student as any).isActive === false;
+    const isPending = (student as any).isPendingApproval === true;
+    const hasMembership = (student as any).hasMembership as boolean | undefined;
+    const hasTrainerPayment = (student as any).hasTrainerPayment as boolean | undefined;
+    const exemptMembership = (student as any).exemptMembership === true;
+    const exemptTrainerPayment = (student as any).exemptTrainerPayment === true;
+    const needsCv = !exemptMembership && hasMembership === false;
+    const needsTrainer = !exemptTrainerPayment && hasTrainerPayment === false;
+    const hasDebt =
+      !isInactive &&
+      !isPending &&
+      hasMembership !== undefined &&
+      (needsCv || needsTrainer);
+    return { isInactive, isPending, hasDebt };
+  };
+
+  const filteredStudents = students.filter((student) => {
     const query = searchQuery.toLowerCase().trim();
+    const flags = getStudentFlags(student);
+    if (quickFilter === "debt" && !flags.hasDebt) return false;
+    if (quickFilter === "pending" && !flags.isPending) return false;
     if (!query) return true;
     const digitsQuery = query.replace(/\D/g, "");
     const phoneDigits = student.phone.replace(/\D/g, "");
@@ -344,20 +366,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       (digitsQuery.length > 0 && phoneDigits.includes(digitsQuery))
     );
   });
-  const prioritizedStudents = [...filteredStudents].sort((a, b) => {
-    const getIsRedCard = (student: any) => {
-      const isInactive = student.isActive === false;
-      const isPending = student.isPendingApproval === true;
-      const hasMembership = student.hasMembership as boolean | undefined;
-      const hasTrainerPayment = student.hasTrainerPayment as boolean | undefined;
-      const exemptMembership = student.exemptMembership === true;
-      const exemptTrainerPayment = student.exemptTrainerPayment === true;
-      const needsCv = !exemptMembership && hasMembership === false;
-      const needsTrainer = !exemptTrainerPayment && hasTrainerPayment === false;
-      return !isInactive && !isPending && hasMembership !== undefined && (needsCv || needsTrainer);
-    };
-    return Number(getIsRedCard(b)) - Number(getIsRedCard(a));
-  });
+  const visibleStudents = filteredStudents;
 
   const handleBookStudent = (student: User & { pendingDocumentCount?: number }) => {
     if ((student.pendingDocumentCount ?? 0) > 0) {
@@ -444,42 +453,78 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
             </SheetTitle>
           </SheetHeader>
 
-          <Button
-            className="w-full mb-3"
-            onClick={() => setAddDialogOpen(true)}
-            data-testid="button-add-student"
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            Добавить ученика
-          </Button>
-
-          {/* Search */}
-          <div className="relative mb-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Поиск по имени или телефону..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-
-          {/* Stats + inactive toggle */}
-          <div className="flex items-center justify-between mb-2 text-sm text-gray-600 dark:text-gray-400">
-            <div className="flex items-center gap-2">
-              <UserCheck className="h-4 w-4" />
-              <span>Учеников: <strong>{prioritizedStudents.length}</strong></span>
-            </div>
-            <button
-              className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-                showInactive
-                  ? "bg-gray-200 text-gray-800 border-gray-300 dark:bg-gray-700 dark:text-gray-200"
-                  : "bg-transparent text-gray-500 border-gray-200 hover:border-gray-400"
-              }`}
-              onClick={() => setShowInactive(v => !v)}
+          <div className="sticky top-0 z-10 bg-background pb-2">
+            <Button
+              className="w-full mb-3"
+              onClick={() => setAddDialogOpen(true)}
+              data-testid="button-add-student"
             >
-              {showInactive ? "Скрыть архив" : "Показать архив"}
-            </button>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Добавить ученика
+            </Button>
+
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Поиск по имени или телефону..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 mb-2">
+              <Button
+                size="sm"
+                variant={quickFilter === "all" ? "default" : "outline"}
+                className="h-8 px-2 text-xs"
+                onClick={() => setQuickFilter("all")}
+              >
+                Все
+              </Button>
+              <Button
+                size="sm"
+                variant={quickFilter === "debt" ? "default" : "outline"}
+                className="h-8 px-2 text-xs"
+                onClick={() => setQuickFilter("debt")}
+              >
+                Долг
+              </Button>
+              <Button
+                size="sm"
+                variant={quickFilter === "pending" ? "default" : "outline"}
+                className="h-8 px-2 text-xs"
+                onClick={() => setQuickFilter("pending")}
+              >
+                Ожидают
+              </Button>
+              <Button
+                size="sm"
+                variant={compactMode ? "default" : "outline"}
+                className="h-8 px-2 text-xs ml-auto"
+                onClick={() => setCompactMode((v) => !v)}
+              >
+                {compactMode ? "Компакт" : "Обычно"}
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between mb-2 text-sm text-gray-600 dark:text-gray-400">
+              <div className="flex items-center gap-2">
+                <UserCheck className="h-4 w-4" />
+                <span>Учеников: <strong>{visibleStudents.length}</strong></span>
+              </div>
+              <button
+                className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                  showInactive
+                    ? "bg-gray-200 text-gray-800 border-gray-300 dark:bg-gray-700 dark:text-gray-200"
+                    : "bg-transparent text-gray-500 border-gray-200 hover:border-gray-400"
+                }`}
+                onClick={() => setShowInactive(v => !v)}
+              >
+                {showInactive ? "Скрыть архив" : "Показать архив"}
+              </button>
+            </div>
+
           </div>
 
           {/* Students list */}
@@ -487,17 +532,16 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
             <div className="flex items-center justify-center h-32">
               <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
             </div>
-          ) : prioritizedStudents.length === 0 ? (
+          ) : visibleStudents.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               {searchQuery ? "Ученики не найдены" : "Пока нет зарегистрированных учеников"}
             </div>
           ) : (
             <div className="space-y-3">
-              {prioritizedStudents.map((student) => {
+              {visibleStudents.map((student) => {
                 const age = calculateAge((student as any).birthDate);
-                const isInactive = (student as any).isActive === false;
+                const { isInactive, isPending, hasDebt } = getStudentFlags(student);
                 const hasPendingDocs = (student.pendingDocumentCount ?? 0) > 0;
-                const isPending = (student as any).isPendingApproval === true;
                 const isParentAccount = student.role === "parent";
                 const isParentMode = !!(student as any).isParent;
                 const hasLinkedChildren = !!(student as any).hasLinkedChildren;
@@ -505,160 +549,155 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 const hasTrainerPayment = (student as any).hasTrainerPayment as boolean | undefined;
                 const exemptMembership = (student as any).exemptMembership === true;
                 const exemptTrainerPayment = (student as any).exemptTrainerPayment === true;
-                const needsCv = !exemptMembership && hasMembership === false;
-                const needsTrainer = !exemptTrainerPayment && hasTrainerPayment === false;
-                const hasDebt =
-                  !isInactive &&
-                  !isPending &&
-                  hasMembership !== undefined &&
-                  (needsCv || needsTrainer);
                 return (
-                  <div key={student.id} className={`border rounded-lg p-4 transition-shadow ${
-                    isInactive
-                      ? "bg-gray-50 dark:bg-gray-900 opacity-70 border-dashed"
-                      : isPending
-                        ? "bg-blue-50 dark:bg-blue-950/20 border-blue-300 dark:border-blue-700 hover:shadow-sm"
-                        : hasDebt
-                          ? "bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-700 hover:shadow-sm"
-                          : hasPendingDocs
-                            ? "bg-orange-50 dark:bg-orange-950/20 border-orange-300 dark:border-orange-700 hover:shadow-sm"
-                            : "bg-white dark:bg-gray-800 hover:shadow-sm"
-                  }`}>
-                    {isPending && !isInactive && (
-                      <div className="flex items-center justify-between gap-2 mb-3 p-2 rounded-md bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
-                        <span className="flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-300">
-                          <Clock className="h-3.5 w-3.5" />
-                          Ожидает вашего одобрения
-                        </span>
-                        <Button
-                          size="sm"
-                          className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                          onClick={() => approveMutation.mutate(student.id)}
-                          disabled={approveMutation.isPending}
-                        >
-                          {approveMutation.isPending ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <>
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Одобрить
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    )}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1 min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <button
-                            type="button"
-                            className="font-semibold text-gray-900 dark:text-white hover:text-blue-600 hover:underline text-left"
-                            onClick={() => setViewStudentId(student.id)}
-                            data-testid={`button-view-student-${student.id}`}
+                  <div key={student.id} className={`border rounded-lg transition-shadow ${
+                      isInactive
+                        ? "bg-gray-50 dark:bg-gray-900 opacity-70 border-dashed"
+                        : isPending
+                          ? "bg-blue-50 dark:bg-blue-950/20 border-blue-300 dark:border-blue-700 hover:shadow-sm"
+                          : hasDebt
+                            ? "bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-700 hover:shadow-sm"
+                            : hasPendingDocs
+                              ? "bg-orange-50 dark:bg-orange-950/20 border-orange-300 dark:border-orange-700 hover:shadow-sm"
+                              : "bg-white dark:bg-gray-800 hover:shadow-sm"
+                    } ${compactMode ? "p-2.5" : "p-4"}`}>
+                      {isPending && !isInactive && (
+                        <div className={`flex items-center justify-between gap-2 rounded-md bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 ${compactMode ? "mb-2 p-1.5" : "mb-3 p-2"}`}>
+                          <span className="flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-300">
+                            <Clock className="h-3.5 w-3.5" />
+                            Ожидает вашего одобрения
+                          </span>
+                          <Button
+                            size="sm"
+                            className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => approveMutation.mutate(student.id)}
+                            disabled={approveMutation.isPending}
                           >
-                            {student.lastName} {student.firstName} {(student as any).middleName || ""}
-                          </button>
-                          {(isParentAccount || isParentMode) && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-700">
-                              родитель
-                            </span>
-                          )}
-                          {isInactive && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-400">
-                              архив
-                            </span>
-                          )}
-                          {hasPendingDocs && !isInactive && (
-                            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-700">
-                              <AlertTriangle className="h-2.5 w-2.5" />
-                              Документы не приняты
-                            </span>
-                          )}
-                          {hasDebt && (
-                            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-red-100 text-red-700 border-red-300 dark:bg-red-900/40 dark:text-red-400 dark:border-red-700">
-                              <BadgeAlert className="h-2.5 w-2.5" />
-                              {!hasMembership && !hasTrainerPayment
-                                ? "Нет ЧВ/БВ и оплаты тренеру"
-                                : !hasMembership
-                                  ? "Нет ЧВ/БВ"
-                                  : "Нет оплаты тренеру"}
-                            </span>
-                          )}
+                            {approveMutation.isPending ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <>
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Одобрить
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      )}
+                      <div className={`flex justify-between gap-2 ${compactMode ? "items-center" : "items-start"}`}>
+                        <div className={`min-w-0 flex-1 ${compactMode ? "space-y-0.5" : "space-y-1"}`}>
+                          <div className={`flex items-center gap-2 flex-wrap ${compactMode ? "mb-0.5" : ""}`}>
+                            <button
+                              type="button"
+                              className={`font-semibold text-gray-900 dark:text-white hover:text-blue-600 hover:underline text-left ${compactMode ? "text-sm leading-tight" : ""}`}
+                              onClick={() => setViewStudentId(student.id)}
+                              data-testid={`button-view-student-${student.id}`}
+                            >
+                              {student.lastName} {student.firstName} {(student as any).middleName || ""}
+                            </button>
                           {age !== null && (
-                            <Badge variant="secondary" className="text-xs">
+                            <Badge variant="secondary" className={compactMode ? "text-[10px] px-1.5 py-0" : "text-xs"}>
                               {age} {age === 1 ? "год" : age >= 2 && age <= 4 ? "года" : "лет"}
                             </Badge>
                           )}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                          <Phone className="h-3 w-3" />
-                          <span>{student.phone}</span>
-                        </div>
-                        {student.createdAt && (
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <Clock className="h-3 w-3" />
-                            <span>С {format(new Date(student.createdAt), "d MMM yyyy", { locale: ru })}</span>
+                            {(isParentAccount || isParentMode) && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-700">
+                                родитель
+                              </span>
+                            )}
+                            {isInactive && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-400">
+                                архив
+                              </span>
+                            )}
+                            {hasPendingDocs && !isInactive && (
+                              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-700">
+                                <AlertTriangle className="h-2.5 w-2.5" />
+                                Документы не приняты
+                              </span>
+                            )}
+                            {hasDebt && (
+                              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-red-100 text-red-700 border-red-300 dark:bg-red-900/40 dark:text-red-400 dark:border-red-700">
+                              <span className="text-[10px] font-semibold leading-none">₽</span>
+                                {!hasMembership && !hasTrainerPayment
+                                ? "Взнос и Тренеру"
+                                  : !hasMembership
+                                  ? "Взнос"
+                                  : "Тренеру"}
+                              </span>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-1 shrink-0">
-                        {!isInactive && !isPending && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleBookStudent(student)}
-                            data-testid={`button-book-student-${student.id}`}
-                          >
-                            <Calendar className="h-4 w-4 mr-1" />
-                            Записать
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setViewStudentId(student.id)}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          Карточка
-                        </Button>
-                        {isInactive ? (
+                          <div className={`flex items-center gap-1.5 text-gray-600 dark:text-gray-400 ${compactMode ? "text-xs" : "text-sm"}`}>
+                            <Phone className={compactMode ? "h-2.5 w-2.5" : "h-3 w-3"} />
+                            <span>{student.phone}</span>
+                          </div>
+                          {!compactMode && student.createdAt && (
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                              <Clock className="h-3 w-3" />
+                              <span>С {format(new Date(student.createdAt), "d MMM yyyy", { locale: ru })}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className={`shrink-0 ${compactMode ? "grid grid-cols-2 gap-1.5 min-w-[170px]" : "flex flex-col gap-1"}`}>
+                          {!isInactive && !isPending && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleBookStudent(student)}
+                              data-testid={`button-book-student-${student.id}`}
+                              className={compactMode ? "h-8 px-2 text-xs" : ""}
+                            >
+                              <Calendar className={compactMode ? "h-3.5 w-3.5 mr-1" : "h-4 w-4 mr-1"} />
+                              {compactMode ? "Запись" : "Записать"}
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                            onClick={() => { setStudentToReactivate(student); setReactivateResetCv(true); }}
+                            onClick={() => setViewStudentId(student.id)}
+                            className={compactMode ? "h-8 px-2 text-xs" : ""}
                           >
-                            <UserCheck className="h-4 w-4 mr-1" />
-                            Восстановить
+                            <Eye className={compactMode ? "h-3.5 w-3.5 mr-1" : "h-4 w-4 mr-1"} />
+                            Карточка
                           </Button>
-                        ) : (
-                          !isPending && (
+                          {isInactive ? (
                             <Button
                               size="sm"
                               variant="outline"
-                              className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                              onClick={() => setStudentToDeactivate(student)}
-                              data-testid={`button-deactivate-student-${student.id}`}
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              onClick={() => { setStudentToReactivate(student); setReactivateResetCv(true); }}
                             >
-                              <X className="h-4 w-4 mr-1" />
-                              Приостановить
+                              <UserCheck className={compactMode ? "h-3.5 w-3.5 mr-1" : "h-4 w-4 mr-1"} />
+                              {compactMode ? "Вернуть" : "Восстановить"}
                             </Button>
-                          )
-                        )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
-                          onClick={() => setStudentToDelete(student)}
-                          disabled={isParentAccount && hasLinkedChildren}
-                          title={isParentAccount && hasLinkedChildren ? "Сначала удалите или отвяжите детей" : undefined}
-                          data-testid={`button-delete-student-${student.id}`}
-                        >
-                          <Trash2 className="h-3 w-3 mr-1" />
-                          Удалить совсем
-                        </Button>
+                          ) : (
+                            !isPending && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                onClick={() => setStudentToDeactivate(student)}
+                                data-testid={`button-deactivate-student-${student.id}`}
+                              >
+                                <X className={compactMode ? "h-3.5 w-3.5 mr-1" : "h-4 w-4 mr-1"} />
+                                {compactMode ? "Пауза" : "Приостановить"}
+                              </Button>
+                            )
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className={`text-red-400 hover:text-red-600 hover:bg-red-50 text-xs ${compactMode ? "col-span-2 h-7" : ""}`}
+                            onClick={() => setStudentToDelete(student)}
+                            disabled={isParentAccount && hasLinkedChildren}
+                            title={isParentAccount && hasLinkedChildren ? "Сначала удалите или отвяжите детей" : undefined}
+                            data-testid={`button-delete-student-${student.id}`}
+                          >
+                            <Trash2 className={compactMode ? "h-3 w-3 mr-1" : "h-3 w-3 mr-1"} />
+                            {compactMode ? "Удалить" : "Удалить совсем"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
                 );
               })}
             </div>
