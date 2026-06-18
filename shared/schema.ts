@@ -518,6 +518,11 @@ export type StudentPaymentStatus = {
   cvValidUntil: string | null; // YYYY-MM-DD — последний день действия текущего ЧВ (включительно)
   hasTrainerPayment: boolean; // есть активный абонемент с остатком
   activeTrainerPayment: TrainerPaymentWithUsage | null;
+  /** Можно записаться / отменить / перенести с учётом льготных 3 дней после ЧВ */
+  membershipBookingAllowed: boolean;
+  membershipInGrace: boolean;
+  membershipBlockDate: string | null;
+  membershipGraceDaysLeft: number | null;
 };
 export type WeekdayTemplateEntry = z.infer<typeof weekdayTemplateEntrySchema>;
 export type WeeklyTemplate = Partial<Record<"1" | "2" | "3" | "4" | "5" | "6" | "7", WeekdayTemplateEntry>>;

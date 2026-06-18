@@ -8,6 +8,7 @@ import { RescheduleDialog } from "./reschedule-dialog";
 import { Input } from "@/components/ui/input";
 import { type TimeSlotWithBookings, type AttendanceStatus } from "@shared/schema";
 import { BookingPaymentBadges, useStudentPaymentStatus } from "./booking-payment-badges";
+import { getMembershipGraceWarning, isMembershipBookingBlocked } from "@shared/membership-grace";
 import { MEMBERSHIP_BOOKING_BLOCK_MESSAGE } from "@shared/membership-booking";
 import { useGymStore } from "@/store/gym-store";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -226,8 +227,8 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   );
   const blockedByMembership =
     showSelfMembershipBadge &&
-    selfPaymentStatus !== undefined &&
-    !selfPaymentStatus.hasMembership;
+    isMembershipBookingBlocked(selfPaymentStatus);
+  const membershipGraceWarning = getMembershipGraceWarning(selfPaymentStatus);
   const studentFillLevel = getStudentSlotFillLevel(
     isBlocked,
     isFull,
@@ -689,6 +690,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
               <>
                 {slotPriceStudentIds.length > 0 && familyBookings.length === 0 && (
                   <SlotSessionPrice studentIds={slotPriceStudentIds} inline />
+                )}
+                {membershipGraceWarning && (
+                  <p className="text-xs text-orange-600 dark:text-orange-400 text-center px-1">
+                    {membershipGraceWarning}
+                  </p>
                 )}
                 <MembershipBlockedButton
                   onClick={() => onBook(timeSlot.id)}

@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { apiRequest } from "@/lib/queryClient";
 import { useGymStore } from "@/store/gym-store";
 import type { StudentPaymentStatus } from "@shared/schema";
+import { membershipGraceWarningMessage } from "@shared/membership-grace";
 
 export function useStudentPaymentStatus(
   studentId: string | undefined,
@@ -71,6 +72,7 @@ export function BookingPaymentBadges({
   }
 
   const cvOk = data.hasMembership;
+  const cvInGrace = !cvOk && data.membershipInGrace;
   const cvLabel = data.membershipKind === "monthly_cv" ? "ЧВ" : data.membershipKind === "one_time_bv" ? "БВ" : "ЧВ";
   const trainerOk = data.hasTrainerPayment;
   const trainerLabel = data.activeTrainerPayment
@@ -105,6 +107,13 @@ export function BookingPaymentBadges({
         <div className="text-gray-300 dark:text-gray-400">Разовая оплата на этот день</div>
       </div>
     );
+  } else if (cvInGrace && data.membershipGraceDaysLeft != null) {
+    cvTooltipNode = (
+      <div className="space-y-1 text-xs">
+        <div className="font-semibold text-orange-200">ЧВ не оплачен</div>
+        <div>{membershipGraceWarningMessage(data.membershipGraceDaysLeft)}</div>
+      </div>
+    );
   } else if (cvOk) {
     cvTooltipNode = <span className="text-xs">ЧВ/БВ оплачено</span>;
   } else {
@@ -118,7 +127,9 @@ export function BookingPaymentBadges({
           <TooltipTrigger asChild>
             <span
               className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded border cursor-help ${
-                !cvOk
+                cvInGrace
+                  ? "bg-orange-100 text-orange-700 border-orange-400 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700"
+                  : !cvOk
                   ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
                   : cvDaysLeft !== null && cvDaysLeft <= 3
                   ? "bg-orange-100 text-orange-700 border-orange-400 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700"
@@ -134,6 +145,8 @@ export function BookingPaymentBadges({
                     <span className="ml-0.5">·{cvDaysLeft}д</span>
                   )}
                 </>
+              ) : cvInGrace ? (
+                "ЧВ !"
               ) : (
                 "ЧВ ✗"
               )}

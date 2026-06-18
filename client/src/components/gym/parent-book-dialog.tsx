@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import type { User } from "@shared/schema";
 import { MembershipBlockedButton } from "@/components/gym/membership-blocked-button";
 import { useStudentPaymentStatus } from "@/components/gym/booking-payment-badges";
+import { getMembershipGraceWarning, isMembershipBookingBlocked } from "@shared/membership-grace";
 import { shouldShowMembershipBadge } from "@/lib/utils-gym";
 import { MEMBERSHIP_BOOKING_BLOCK_MESSAGE } from "@shared/membership-booking";
 
@@ -67,8 +68,8 @@ export function ParentBookDialog({
   );
   const blockedByMembership =
     showMembershipBadge &&
-    selectedPaymentStatus !== undefined &&
-    !selectedPaymentStatus.hasMembership;
+    isMembershipBookingBlocked(selectedPaymentStatus);
+  const membershipGraceWarning = getMembershipGraceWarning(selectedPaymentStatus);
 
   const handleConfirm = () => {
     if (!selectedId || blockedByMembership) return;
@@ -109,6 +110,11 @@ export function ParentBookDialog({
               </p>
             )}
           </div>
+          {membershipGraceWarning && (
+            <p className="text-xs text-orange-600 dark:text-orange-400">
+              {membershipGraceWarning}
+            </p>
+          )}
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} disabled={loading}>
               Отмена

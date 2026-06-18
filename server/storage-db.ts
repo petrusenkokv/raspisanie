@@ -35,6 +35,10 @@ import {
   eachDateStrInRange,
   nextCvAllowedDateStr,
 } from "./moscow-date";
+import {
+  computeMembershipGraceFields,
+  cvPeriodValidUntilInclusive,
+} from "./membership-grace";
 import { studentIdentityKey, studentFullNameKey } from "./student-identity";
 import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
 import { resolveBookingSource, type BookingSource } from "@shared/booking-source";
@@ -2546,6 +2550,43 @@ export class DbStorage implements IStorage {
     if (!sub && !exemptTrainerPayment) {
       sub = await this.findConsumedTrainerPaymentForDate(studentId, dateStr);
     }
+
+    const todayStr = moscowDateString();
+    let hasMembershipToday = exemptMembership;
+    if (!hasMembershipToday) {
+      for (const p of cvPayments) {
+        const sickDays = await this.getSickDaysAfter(studentId, p.paidDate!);
+        if (cvValidUntilForDate(p.paidDate!, todayStr, sickDays.size)) {
+          hasMembershipToday = true;
+          break;
+        }
+      }
+      if (!hasMembershipToday) {
+        const bvToday = await db.select().from(membershipPayments).where(
+          and(
+            eq(membershipPayments.studentId, studentId),
+            eq(membershipPayments.type, "one_time_bv"),
+            eq(membershipPayments.date, todayStr),
+          ),
+        );
+        if (bvToday.length > 0) hasMembershipToday = true;
+      }
+    }
+
+    let latestCvPeriodEnd: string | null = null;
+    if (cvPayments.length > 0) {
+      const latestPaid = cvPayments[0].paidDate!;
+      const sickDays = await this.getSickDaysAfter(studentId, latestPaid);
+      latestCvPeriodEnd = cvPeriodValidUntilInclusive(latestPaid, sickDays.size);
+    }
+
+    const grace = computeMembershipGraceFields(
+      todayStr,
+      exemptMembership,
+      hasMembershipToday,
+      latestCvPeriodEnd,
+    );
+
     return {
       hasMembership: exemptMembership ? true : membershipKind !== null,
       membershipKind,
@@ -2553,6 +2594,7 @@ export class DbStorage implements IStorage {
       cvValidUntil,
       hasTrainerPayment: exemptTrainerPayment ? true : sub !== null,
       activeTrainerPayment: sub ? await this.withUsage(sub) : null,
+      ...grace,
     };
   }
 

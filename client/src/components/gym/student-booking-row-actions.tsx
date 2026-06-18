@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowLeftRight, X } from "lucide-react";
 import { useStudentPaymentStatus } from "./booking-payment-badges";
+import { isMembershipBookingBlocked } from "@shared/membership-grace";
 import {
   shouldShowMembershipBadge,
   type PaymentBadgeStudent,
@@ -45,8 +46,7 @@ export function StudentBookingRowActions({
   );
   const blockedByMembership =
     checkMembership &&
-    paymentStatus !== undefined &&
-    !paymentStatus.hasMembership;
+    isMembershipBookingBlocked(paymentStatus);
 
   const rescheduleHardDisabled = tooLateToCancel && !blockedByMembership;
   const cancelHardDisabled = tooLateToCancel && !blockedByMembership;

@@ -141,7 +141,7 @@ async function studentHasMembershipForDate(
   dateStr: string,
 ): Promise<boolean> {
   const status = await storage.getStudentPaymentStatus(studentId, dateStr);
-  return status.hasMembership;
+  return status.membershipBookingAllowed;
 }
 
 /** Unique login phone for a child card (parent phone + suffix 01, 02, …). */
@@ -1177,7 +1177,7 @@ export async function registerRoutes(
 
       if (!isSessionTrainer(req)) {
         const payStatus = await storage.getStudentPaymentStatus(studentId, targetSlot.date);
-        if (!payStatus.hasMembership) {
+        if (!payStatus.membershipBookingAllowed) {
           return res.status(403).json({
             message: MEMBERSHIP_BOOKING_BLOCK_MESSAGE,
           });

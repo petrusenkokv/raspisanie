@@ -46,6 +46,10 @@ import {
   eachDateStrInRange,
   nextCvAllowedDateStr,
 } from "./moscow-date";
+import {
+  computeMembershipGraceFields,
+  cvPeriodValidUntilInclusive,
+} from "./membership-grace";
 import { studentIdentityKey, studentFullNameKey } from "./student-identity";
 
 export type AttendanceStats = {
@@ -1519,6 +1523,48 @@ export class MemStorage implements IStorage {
     if (!sub && !exemptTrainerPayment) {
       sub = this.findConsumedTrainerPaymentForDate(studentId, dateStr);
     }
+
+    const todayStr = moscowDateString();
+    let hasMembershipToday = exemptMembership;
+    if (!hasMembershipToday) {
+      for (const p of cvPayments) {
+        const sickDays = this.collectSickDaysAfter(studentId, p.paidDate!);
+        if (cvValidUntilForDate(p.paidDate!, todayStr, sickDays.size)) {
+          hasMembershipToday = true;
+          break;
+        }
+      }
+      if (!hasMembershipToday) {
+        for (const p of Array.from(this.membershipPayments.values())) {
+          if (
+            p.studentId === studentId &&
+            p.type === "one_time_bv" &&
+            p.date === todayStr
+          ) {
+            hasMembershipToday = true;
+            break;
+          }
+        }
+      }
+    }
+
+    const sortedCvPayments = [...cvPayments].sort((a, b) =>
+      (b.paidDate ?? "").localeCompare(a.paidDate ?? ""),
+    );
+    let latestCvPeriodEnd: string | null = null;
+    if (sortedCvPayments.length > 0 && sortedCvPayments[0].paidDate) {
+      const latestPaid = sortedCvPayments[0].paidDate;
+      const sickDays = this.collectSickDaysAfter(studentId, latestPaid);
+      latestCvPeriodEnd = cvPeriodValidUntilInclusive(latestPaid, sickDays.size);
+    }
+
+    const grace = computeMembershipGraceFields(
+      todayStr,
+      exemptMembership,
+      hasMembershipToday,
+      latestCvPeriodEnd,
+    );
+
     return {
       hasMembership: exemptMembership ? true : membershipKind !== null,
       membershipKind,
@@ -1526,6 +1572,7 @@ export class MemStorage implements IStorage {
       cvValidUntil,
       hasTrainerPayment: exemptTrainerPayment ? true : sub !== null,
       activeTrainerPayment: sub ? this.withUsage(sub) : null,
+      ...grace,
     };
   }
 
