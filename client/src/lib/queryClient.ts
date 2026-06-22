@@ -37,18 +37,38 @@ export async function parseJsonResponse<T = unknown>(res: Response): Promise<T> 
   }
 }
 
+type ApiRequestOptions = {
+  timeoutMs?: number;
+};
+
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
+  options: ApiRequestOptions = {},
 ): Promise<Response> {
-  const res = await fetch(url, {
-    method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
-    cache: "no-store",
-  });
+  const { timeoutMs = 20_000 } = options;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: data ? { "Content-Type": "application/json" } : {},
+      body: data ? JSON.stringify(data) : undefined,
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Сервер не ответил вовремя");
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timer);
+  }
 
   await throwIfResNotOk(res);
   return res;

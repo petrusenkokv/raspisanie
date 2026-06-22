@@ -179,7 +179,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [quickFilter, setQuickFilter] = useState<"all" | "debt" | "pending">("all");
-  const [compactMode, setCompactMode] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -354,6 +353,11 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const filteredStudents = students.filter((student) => {
     const query = searchQuery.toLowerCase().trim();
     const flags = getStudentFlags(student);
+    if (showInactive) {
+      if (!flags.isInactive) return false;
+    } else if (flags.isInactive) {
+      return false;
+    }
     if (quickFilter === "debt" && !flags.hasDebt) return false;
     if (quickFilter === "pending" && !flags.isPending) return false;
     if (!query) return true;
@@ -498,31 +502,31 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
               >
                 Ожидают
               </Button>
-              <Button
-                size="sm"
-                variant={compactMode ? "default" : "outline"}
-                className="h-8 px-2 text-xs ml-auto"
-                onClick={() => setCompactMode((v) => !v)}
-              >
-                {compactMode ? "Компакт" : "Обычно"}
-              </Button>
             </div>
 
             <div className="flex items-center justify-between mb-2 text-sm text-gray-600 dark:text-gray-400">
               <div className="flex items-center gap-2">
                 <UserCheck className="h-4 w-4" />
-                <span>Учеников: <strong>{visibleStudents.length}</strong></span>
+                <span>
+                  Учеников: <strong>{visibleStudents.length}</strong>
+                  {showInactive ? " в архиве" : ""}
+                </span>
               </div>
-              <button
-                className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-                  showInactive
-                    ? "bg-gray-200 text-gray-800 border-gray-300 dark:bg-gray-700 dark:text-gray-200"
-                    : "bg-transparent text-gray-500 border-gray-200 hover:border-gray-400"
-                }`}
-                onClick={() => setShowInactive(v => !v)}
+              <Button
+                type="button"
+                size="sm"
+                variant={showInactive ? "secondary" : "outline"}
+                className="h-7 px-2 text-xs"
+                onClick={() => {
+                  setShowInactive((v) => {
+                    const next = !v;
+                    if (next) setQuickFilter("all");
+                    return next;
+                  });
+                }}
               >
                 {showInactive ? "Скрыть архив" : "Показать архив"}
-              </button>
+              </Button>
             </div>
 
           </div>
@@ -534,7 +538,11 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
             </div>
           ) : visibleStudents.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-              {searchQuery ? "Ученики не найдены" : "Пока нет зарегистрированных учеников"}
+              {searchQuery
+                ? "Ученики не найдены"
+                : showInactive
+                  ? "В архиве пока нет учеников"
+                  : "Пока нет зарегистрированных учеников"}
             </div>
           ) : (
             <div className="space-y-3">
@@ -550,7 +558,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 const exemptMembership = (student as any).exemptMembership === true;
                 const exemptTrainerPayment = (student as any).exemptTrainerPayment === true;
                 return (
-                  <div key={student.id} className={`border rounded-lg transition-shadow ${
+                  <div key={student.id} className={`border rounded-lg transition-shadow p-2.5 ${
                       isInactive
                         ? "bg-gray-50 dark:bg-gray-900 opacity-70 border-dashed"
                         : isPending
@@ -560,9 +568,9 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                             : hasPendingDocs
                               ? "bg-orange-50 dark:bg-orange-950/20 border-orange-300 dark:border-orange-700 hover:shadow-sm"
                               : "bg-white dark:bg-gray-800 hover:shadow-sm"
-                    } ${compactMode ? "p-2.5" : "p-4"}`}>
+                    }`}>
                       {isPending && !isInactive && (
-                        <div className={`flex items-center justify-between gap-2 rounded-md bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 ${compactMode ? "mb-2 p-1.5" : "mb-3 p-2"}`}>
+                        <div className="flex items-center justify-between gap-2 rounded-md bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 mb-2 p-1.5">
                           <span className="flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-300">
                             <Clock className="h-3.5 w-3.5" />
                             Ожидает вашего одобрения
@@ -584,19 +592,19 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                           </Button>
                         </div>
                       )}
-                      <div className={`flex justify-between gap-2 ${compactMode ? "items-center" : "items-start"}`}>
-                        <div className={`min-w-0 flex-1 ${compactMode ? "space-y-0.5" : "space-y-1"}`}>
-                          <div className={`flex items-center gap-2 flex-wrap ${compactMode ? "mb-0.5" : ""}`}>
+                      <div className="flex justify-between gap-2 items-center">
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <div className="flex items-center gap-2 flex-wrap mb-0.5">
                             <button
                               type="button"
-                              className={`font-semibold text-gray-900 dark:text-white hover:text-blue-600 hover:underline text-left ${compactMode ? "text-sm leading-tight" : ""}`}
+                              className="font-semibold text-gray-900 dark:text-white hover:text-blue-600 hover:underline text-left text-sm leading-tight"
                               onClick={() => setViewStudentId(student.id)}
                               data-testid={`button-view-student-${student.id}`}
                             >
                               {student.lastName} {student.firstName} {(student as any).middleName || ""}
                             </button>
                           {age !== null && (
-                            <Badge variant="secondary" className={compactMode ? "text-[10px] px-1.5 py-0" : "text-xs"}>
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                               {age} {age === 1 ? "год" : age >= 2 && age <= 4 ? "года" : "лет"}
                             </Badge>
                           )}
@@ -627,73 +635,67 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                               </span>
                             )}
                           </div>
-                          <div className={`flex items-center gap-1.5 text-gray-600 dark:text-gray-400 ${compactMode ? "text-xs" : "text-sm"}`}>
-                            <Phone className={compactMode ? "h-2.5 w-2.5" : "h-3 w-3"} />
+                          <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 text-xs">
+                            <Phone className="h-2.5 w-2.5" />
                             <span>{student.phone}</span>
                           </div>
-                          {!compactMode && student.createdAt && (
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                              <Clock className="h-3 w-3" />
-                              <span>С {format(new Date(student.createdAt), "d MMM yyyy", { locale: ru })}</span>
-                            </div>
-                          )}
                         </div>
-                        <div className={`shrink-0 ${compactMode ? "grid grid-cols-2 gap-1.5 min-w-[170px]" : "flex flex-col gap-1"}`}>
+                        <div className="shrink-0 grid grid-cols-2 gap-1.5 min-w-[170px]">
                           {!isInactive && !isPending && (
                             <Button
                               size="sm"
                               onClick={() => handleBookStudent(student)}
                               data-testid={`button-book-student-${student.id}`}
-                              className={compactMode ? "h-8 px-2 text-xs" : ""}
+                              className="h-8 px-2 text-xs"
                             >
-                              <Calendar className={compactMode ? "h-3.5 w-3.5 mr-1" : "h-4 w-4 mr-1"} />
-                              {compactMode ? "Запись" : "Записать"}
+                              <Calendar className="h-3.5 w-3.5 mr-1" />
+                              Запись
                             </Button>
                           )}
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => setViewStudentId(student.id)}
-                            className={compactMode ? "h-8 px-2 text-xs" : ""}
+                            className="h-8 px-2 text-xs"
                           >
-                            <Eye className={compactMode ? "h-3.5 w-3.5 mr-1" : "h-4 w-4 mr-1"} />
+                            <Eye className="h-3.5 w-3.5 mr-1" />
                             Карточка
                           </Button>
                           {isInactive ? (
                             <Button
                               size="sm"
                               variant="outline"
-                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50 h-8 px-2 text-xs"
                               onClick={() => { setStudentToReactivate(student); setReactivateResetCv(true); }}
                             >
-                              <UserCheck className={compactMode ? "h-3.5 w-3.5 mr-1" : "h-4 w-4 mr-1"} />
-                              {compactMode ? "Вернуть" : "Восстановить"}
+                              <UserCheck className="h-3.5 w-3.5 mr-1" />
+                              Вернуть
                             </Button>
                           ) : (
                             !isPending && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 h-8 px-2 text-xs"
                                 onClick={() => setStudentToDeactivate(student)}
                                 data-testid={`button-deactivate-student-${student.id}`}
                               >
-                                <X className={compactMode ? "h-3.5 w-3.5 mr-1" : "h-4 w-4 mr-1"} />
-                                {compactMode ? "Пауза" : "Приостановить"}
+                                <X className="h-3.5 w-3.5 mr-1" />
+                                Пауза
                               </Button>
                             )
                           )}
                           <Button
                             size="sm"
                             variant="ghost"
-                            className={`text-red-400 hover:text-red-600 hover:bg-red-50 text-xs ${compactMode ? "col-span-2 h-7" : ""}`}
+                            className="text-red-400 hover:text-red-600 hover:bg-red-50 text-xs col-span-2 h-7"
                             onClick={() => setStudentToDelete(student)}
                             disabled={isParentAccount && hasLinkedChildren}
                             title={isParentAccount && hasLinkedChildren ? "Сначала удалите или отвяжите детей" : undefined}
                             data-testid={`button-delete-student-${student.id}`}
                           >
-                            <Trash2 className={compactMode ? "h-3 w-3 mr-1" : "h-3 w-3 mr-1"} />
-                            {compactMode ? "Удалить" : "Удалить совсем"}
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Удалить
                           </Button>
                         </div>
                       </div>

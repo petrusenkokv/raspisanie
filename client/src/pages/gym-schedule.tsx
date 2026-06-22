@@ -27,6 +27,7 @@ import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { PullToRefresh } from "@/components/gym/pull-to-refresh";
+import { useStuckLoadRecovery } from "@/hooks/use-stuck-load-recovery";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -246,15 +247,36 @@ export function GymSchedulePage() {
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
   });
 
-  const { data: scheduleData, isLoading } = useQuery({
+  const {
+    data: scheduleData,
+    isLoading,
+    isError,
+    isFetching,
+    failureCount,
+    refetch: refetchSchedule,
+  } = useQuery({
     queryKey: scheduleRequest.key,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
     enabled: true,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(2_000 * 2 ** attempt, 8_000),
     queryFn: async () => {
-      const response = await apiRequest("GET", scheduleRequest.url);
+      const response = await apiRequest("GET", scheduleRequest.url, undefined, {
+        timeoutMs: 20_000,
+      });
       return response.json();
-    }
+    },
+  });
+
+  const handleScheduleRetry = useCallback(() => {
+    void refetchSchedule();
+  }, [refetchSchedule]);
+
+  useStuckLoadRecovery({
+    isLoading: isLoading || (isFetching && !scheduleData),
+    isError,
+    onRetry: handleScheduleRetry,
   });
 
   const bookMutation = useMutation({
@@ -431,10 +453,19 @@ export function GymSchedulePage() {
 
       {/* Main content */}
       <div className="p-4">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            <span className="ml-2 text-gray-600 dark:text-gray-400">Загрузка расписания...</span>
+        {isLoading || (isFetching && !scheduleData) ? (
+          <div className="flex flex-col items-center justify-center h-64 gap-2">
+            <div className="flex items-center">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              <span className="ml-2 text-gray-600 dark:text-gray-400">
+                {failureCount > 0 || isError ? "Повторная загрузка..." : "Загрузка расписания..."}
+              </span>
+            </div>
+            {(failureCount > 0 || isError) && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center max-w-xs">
+                Сервер не ответил — пробуем снова автоматически
+              </p>
+            )}
           </div>
         ) : (
           <CalendarView
