@@ -50,7 +50,7 @@ import {
   computeMembershipGraceFields,
   cvPeriodValidUntilInclusive,
 } from "./membership-grace";
-import { studentIdentityKey, studentFullNameKey } from "./student-identity";
+import { studentIdentityKey, studentFullNameKey, studentLastFirstKey } from "./student-identity";
 
 export type AttendanceStats = {
   total: number;
@@ -77,6 +77,7 @@ export interface IStorage {
     lastName: string,
     middleName?: string | null,
   ): Promise<User | undefined>;
+  findStudentByLastFirst(firstName: string, lastName: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User>;
   verifyUser(id: string): Promise<User>;
@@ -125,6 +126,7 @@ export interface IStorage {
   markAllNotificationsAsRead(userId: string): Promise<number>;
   deleteReadNotifications(userId: string): Promise<number>;
   markBookingNotificationsAsRead(bookingId: string): Promise<number>;
+  markNewStudentNotificationsAsRead(trainerId: string, studentId: string): Promise<number>;
   
   // Documents (consent forms managed by trainer)
   getDocuments(activeOnly?: boolean): Promise<Document[]>;
@@ -450,6 +452,16 @@ export class MemStorage implements IStorage {
     return Array.from(this.users.values()).find(
       (user) =>
         studentFullNameKey(user) === key &&
+        (user.role === "student" || (user.role === "parent" && user.isAlsoStudent)),
+    );
+  }
+
+  async findStudentByLastFirst(firstName: string, lastName: string): Promise<User | undefined> {
+    const key = studentLastFirstKey({ firstName, lastName });
+    if (!key) return undefined;
+    return Array.from(this.users.values()).find(
+      (user) =>
+        studentLastFirstKey(user) === key &&
         (user.role === "student" || (user.role === "parent" && user.isAlsoStudent)),
     );
   }
@@ -1641,6 +1653,22 @@ export class MemStorage implements IStorage {
     let count = 0;
     for (const [id, notif] of Array.from(this.notifications.entries())) {
       if (notif.relatedBookingId === bookingId && !notif.isRead) {
+        this.notifications.set(id, { ...notif, isRead: true });
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async markNewStudentNotificationsAsRead(trainerId: string, studentId: string): Promise<number> {
+    let count = 0;
+    for (const [id, notif] of Array.from(this.notifications.entries())) {
+      if (
+        notif.userId === trainerId &&
+        (notif as any).type === "new_student" &&
+        (notif as any).relatedUserId === studentId &&
+        !notif.isRead
+      ) {
         this.notifications.set(id, { ...notif, isRead: true });
         count++;
       }

@@ -14,6 +14,17 @@ export function studentFullNameKey(user: {
   return `fio:${last}:${first}:${middle}`;
 }
 
+/** Last name + first name only (ignores patronymic). */
+export function studentLastFirstKey(user: {
+  firstName: string;
+  lastName?: string | null;
+}): string | null {
+  const last = normalizePart(user.lastName);
+  const first = normalizePart(user.firstName);
+  if (!last || !first) return null;
+  return `lfio:${last}:${first}`;
+}
+
 /** Groups one person across duplicate accounts (re-registration, parent/child). */
 export function studentIdentityKey(user: {
   phone: string;

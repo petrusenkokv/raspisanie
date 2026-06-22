@@ -39,7 +39,7 @@ import {
   computeMembershipGraceFields,
   cvPeriodValidUntilInclusive,
 } from "./membership-grace";
-import { studentIdentityKey, studentFullNameKey } from "./student-identity";
+import { studentIdentityKey, studentFullNameKey, studentLastFirstKey } from "./student-identity";
 import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
 import { resolveBookingSource, type BookingSource } from "@shared/booking-source";
 
@@ -455,6 +455,17 @@ export class DbStorage implements IStorage {
     );
   }
 
+  async findStudentByLastFirst(firstName: string, lastName: string): Promise<User | undefined> {
+    const key = studentLastFirstKey({ firstName, lastName });
+    if (!key) return undefined;
+    const candidates = await this.getStudentsList(true);
+    return candidates.find(
+      (student) =>
+        studentLastFirstKey(student) === key &&
+        (student.role === "student" || (student.role === "parent" && student.isAlsoStudent)),
+    );
+  }
+
   private async studentMergeScore(userId: string): Promise<number> {
     const activeBookings = await db
       .select({ id: bookings.id })
@@ -537,7 +548,7 @@ export class DbStorage implements IStorage {
       await this.updateUser(keeperId, {
         exemptMembership: keeper.exemptMembership || dup.exemptMembership,
         exemptTrainerPayment: keeper.exemptTrainerPayment || dup.exemptTrainerPayment,
-        isPendingApproval: keeper.isPendingApproval && dup.isPendingApproval,
+        isPendingApproval: keeper.isPendingApproval || dup.isPendingApproval,
         middleName: keeper.middleName || dup.middleName,
         birthDate: keeper.birthDate || dup.birthDate,
         trainerNotes: [keeper.trainerNotes, dup.trainerNotes].filter(Boolean).join("\n") || keeper.trainerNotes,
@@ -1543,6 +1554,18 @@ export class DbStorage implements IStorage {
     const result = await db.update(notifications)
       .set({ isRead: true })
       .where(and(eq(notifications.relatedBookingId, bookingId), eq(notifications.isRead, false)));
+    return (result as any).rowCount ?? 0;
+  }
+
+  async markNewStudentNotificationsAsRead(trainerId: string, studentId: string): Promise<number> {
+    const result = await db.update(notifications)
+      .set({ isRead: true })
+      .where(and(
+        eq(notifications.userId, trainerId),
+        eq(notifications.type, "new_student"),
+        eq(notifications.relatedUserId, studentId),
+        eq(notifications.isRead, false),
+      ));
     return (result as any).rowCount ?? 0;
   }
 

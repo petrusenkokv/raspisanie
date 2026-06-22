@@ -346,6 +346,15 @@ export async function registerRoutes(
           message: "Ученик с таким ФИО уже зарегистрирован. Войдите в существующий аккаунт или обратитесь к тренеру.",
         });
       }
+      const duplicateLoose = await storage.findStudentByLastFirst(
+        String(firstName).trim(),
+        String(lastName).trim(),
+      );
+      if (duplicateLoose) {
+        return res.status(409).json({
+          message: "Ученик с такой фамилией и именем уже есть в списке. Найдите его у тренера или войдите в существующий аккаунт.",
+        });
+      }
 
       const birthErr = birthDateValidationError(birthDate, "student-self");
       if (birthErr) {
@@ -1562,19 +1571,25 @@ export async function registerRoutes(
   app.patch("/api/trainer/students/:id/approve", async (req, res) => {
     try {
       const { id } = req.params;
-      const user = await storage.approveStudent(id);
-      // Notify student about approval
-      await storage.createNotification({
-        userId: user.id,
-        type: "registration_approved",
-        title: "Регистрация одобрена",
-        message: "Тренер одобрил вашу регистрацию. Теперь вы можете записываться на тренировки!",
-        isRead: false,
-        relatedBookingId: null,
-      });
+      const existing = await storage.getUser(id);
+      if (!existing) return res.status(404).json({ message: "Ученик не найден" });
+      const wasPending = existing.isPendingApproval;
+      const user = wasPending ? await storage.approveStudent(id) : existing;
+      const trainerId = sessionUserId(req);
+      await storage.markNewStudentNotificationsAsRead(trainerId, id);
+      if (wasPending) {
+        await storage.createNotification({
+          userId: user.id,
+          type: "registration_approved",
+          title: "Регистрация одобрена",
+          message: "Тренер одобрил вашу регистрацию. Теперь вы можете записываться на тренировки!",
+          isRead: false,
+          relatedBookingId: null,
+        });
+        pushNotifyUser(user.id, "Регистрация одобрена", "Тренер одобрил вашу регистрацию. Теперь вы можете записываться на тренировки!");
+      }
       broadcast({ type: "notification_update" });
       broadcast({ type: "user_update", userId: user.id });
-      pushNotifyUser(user.id, "Регистрация одобрена", "Тренер одобрил вашу регистрацию. Теперь вы можете записываться на тренировки!");
       res.json(user);
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Не удалось одобрить ученика" });

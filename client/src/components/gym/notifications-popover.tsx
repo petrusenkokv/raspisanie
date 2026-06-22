@@ -12,7 +12,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { isRealtimeDisabled } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import type { Notification } from "@shared/schema";
+import type { Notification, User } from "@shared/schema";
 
 interface Props {
   userId: string;
@@ -152,6 +152,20 @@ export function NotificationsPopover({
     staleTime: 0,
     refetchInterval: isRealtimeDisabled() ? (isTrainer ? 10_000 : 15_000) : false,
   });
+
+  const { data: students = [] } = useQuery<User[]>({
+    queryKey: ["/api/trainer/students"],
+    enabled: isTrainer && !!userId,
+    staleTime: 30_000,
+  });
+
+  const pendingByStudentId = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const student of students) {
+      map.set(student.id, student.isPendingApproval === true);
+    }
+    return map;
+  }, [students]);
 
   // Ask for browser-notifications permission once (trainer + students)
   useEffect(() => {
@@ -407,12 +421,27 @@ export function NotificationsPopover({
                       !n.isRead &&
                       !processedIds.has(n.id);
 
-                    const showApprove =
+                    const showNewStudentNotice =
                       isTrainer &&
                       n.type === "new_student" &&
                       !!n.relatedUserId &&
                       !n.isRead &&
                       !processedIds.has(n.id);
+
+                    const studentPendingKnown =
+                      !!n.relatedUserId &&
+                      students.length > 0 &&
+                      pendingByStudentId.has(n.relatedUserId);
+
+                    const studentStillPending =
+                      studentPendingKnown && pendingByStudentId.get(n.relatedUserId!) === true;
+
+                    const showApprove =
+                      showNewStudentNotice &&
+                      (!studentPendingKnown || studentStillPending);
+
+                    const showAlreadyApproved =
+                      showNewStudentNotice && studentPendingKnown && !studentStillPending;
                     return (
                       <li
                         key={n.id}
@@ -497,9 +526,32 @@ export function NotificationsPopover({
                               </Button>
                             </div>
                           )}
+
+                          {showAlreadyApproved && (
+                            <div className="mt-2 space-y-2">
+                              <p className="text-xs text-gray-600 dark:text-gray-400">
+                                Регистрация уже одобрена (согласия с документами — отдельно). Закройте уведомление.
+                              </p>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                disabled={isActing}
+                                onClick={() => {
+                                  markProcessed(n.id);
+                                  approveStudentMutation.mutate({
+                                    studentId: n.relatedUserId!,
+                                    notificationId: n.id,
+                                  });
+                                }}
+                              >
+                                Понятно
+                              </Button>
+                            </div>
+                          )}
                         </div>
 
-                        {!n.isRead && !showActions && !showApprove && (
+                        {!n.isRead && !showActions && !showApprove && !showAlreadyApproved && (
                           <button
                             type="button"
                             onClick={() => markReadMutation.mutate(n.id)}

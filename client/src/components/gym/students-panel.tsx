@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -49,7 +55,7 @@ import {
 } from "./trainer-student-service-section";
 import { computeSessionPrice } from "@shared/consents-pricing";
 import type { TrainerService } from "@shared/schema";
-import { Users, Search, Phone, UserCheck, Clock, Loader2, Calendar, UserPlus, Trash2, Eye, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle } from "lucide-react";
+import { Users, Search, UserCheck, Loader2, Calendar, UserPlus, Trash2, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, MoreHorizontal, Eye } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
@@ -175,10 +181,209 @@ function LegalRepresentativesFields({
   );
 }
 
+type StudentRowFlags = {
+  isInactive: boolean;
+  isPending: boolean;
+  hasDebt: boolean;
+  needsCv: boolean;
+  needsTrainer: boolean;
+  debtKind: "none" | "cv" | "trainer" | "both";
+};
+
+const getDebtRowStyle = (debtKind: StudentRowFlags["debtKind"]) => {
+  switch (debtKind) {
+    case "cv":
+      return { strip: "bg-amber-400 dark:bg-amber-500" };
+    case "trainer":
+      return { strip: "bg-violet-400 dark:bg-violet-500" };
+    case "both":
+      return { strip: "bg-red-500 dark:bg-red-500" };
+    default:
+      return { strip: "" };
+  }
+};
+
+const getRowStripStyle = (
+  flags: StudentRowFlags,
+  hasPendingDocs: boolean,
+): { strip: string; wide: boolean } => {
+  if (flags.isInactive) {
+    return { strip: "bg-gray-300 dark:bg-gray-600", wide: false };
+  }
+  if (flags.isPending) {
+    return { strip: "bg-blue-400 dark:bg-blue-500", wide: false };
+  }
+  if (flags.hasDebt) {
+    const debt = getDebtRowStyle(flags.debtKind);
+    return { strip: debt.strip, wide: flags.debtKind === "both" };
+  }
+  if (hasPendingDocs) {
+    return { strip: "bg-orange-400 dark:bg-orange-500", wide: false };
+  }
+  return { strip: "", wide: false };
+};
+
+const compareStudentsByName = (a: User, b: User): number => {
+  const lastCmp = (a.lastName || "").localeCompare(b.lastName || "", "ru", { sensitivity: "base" });
+  if (lastCmp !== 0) return lastCmp;
+  const firstCmp = (a.firstName || "").localeCompare(b.firstName || "", "ru", { sensitivity: "base" });
+  if (firstCmp !== 0) return firstCmp;
+  return ((a.middleName as string | null) || "").localeCompare((b.middleName as string | null) || "", "ru", {
+    sensitivity: "base",
+  });
+};
+
+const StudentListRow = ({
+  student,
+  age,
+  flags,
+  hasPendingDocs,
+  isParentAccount,
+  hasLinkedChildren,
+  onOpenCard,
+  onBook,
+  onApprove,
+  onDeactivate,
+  onReactivate,
+  onDelete,
+  approvePending,
+}: {
+  student: User & { pendingDocumentCount?: number };
+  age: number | null;
+  flags: StudentRowFlags;
+  hasPendingDocs: boolean;
+  isParentAccount: boolean;
+  hasLinkedChildren: boolean;
+  onOpenCard: () => void;
+  onBook: () => void;
+  onApprove: () => void;
+  onDeactivate: () => void;
+  onReactivate: () => void;
+  onDelete: () => void;
+  approvePending: boolean;
+}) => {
+  const { isInactive, isPending } = flags;
+  const { strip: stripColor, wide: wideStrip } = getRowStripStyle(flags, hasPendingDocs);
+
+  return (
+    <div
+      className={`flex items-center gap-2 py-2 pl-2 pr-0.5 ${
+        isInactive ? "opacity-60" : ""
+      }`}
+    >
+      {stripColor ? (
+        <div
+          className={`h-8 shrink-0 self-center rounded-full ${stripColor} ${
+            wideStrip ? "w-1.5" : "w-1"
+          }`}
+          aria-hidden
+        />
+      ) : (
+        <div className="w-1 shrink-0" aria-hidden />
+      )}
+      <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <span className="truncate text-sm font-medium text-gray-900 dark:text-white">
+          {student.lastName} {student.firstName}
+        </span>
+        {age !== null && (
+          <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">{age}</span>
+        )}
+        {isPending && !isInactive && (
+          <span className="shrink-0 text-[10px] font-medium text-blue-600 dark:text-blue-400">ожидает</span>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center">
+        {isPending && !isInactive ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-blue-600"
+            aria-label="Одобрить"
+            onClick={onApprove}
+            disabled={approvePending}
+          >
+            {approvePending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle className="h-4 w-4" />
+            )}
+          </Button>
+        ) : isInactive ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-green-600"
+            aria-label="Вернуть из архива"
+            onClick={onReactivate}
+          >
+            <UserCheck className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            aria-label="Запись"
+            onClick={onBook}
+            data-testid={`button-book-student-${student.id}`}
+          >
+            <Calendar className="h-4 w-4" />
+          </Button>
+        )}
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8"
+          aria-label="Карточка"
+          onClick={onOpenCard}
+          data-testid={`button-view-student-${student.id}`}
+        >
+          <Eye className="h-4 w-4" />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-gray-500"
+              aria-label="Ещё"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            {!isInactive && !isPending && (
+              <DropdownMenuItem onClick={onDeactivate} data-testid={`button-deactivate-student-${student.id}`}>
+                <X className="h-4 w-4 mr-2" />
+                В архив (пауза)
+              </DropdownMenuItem>
+            )}
+            {!isInactive && !isPending && <DropdownMenuSeparator />}
+            <DropdownMenuItem
+              className="text-red-600 focus:text-red-600"
+              onClick={onDelete}
+              disabled={isParentAccount && hasLinkedChildren}
+              data-testid={`button-delete-student-${student.id}`}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Удалить
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+};
+
 export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  const [quickFilter, setQuickFilter] = useState<"all" | "debt" | "pending">("all");
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -328,6 +533,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     },
     onSuccess: (_data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       toast({ title: "Ученик одобрен", description: "Ученик получил уведомление и может записываться на тренировки" });
     },
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
@@ -347,30 +553,38 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       !isPending &&
       hasMembership !== undefined &&
       (needsCv || needsTrainer);
-    return { isInactive, isPending, hasDebt };
+    const debtKind: StudentRowFlags["debtKind"] = !hasDebt
+      ? "none"
+      : needsCv && needsTrainer
+        ? "both"
+        : needsCv
+          ? "cv"
+          : "trainer";
+    return { isInactive, isPending, hasDebt, needsCv, needsTrainer, debtKind };
   };
 
-  const filteredStudents = students.filter((student) => {
+  const visibleStudents = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    const flags = getStudentFlags(student);
-    if (showInactive) {
-      if (!flags.isInactive) return false;
-    } else if (flags.isInactive) {
-      return false;
-    }
-    if (quickFilter === "debt" && !flags.hasDebt) return false;
-    if (quickFilter === "pending" && !flags.isPending) return false;
-    if (!query) return true;
     const digitsQuery = query.replace(/\D/g, "");
-    const phoneDigits = student.phone.replace(/\D/g, "");
-    return (
-      student.firstName.toLowerCase().includes(query) ||
-      (student.lastName || "").toLowerCase().includes(query) ||
-      ((student as any).middleName || "").toLowerCase().includes(query) ||
-      (digitsQuery.length > 0 && phoneDigits.includes(digitsQuery))
-    );
-  });
-  const visibleStudents = filteredStudents;
+    return students
+      .filter((student) => {
+        const flags = getStudentFlags(student);
+        if (showInactive) {
+          if (!flags.isInactive) return false;
+        } else if (flags.isInactive) {
+          return false;
+        }
+        if (!query) return true;
+        const phoneDigits = student.phone.replace(/\D/g, "");
+        return (
+          student.firstName.toLowerCase().includes(query) ||
+          (student.lastName || "").toLowerCase().includes(query) ||
+          ((student as any).middleName || "").toLowerCase().includes(query) ||
+          (digitsQuery.length > 0 && phoneDigits.includes(digitsQuery))
+        );
+      })
+      .sort(compareStudentsByName);
+  }, [students, searchQuery, showInactive]);
 
   const handleBookStudent = (student: User & { pendingDocumentCount?: number }) => {
     if ((student.pendingDocumentCount ?? 0) > 0) {
@@ -387,6 +601,35 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
       setConsentWarningStudent(null);
       setBookingDialogOpen(true);
     }
+  };
+
+  const renderStudentRow = (student: User & { pendingDocumentCount: number }) => {
+    const age = calculateAge((student as any).birthDate);
+    const flags = getStudentFlags(student);
+    const hasPendingDocs = (student.pendingDocumentCount ?? 0) > 0;
+    const isParentAccount = student.role === "parent";
+    const hasLinkedChildren = !!(student as any).hasLinkedChildren;
+    return (
+      <StudentListRow
+        key={student.id}
+        student={student}
+        age={age}
+        flags={flags}
+        hasPendingDocs={hasPendingDocs}
+        isParentAccount={isParentAccount}
+        hasLinkedChildren={hasLinkedChildren}
+        onOpenCard={() => setViewStudentId(student.id)}
+        onBook={() => handleBookStudent(student)}
+        onApprove={() => approveMutation.mutate(student.id)}
+        onDeactivate={() => setStudentToDeactivate(student)}
+        onReactivate={() => {
+          setStudentToReactivate(student);
+          setReactivateResetCv(true);
+        }}
+        onDelete={() => setStudentToDelete(student)}
+        approvePending={approveMutation.isPending}
+      />
+    );
   };
 
   const handleAddSubmit = () => {
@@ -477,33 +720,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
               />
             </div>
 
-            <div className="flex items-center gap-2 mb-2">
-              <Button
-                size="sm"
-                variant={quickFilter === "all" ? "default" : "outline"}
-                className="h-8 px-2 text-xs"
-                onClick={() => setQuickFilter("all")}
-              >
-                Все
-              </Button>
-              <Button
-                size="sm"
-                variant={quickFilter === "debt" ? "default" : "outline"}
-                className="h-8 px-2 text-xs"
-                onClick={() => setQuickFilter("debt")}
-              >
-                Долг
-              </Button>
-              <Button
-                size="sm"
-                variant={quickFilter === "pending" ? "default" : "outline"}
-                className="h-8 px-2 text-xs"
-                onClick={() => setQuickFilter("pending")}
-              >
-                Ожидают
-              </Button>
-            </div>
-
             <div className="flex items-center justify-between mb-2 text-sm text-gray-600 dark:text-gray-400">
               <div className="flex items-center gap-2">
                 <UserCheck className="h-4 w-4" />
@@ -517,13 +733,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                 size="sm"
                 variant={showInactive ? "secondary" : "outline"}
                 className="h-7 px-2 text-xs"
-                onClick={() => {
-                  setShowInactive((v) => {
-                    const next = !v;
-                    if (next) setQuickFilter("all");
-                    return next;
-                  });
-                }}
+                onClick={() => setShowInactive((v) => !v)}
               >
                 {showInactive ? "Скрыть архив" : "Показать архив"}
               </Button>
@@ -545,163 +755,8 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
                   : "Пока нет зарегистрированных учеников"}
             </div>
           ) : (
-            <div className="space-y-3">
-              {visibleStudents.map((student) => {
-                const age = calculateAge((student as any).birthDate);
-                const { isInactive, isPending, hasDebt } = getStudentFlags(student);
-                const hasPendingDocs = (student.pendingDocumentCount ?? 0) > 0;
-                const isParentAccount = student.role === "parent";
-                const isParentMode = !!(student as any).isParent;
-                const hasLinkedChildren = !!(student as any).hasLinkedChildren;
-                const hasMembership = (student as any).hasMembership as boolean | undefined;
-                const hasTrainerPayment = (student as any).hasTrainerPayment as boolean | undefined;
-                const exemptMembership = (student as any).exemptMembership === true;
-                const exemptTrainerPayment = (student as any).exemptTrainerPayment === true;
-                return (
-                  <div key={student.id} className={`border rounded-lg transition-shadow p-2.5 ${
-                      isInactive
-                        ? "bg-gray-50 dark:bg-gray-900 opacity-70 border-dashed"
-                        : isPending
-                          ? "bg-blue-50 dark:bg-blue-950/20 border-blue-300 dark:border-blue-700 hover:shadow-sm"
-                          : hasDebt
-                            ? "bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-700 hover:shadow-sm"
-                            : hasPendingDocs
-                              ? "bg-orange-50 dark:bg-orange-950/20 border-orange-300 dark:border-orange-700 hover:shadow-sm"
-                              : "bg-white dark:bg-gray-800 hover:shadow-sm"
-                    }`}>
-                      {isPending && !isInactive && (
-                        <div className="flex items-center justify-between gap-2 rounded-md bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 mb-2 p-1.5">
-                          <span className="flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-300">
-                            <Clock className="h-3.5 w-3.5" />
-                            Ожидает вашего одобрения
-                          </span>
-                          <Button
-                            size="sm"
-                            className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                            onClick={() => approveMutation.mutate(student.id)}
-                            disabled={approveMutation.isPending}
-                          >
-                            {approveMutation.isPending ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <>
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Одобрить
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      )}
-                      <div className="flex justify-between gap-2 items-center">
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                            <button
-                              type="button"
-                              className="font-semibold text-gray-900 dark:text-white hover:text-blue-600 hover:underline text-left text-sm leading-tight"
-                              onClick={() => setViewStudentId(student.id)}
-                              data-testid={`button-view-student-${student.id}`}
-                            >
-                              {student.lastName} {student.firstName} {(student as any).middleName || ""}
-                            </button>
-                          {age !== null && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                              {age} {age === 1 ? "год" : age >= 2 && age <= 4 ? "года" : "лет"}
-                            </Badge>
-                          )}
-                            {(isParentAccount || isParentMode) && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-700">
-                                родитель
-                              </span>
-                            )}
-                            {isInactive && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-400">
-                                архив
-                              </span>
-                            )}
-                            {hasPendingDocs && !isInactive && (
-                              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-700">
-                                <AlertTriangle className="h-2.5 w-2.5" />
-                                Документы не приняты
-                              </span>
-                            )}
-                            {hasDebt && (
-                              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-red-100 text-red-700 border-red-300 dark:bg-red-900/40 dark:text-red-400 dark:border-red-700">
-                              <span className="text-[10px] font-semibold leading-none">₽</span>
-                                {!hasMembership && !hasTrainerPayment
-                                ? "Взнос и Тренеру"
-                                  : !hasMembership
-                                  ? "Взнос"
-                                  : "Тренеру"}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 text-xs">
-                            <Phone className="h-2.5 w-2.5" />
-                            <span>{student.phone}</span>
-                          </div>
-                        </div>
-                        <div className="shrink-0 grid grid-cols-2 gap-1.5 min-w-[170px]">
-                          {!isInactive && !isPending && (
-                            <Button
-                              size="sm"
-                              onClick={() => handleBookStudent(student)}
-                              data-testid={`button-book-student-${student.id}`}
-                              className="h-8 px-2 text-xs"
-                            >
-                              <Calendar className="h-3.5 w-3.5 mr-1" />
-                              Запись
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setViewStudentId(student.id)}
-                            className="h-8 px-2 text-xs"
-                          >
-                            <Eye className="h-3.5 w-3.5 mr-1" />
-                            Карточка
-                          </Button>
-                          {isInactive ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-green-600 hover:text-green-700 hover:bg-green-50 h-8 px-2 text-xs"
-                              onClick={() => { setStudentToReactivate(student); setReactivateResetCv(true); }}
-                            >
-                              <UserCheck className="h-3.5 w-3.5 mr-1" />
-                              Вернуть
-                            </Button>
-                          ) : (
-                            !isPending && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 h-8 px-2 text-xs"
-                                onClick={() => setStudentToDeactivate(student)}
-                                data-testid={`button-deactivate-student-${student.id}`}
-                              >
-                                <X className="h-3.5 w-3.5 mr-1" />
-                                Пауза
-                              </Button>
-                            )
-                          )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-400 hover:text-red-600 hover:bg-red-50 text-xs col-span-2 h-7"
-                            onClick={() => setStudentToDelete(student)}
-                            disabled={isParentAccount && hasLinkedChildren}
-                            title={isParentAccount && hasLinkedChildren ? "Сначала удалите или отвяжите детей" : undefined}
-                            data-testid={`button-delete-student-${student.id}`}
-                          >
-                            <Trash2 className="h-3 w-3 mr-1" />
-                            Удалить
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                );
-              })}
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+              {visibleStudents.map((student) => renderStudentRow(student))}
             </div>
           )}
         </SheetContent>
@@ -1038,6 +1093,24 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
     },
   });
 
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("PATCH", `/api/trainer/students/${studentId}/approve`, {});
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      toast({ title: "Регистрация одобрена" });
+    },
+    onError: (e: any) => {
+      toast({ title: "Ошибка", description: e?.message, variant: "destructive" });
+    },
+  });
+
+  const isPendingApproval = student?.isPendingApproval === true;
+
   const age = calculateAge(editing ? (form.birthDate || null) : (student?.birthDate ?? null));
 
   return (
@@ -1053,6 +1126,34 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
           </div>
         ) : !editing ? (
           <div className="space-y-3 text-sm min-w-0">
+            {isPendingApproval ? (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/30 space-y-2">
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  Регистрация не одобрена
+                </p>
+                <p className="text-xs text-blue-800 dark:text-blue-200">
+                  Ученик зарегистрировался сам. Отметка согласий с документами — отдельный шаг и не заменяет одобрение.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => approveMutation.mutate()}
+                  disabled={approveMutation.isPending}
+                >
+                  {approveMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                  )}
+                  Одобрить регистрацию
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200">
+                Регистрация одобрена — ученик может записываться на тренировки.
+              </div>
+            )}
             <Field label="ФИО" value={`${student.lastName || ""} ${student.firstName} ${student.middleName || ""}`.trim()} />
             <Field label="Телефон" value={student.phone} />
             <Field
@@ -1146,6 +1247,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
             <TrainerStudentConsentsManager
               studentId={student.id}
               consents={student.consents}
+              hint="Отметьте документы, подписанные на бумаге. Это не одобряет регистрацию — для этого используйте кнопку выше или галочку в списке."
             />
             <AttendanceSection studentId={student.id} />
             <PaymentsSection studentId={student.id} />
