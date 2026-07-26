@@ -55,7 +55,7 @@ import {
 } from "./trainer-student-service-section";
 import { computeSessionPrice } from "@shared/consents-pricing";
 import type { TrainerService } from "@shared/schema";
-import { Users, Search, UserCheck, Loader2, Calendar, UserPlus, Trash2, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, MoreHorizontal, Eye } from "lucide-react";
+import { Users, Search, UserCheck, Loader2, Calendar, UserPlus, Trash2, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, MoreHorizontal, Eye, KeyRound, Copy } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
@@ -1044,6 +1044,8 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<any>({});
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
 
   const { data: student, isLoading } = useQuery<StudentWithConsentsExtended>({
     queryKey: ["/api/trainer/students", studentId],
@@ -1054,6 +1056,14 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
     enabled: !!studentId && open,
     staleTime: 0,
   });
+
+  useEffect(() => {
+    if (!open) {
+      setResetConfirmOpen(false);
+      setTemporaryPassword(null);
+      setEditing(false);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (student) {
@@ -1109,6 +1119,31 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
     },
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/trainer/students/${studentId}/reset-password`, {});
+      return r.json() as Promise<{ temporaryPassword: string }>;
+    },
+    onSuccess: (data) => {
+      setResetConfirmOpen(false);
+      setTemporaryPassword(data.temporaryPassword);
+      toast({ title: "Пароль сброшен", description: "Передайте временный пароль ученику" });
+    },
+    onError: (e: any) => {
+      toast({ title: "Не удалось сбросить пароль", description: e?.message, variant: "destructive" });
+    },
+  });
+
+  const handleCopyTempPassword = async () => {
+    if (!temporaryPassword) return;
+    try {
+      await navigator.clipboard.writeText(temporaryPassword);
+      toast({ title: "Скопировано" });
+    } catch {
+      toast({ title: "Не удалось скопировать", variant: "destructive" });
+    }
+  };
+
   const isPendingApproval = student?.isPendingApproval === true;
 
   const age = calculateAge(editing ? (form.birthDate || null) : (student?.birthDate ?? null));
@@ -1156,6 +1191,59 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
             )}
             <Field label="ФИО" value={`${student.lastName || ""} ${student.firstName} ${student.middleName || ""}`.trim()} />
             <Field label="Телефон" value={student.phone} />
+            <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40 space-y-2">
+              <p className="text-sm font-medium">Вход в приложение</p>
+              <p className="text-xs text-muted-foreground">
+                Если ученик забыл пароль — сбросьте его и передайте временный код. При входе ученику предложат задать новый пароль.
+              </p>
+              {temporaryPassword ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30 space-y-2">
+                  <p className="text-xs font-medium text-amber-900 dark:text-amber-100">Временный пароль</p>
+                  <div className="flex items-center gap-2">
+                    <code
+                      className="flex-1 rounded bg-white px-3 py-2 text-lg font-semibold tracking-widest text-center dark:bg-slate-900"
+                      data-testid="text-temporary-password"
+                    >
+                      {temporaryPassword}
+                    </code>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-10 w-10 shrink-0"
+                      aria-label="Скопировать пароль"
+                      onClick={handleCopyTempPassword}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-amber-800 dark:text-amber-200">
+                    Передайте ученику вместе с номером телефона. Покажите это окно один раз — после закрытия код снова не отобразится.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => setTemporaryPassword(null)}
+                  >
+                    Скрыть
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                  onClick={() => setResetConfirmOpen(true)}
+                  data-testid="button-reset-student-password"
+                >
+                  <KeyRound className="h-4 w-4 mr-2" />
+                  Сбросить пароль
+                </Button>
+              )}
+            </div>
             <Field
               label="Дата рождения"
               value={
@@ -1260,6 +1348,32 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                 Редактировать
               </Button>
             </DialogFooter>
+
+            <AlertDialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Сбросить пароль?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Старый пароль перестанет действовать. Будет создан временный пароль — передайте его ученику.
+                    При следующем входе ученик должен будет задать новый пароль.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={resetPasswordMutation.isPending}>Отмена</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={resetPasswordMutation.isPending}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      resetPasswordMutation.mutate();
+                    }}
+                    data-testid="button-confirm-reset-password"
+                  >
+                    {resetPasswordMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Сбросить
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         ) : (
           <div className="space-y-3 min-w-0">

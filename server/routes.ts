@@ -1610,6 +1610,26 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/trainer/students/:id/reset-password", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      if (!user) return res.status(404).json({ message: "Ученик не найден" });
+      if (user.role === "trainer") {
+        return res.status(400).json({ message: "Нельзя сбросить пароль тренера здесь" });
+      }
+      // Easy to dictate by phone: 6 digits, never starts with 0
+      const temporaryPassword = String(100000 + Math.floor(Math.random() * 900000));
+      await storage.updateUser(id, {
+        password: await hashPassword(temporaryPassword),
+        mustChangePassword: true,
+      });
+      res.json({ temporaryPassword });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось сбросить пароль" });
+    }
+  });
+
   app.get("/api/trainer/students/:id", async (req, res) => {
     try {
       const { id } = req.params;
