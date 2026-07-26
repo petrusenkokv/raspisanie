@@ -280,8 +280,8 @@ export function ScheduleSettingsDialog({
             {/* Working hours tab */}
             <TabsContent value="hours" className="space-y-4 pt-4">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Диапазон часов, который виден в расписании. Внутри этого диапазона
-                для каждого дня недели можно задать свой график (вкладка «Неделя»).
+                Базовые часы по умолчанию для вкладки «Неделя» (если день включён без своего
+                особого графика). Реальное расписание задаётся во вкладке «Неделя».
               </p>
               <div className="grid grid-cols-1 gap-4 min-w-0 sm:grid-cols-2">
                 <div className="min-w-0">
@@ -347,8 +347,8 @@ export function ScheduleSettingsDialog({
             {/* Weekly template tab */}
             <TabsContent value="week" className="space-y-4 pt-4">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Для каждого дня недели включите/выключите работу и задайте часы.
-                Часы за пределами рабочего интервала автоматически заблокируются.
+                Для каждого дня включите/выключите работу и задайте часы. Выходной день
+                будет пустым. Слоты вне часов этого дня убираются из расписания.
               </p>
               <div className="space-y-2">
                 {(["1", "2", "3", "4", "5", "6", "7"] as const).map((k) => {

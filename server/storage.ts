@@ -269,6 +269,15 @@ function isWorkingHour(template: WeeklyTemplate, date: string, hour: number): bo
   return true;
 }
 
+function getDaySlotHourBounds(settings: TrainerSettings, date: string): { startHour: number; endHour: number } {
+  const wd = isoWeekday(new Date(date + "T00:00:00"));
+  const entry = settings.weeklyTemplate[String(wd) as "1"];
+  if (entry?.enabled) {
+    return { startHour: entry.startHour, endHour: entry.endHour };
+  }
+  return { startHour: 0, endHour: 0 };
+}
+
 // Returns the resolved capacity for a date based on weekly template + global default.
 function resolveCapacity(template: WeeklyTemplate, defaultCapacity: number, date: string): number {
   const wd = isoWeekday(new Date(date + "T00:00:00"));
@@ -408,8 +417,7 @@ export class MemStorage implements IStorage {
   }
 
   private generateTimeSlotsForDate(date: string) {
-    const startH = this.settings.dayStartHour;
-    const endH = this.settings.dayEndHour;
+    const { startHour: startH, endHour: endH } = getDaySlotHourBounds(this.settings, date);
     const isHoliday = Array.from(this.holidays.values()).some(h => h.date === date);
     const capacity = resolveCapacity(this.settings.weeklyTemplate, this.settings.defaultCapacity, date);
     for (let hour = startH; hour < endH; hour++) {
@@ -2142,6 +2150,10 @@ export class MemStorage implements IStorage {
           continue;
         }
         this.dedupeTimeSlotsForDate(dateStr);
+        if (!isWorkingHour(this.settings.weeklyTemplate, dateStr, rule.hour)) {
+          skipped++;
+          continue;
+        }
         const slot = this.ensureSlot(dateStr, rule.hour);
         if (slot.isBlocked) { skipped++; continue; }
         // Already has active booking for this rule on this slot?
@@ -2375,19 +2387,19 @@ export class MemStorage implements IStorage {
     }
 
     for (const date of Array.from(futureDates)) {
-      // 1) Drop existing slots that are now outside the [dayStartHour, dayEndHour) window
-      //    AND have no active bookings AND are not manually blocked.
+      // 1) Drop existing slots that are now outside this day's template window (or all slots on day off)
+      const { startHour: dayStart, endHour: dayEnd } = getDaySlotHourBounds(next, date);
       const slotsForDay = Array.from(this.timeSlots.values()).filter(s => s.date === date);
       for (const s of slotsForDay) {
         const hour = parseInt(s.time.slice(0, 2), 10);
-        const inRange = hour >= next.dayStartHour && hour < next.dayEndHour;
+        const inRange = hour >= dayStart && hour < dayEnd;
         if (!inRange) {
           cancelled.push(...this.removeOutOfRangeSlot(s));
         }
       }
 
       // 2) Ensure all hours in the new range exist
-      for (let h = next.dayStartHour; h < next.dayEndHour; h++) {
+      for (let h = dayStart; h < dayEnd; h++) {
         this.ensureSlot(date, h);
       }
 

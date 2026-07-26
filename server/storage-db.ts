@@ -117,16 +117,18 @@ function isWorkingHour(template: WeeklyTemplate, date: string, hour: number): bo
   return true;
 }
 
+/**
+ * Hours that exist as rows for this date.
+ * - Working day → only that weekday's template window (not expanded by global dayStart/dayEnd).
+ * - Day off (`enabled: false`) → empty range (no gray "blocked" filler slots).
+ */
 function getDaySlotHourBounds(settings: TrainerSettings, date: string): { startHour: number; endHour: number } {
   const wd = isoWeekday(new Date(date + "T00:00:00"));
   const entry = settings.weeklyTemplate[String(wd) as "1"];
-  let startHour = settings.dayStartHour;
-  let endHour = settings.dayEndHour;
   if (entry?.enabled) {
-    startHour = Math.min(startHour, entry.startHour);
-    endHour = Math.max(endHour, entry.endHour);
+    return { startHour: entry.startHour, endHour: entry.endHour };
   }
-  return { startHour, endHour };
+  return { startHour: 0, endHour: 0 };
 }
 
 function resolveCapacity(template: WeeklyTemplate, defaultCapacity: number, date: string): number {
@@ -1167,6 +1169,8 @@ export class DbStorage implements IStorage {
       if (!rule.weekdays.includes(wd)) continue;
       if (date < rule.startDate) continue;
       if (rule.endDate && date > rule.endDate) continue;
+      // Do not create/reopen slots outside the weekly template (incl. day off).
+      if (!isWorkingHour(settings.weeklyTemplate, date, rule.hour)) continue;
       const slot = await this.ensureSlot(date, rule.hour, settings);
       if (slot.isBlocked && slot.blockReason !== "manual" && slot.blockReason !== "holiday") {
         await db.update(timeSlots).set({
@@ -1987,6 +1991,10 @@ export class DbStorage implements IStorage {
           await this.ensureRecurringSlotsForDate(dateStr, settings);
           preparedDates.add(dateStr);
         }
+        if (!isWorkingHour(settings.weeklyTemplate, dateStr, rule.hour)) {
+          skipped++;
+          continue;
+        }
         let slot = await this.ensureSlot(dateStr, rule.hour, settings);
         if (slot.isBlocked && slot.blockReason !== "manual" && slot.blockReason !== "holiday") {
           await db.update(timeSlots).set({
@@ -2219,6 +2227,8 @@ export class DbStorage implements IStorage {
         if (!rule.weekdays.includes(wd)) continue;
         if (dateStr < rule.startDate) continue;
         if (rule.endDate && dateStr > rule.endDate) continue;
+        // Keep recurring hours only inside the day's working window.
+        if (!isWorkingHour(next.weeklyTemplate, dateStr, rule.hour)) continue;
         recurringHours.add(rule.hour);
       }
 
