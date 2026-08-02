@@ -62,6 +62,29 @@ function normalizePhone(input: string): string | null {
   return digits;
 }
 
+/** Parse "Фамилия Имя Отчество" from trainer contact fields. */
+function parsePersonFullName(full: string): {
+  firstName: string;
+  lastName: string;
+  middleName: string | null;
+} | null {
+  const parts = String(full || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  return {
+    lastName: parts[0],
+    firstName: parts[1],
+    middleName: parts.length > 2 ? parts.slice(2).join(" ") : null,
+  };
+}
+
+function makeTemporaryPassword(): string {
+  return String(100000 + Math.floor(Math.random() * 900000));
+}
+
 async function recordConsents(userId: string, documentIds: string[] | undefined) {
   if (!documentIds || !Array.isArray(documentIds)) return;
   for (const docId of documentIds) {
@@ -1618,8 +1641,7 @@ export async function registerRoutes(
       if (user.role === "trainer") {
         return res.status(400).json({ message: "Нельзя сбросить пароль тренера здесь" });
       }
-      // Easy to dictate by phone: 6 digits, never starts with 0
-      const temporaryPassword = String(100000 + Math.floor(Math.random() * 900000));
+      const temporaryPassword = makeTemporaryPassword();
       await storage.updateUser(id, {
         password: await hashPassword(temporaryPassword),
         mustChangePassword: true,
@@ -1627,6 +1649,150 @@ export async function registerRoutes(
       res.json({ temporaryPassword });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Не удалось сбросить пароль" });
+    }
+  });
+
+  app.post("/api/trainer/students/:id/create-parent-access", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const which = req.body?.which === "father" ? "father" : "mother";
+      const student = await storage.getUser(id);
+      if (!student) return res.status(404).json({ message: "Ученик не найден" });
+      if (student.role !== "student") {
+        return res.status(400).json({ message: "Доступ родителю создаётся только для карточки ученика" });
+      }
+
+      const age = calculateAgeYears(student.birthDate);
+      if (age === null) {
+        return res.status(400).json({ message: "Укажите дату рождения ученика" });
+      }
+      if (age >= 14) {
+        return res.status(400).json({
+          message: "Создание доступа родителю доступно для учеников младше 14 лет",
+        });
+      }
+
+      const fullName =
+        which === "father" ? student.fatherFullName : student.motherFullName;
+      const rawPhone = which === "father" ? student.fatherPhone : student.motherPhone;
+      if (!fullName?.trim() || !rawPhone) {
+        return res.status(400).json({
+          message:
+            which === "father"
+              ? "Сначала заполните ФИО и телефон отца в карточке ученика"
+              : "Сначала заполните ФИО и телефон матери в карточке ученика",
+        });
+      }
+
+      const parsed = parsePersonFullName(fullName);
+      if (!parsed) {
+        return res.status(400).json({
+          message: "Укажите полное ФИО родителя в формате «Фамилия Имя» (и отчество при наличии)",
+        });
+      }
+
+      const phone = normalizePhone(rawPhone);
+      if (!phone) {
+        return res.status(400).json({ message: "Некорректный телефон родителя" });
+      }
+      if (phone === student.phone) {
+        return res.status(400).json({
+          message:
+            "Телефон родителя совпадает с телефоном ученика. Укажите отдельный номер родителя.",
+        });
+      }
+
+      const linkedParents = await storage.getParentsByChild(id);
+      const alreadyLinked = linkedParents.find((p) => p.phone === phone);
+      if (alreadyLinked) {
+        const temporaryPassword = makeTemporaryPassword();
+        await storage.updateUser(alreadyLinked.id, {
+          password: await hashPassword(temporaryPassword),
+          mustChangePassword: true,
+        });
+        return res.json({
+          created: false,
+          alreadyLinked: true,
+          parent: {
+            id: alreadyLinked.id,
+            phone: alreadyLinked.phone,
+            firstName: alreadyLinked.firstName,
+            lastName: alreadyLinked.lastName,
+          },
+          temporaryPassword,
+        });
+      }
+
+      const existing = await storage.getUserByPhone(phone);
+      let parent: User;
+      let created = false;
+      let temporaryPassword: string | null = null;
+
+      if (existing) {
+        if (existing.role === "trainer") {
+          return res.status(400).json({ message: "Этот телефон принадлежит тренеру" });
+        }
+        if (existing.role === "student" && !existing.isParent) {
+          return res.status(409).json({
+            message:
+              "Этот телефон уже занят аккаунтом ученика. Укажите другой номер родителя или попросите родителя зарегистрироваться сам.",
+          });
+        }
+        // Existing parent (or student with parent mode): just link
+        parent = existing;
+        if (existing.role !== "parent" || !existing.isParent) {
+          parent = await storage.updateUser(existing.id, {
+            role: existing.role === "parent" ? "parent" : existing.role,
+            isParent: true,
+          } as any);
+        }
+        await storage.addParentChild({ parentId: parent.id, childId: id });
+        temporaryPassword = makeTemporaryPassword();
+        parent = await storage.updateUser(parent.id, {
+          password: await hashPassword(temporaryPassword),
+          mustChangePassword: true,
+        });
+      } else {
+        temporaryPassword = makeTemporaryPassword();
+        parent = await storage.createUser({
+          phone,
+          firstName: parsed.firstName,
+          lastName: parsed.lastName,
+          middleName: parsed.middleName,
+          birthDate: null,
+          role: "parent",
+          isParent: true,
+          isAlsoStudent: false,
+          isVerified: true,
+          password: await hashPassword(temporaryPassword),
+          mustChangePassword: true,
+          isPendingApproval: false,
+          legalRepresentativeConfirmed: true,
+        } as any);
+        await storage.addParentChild({ parentId: parent.id, childId: id });
+        created = true;
+      }
+
+      // Keep legacy single-parent fields in sync for display
+      await storage.updateUser(id, {
+        parentFullName: fullName.trim(),
+        parentPhone: phone,
+        legalRepresentativeConfirmed: true,
+      } as any);
+
+      res.json({
+        created,
+        alreadyLinked: false,
+        parent: {
+          id: parent.id,
+          phone: parent.phone,
+          firstName: parent.firstName,
+          lastName: parent.lastName,
+        },
+        temporaryPassword,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось создать доступ родителю" });
     }
   });
 
@@ -1639,6 +1805,12 @@ export async function registerRoutes(
       const parentWhoTrains = linkedParents.find((p) => p.isAlsoStudent);
       res.json({
         ...student,
+        linkedParents: linkedParents.map((p) => ({
+          id: p.id,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          phone: p.phone,
+        })),
         parentAlsoTrains: !!parentWhoTrains,
         parentAlsoTrainsName: parentWhoTrains
           ? [parentWhoTrains.lastName, parentWhoTrains.firstName].filter(Boolean).join(" ")

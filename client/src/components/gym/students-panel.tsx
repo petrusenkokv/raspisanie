@@ -72,6 +72,14 @@ import { legalRepresentativeFieldsError } from "@shared/legal-representative-fie
 type StudentWithConsentsExtended = StudentWithConsents & {
   exemptMembership?: boolean;
   exemptTrainerPayment?: boolean;
+  linkedParents?: {
+    id: string;
+    firstName: string;
+    lastName: string | null;
+    phone: string;
+  }[];
+  parentAlsoTrains?: boolean;
+  parentAlsoTrainsName?: string | null;
 };
 
 interface StudentsPanelProps {
@@ -1046,6 +1054,14 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
   const [form, setForm] = useState<any>({});
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
+  const [parentAccessConfirm, setParentAccessConfirm] = useState<"mother" | "father" | null>(null);
+  const [parentCredentials, setParentCredentials] = useState<{
+    phone: string;
+    temporaryPassword: string;
+    name: string;
+    created: boolean;
+    alreadyLinked: boolean;
+  } | null>(null);
 
   const { data: student, isLoading } = useQuery<StudentWithConsentsExtended>({
     queryKey: ["/api/trainer/students", studentId],
@@ -1061,6 +1077,8 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
     if (!open) {
       setResetConfirmOpen(false);
       setTemporaryPassword(null);
+      setParentAccessConfirm(null);
+      setParentCredentials(null);
       setEditing(false);
     }
   }, [open]);
@@ -1134,6 +1152,48 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
     },
   });
 
+  const createParentAccessMutation = useMutation({
+    mutationFn: async (which: "mother" | "father") => {
+      const r = await apiRequest("POST", `/api/trainer/students/${studentId}/create-parent-access`, {
+        which,
+      });
+      return r.json() as Promise<{
+        created: boolean;
+        alreadyLinked: boolean;
+        temporaryPassword: string;
+        parent: { id: string; phone: string; firstName: string; lastName: string | null };
+      }>;
+    },
+    onSuccess: (data) => {
+      setParentAccessConfirm(null);
+      const name = [data.parent.lastName, data.parent.firstName].filter(Boolean).join(" ");
+      setParentCredentials({
+        phone: data.parent.phone,
+        temporaryPassword: data.temporaryPassword,
+        name,
+        created: data.created,
+        alreadyLinked: data.alreadyLinked,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
+      toast({
+        title: data.created
+          ? "Доступ родителю создан"
+          : data.alreadyLinked
+            ? "Пароль родителя обновлён"
+            : "Родитель привязан",
+        description: "Передайте телефон и временный пароль родителю",
+      });
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Не удалось создать доступ",
+        description: e?.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleCopyTempPassword = async () => {
     if (!temporaryPassword) return;
     try {
@@ -1144,9 +1204,27 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
     }
   };
 
+  const handleCopyParentCreds = async () => {
+    if (!parentCredentials) return;
+    const text = `Телефон: ${parentCredentials.phone}\nПароль: ${parentCredentials.temporaryPassword}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: "Скопировано" });
+    } catch {
+      toast({ title: "Не удалось скопировать", variant: "destructive" });
+    }
+  };
+
   const isPendingApproval = student?.isPendingApproval === true;
 
   const age = calculateAge(editing ? (form.birthDate || null) : (student?.birthDate ?? null));
+  const linkedParents = student?.linkedParents ?? [];
+  const linkedPhones = new Set(linkedParents.map((p) => p.phone.replace(/\D/g, "")));
+  const normalizeDigits = (v?: string | null) => (v || "").replace(/\D/g, "");
+  const motherLinked = linkedPhones.has(normalizeDigits((student as any)?.motherPhone));
+  const fatherLinked = linkedPhones.has(normalizeDigits((student as any)?.fatherPhone));
+  const canOfferParentAccess = age === null || age < 14;
+  const parentAccessReady = age !== null && age < 14;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1331,6 +1409,132 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                 </div>
               );
             })()}
+            {canOfferParentAccess && (
+              <div className="rounded-lg border border-violet-200 bg-violet-50/80 p-3 dark:border-violet-800 dark:bg-violet-950/30 space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-violet-900 dark:text-violet-100">
+                    Доступ родителю в приложение
+                  </p>
+                  <p className="text-xs text-violet-800 dark:text-violet-200 mt-0.5">
+                    Создайте аккаунт родителя по контактам из карточки. Передайте телефон и временный пароль —
+                    родитель сможет смотреть и менять расписание ребёнка в «Мои дети».
+                  </p>
+                </div>
+
+                {linkedParents.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                      Уже привязаны
+                    </p>
+                    {linkedParents.map((p) => (
+                      <div
+                        key={p.id}
+                        className="rounded-md border border-violet-200 bg-white px-2.5 py-2 text-xs dark:border-violet-800 dark:bg-slate-900"
+                      >
+                        <div className="font-medium text-gray-900 dark:text-gray-100">
+                          {[p.lastName, p.firstName].filter(Boolean).join(" ")}
+                        </div>
+                        <div className="text-muted-foreground">{p.phone}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {parentCredentials ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30 space-y-2">
+                    <p className="text-xs font-medium text-amber-900 dark:text-amber-100">
+                      Данные для входа родителя
+                      {parentCredentials.name ? ` — ${parentCredentials.name}` : ""}
+                    </p>
+                    <div className="space-y-1 text-sm">
+                      <div>
+                        <span className="text-xs text-amber-800 dark:text-amber-200">Телефон</span>
+                        <code className="mt-0.5 block rounded bg-white px-3 py-2 font-semibold dark:bg-slate-900">
+                          {parentCredentials.phone}
+                        </code>
+                      </div>
+                      <div>
+                        <span className="text-xs text-amber-800 dark:text-amber-200">Временный пароль</span>
+                        <code
+                          className="mt-0.5 block rounded bg-white px-3 py-2 text-lg font-semibold tracking-widest text-center dark:bg-slate-900"
+                          data-testid="text-parent-temporary-password"
+                        >
+                          {parentCredentials.temporaryPassword}
+                        </code>
+                      </div>
+                    </div>
+                    <p className="text-xs text-amber-800 dark:text-amber-200">
+                      При первом входе родителю предложат задать свой пароль. Покажите эти данные один раз.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={handleCopyParentCreds}
+                      >
+                        <Copy className="h-4 w-4 mr-2" />
+                        Скопировать
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={() => setParentCredentials(null)}
+                      >
+                        Скрыть
+                      </Button>
+                    </div>
+                  </div>
+                ) : !parentAccessReady ? (
+                  <p className="text-xs text-violet-800 dark:text-violet-200">
+                    Сначала укажите дату рождения ученика (младше 14 лет) — через «Редактировать».
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {!!(student as any).motherFullName && !!(student as any).motherPhone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 justify-start"
+                        onClick={() => setParentAccessConfirm("mother")}
+                        disabled={createParentAccessMutation.isPending}
+                        data-testid="button-create-parent-access-mother"
+                      >
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        {motherLinked ? "Обновить доступ матери" : "Создать доступ матери"}
+                      </Button>
+                    )}
+                    {!!(student as any).fatherFullName && !!(student as any).fatherPhone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 justify-start"
+                        onClick={() => setParentAccessConfirm("father")}
+                        disabled={createParentAccessMutation.isPending}
+                        data-testid="button-create-parent-access-father"
+                      >
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        {fatherLinked ? "Обновить доступ отца" : "Создать доступ отца"}
+                      </Button>
+                    )}
+                    {!(
+                      (!!(student as any).motherFullName && !!(student as any).motherPhone) ||
+                      (!!(student as any).fatherFullName && !!(student as any).fatherPhone)
+                    ) && (
+                      <p className="text-xs text-violet-800 dark:text-violet-200">
+                        Сначала нажмите «Редактировать» и заполните ФИО и телефон хотя бы одного родителя
+                        (формат ФИО: «Фамилия Имя»).
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <TrainerStudentServiceSection studentId={student.id} />
             <TrainerStudentConsentsManager
               studentId={student.id}
@@ -1370,6 +1574,42 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                   >
                     {resetPasswordMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                     Сбросить
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog
+              open={!!parentAccessConfirm}
+              onOpenChange={(open) => !open && setParentAccessConfirm(null)}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {parentAccessConfirm === "father"
+                      ? "Создать доступ отцу?"
+                      : "Создать доступ матери?"}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Будет создан или привязан аккаунт родителя. Вы получите телефон и временный пароль —
+                    передайте их родителю. При входе родителю нужно будет задать свой пароль. После этого
+                    родитель сможет записывать и отменять тренировки ребёнка.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={createParentAccessMutation.isPending}>Отмена</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={createParentAccessMutation.isPending || !parentAccessConfirm}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (parentAccessConfirm) createParentAccessMutation.mutate(parentAccessConfirm);
+                    }}
+                    data-testid="button-confirm-create-parent-access"
+                  >
+                    {createParentAccessMutation.isPending && (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    )}
+                    Создать
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
