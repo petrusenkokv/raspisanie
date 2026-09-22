@@ -53,6 +53,7 @@ import {
   sessionUserId,
   isSessionTrainer,
 } from "./auth";
+import { computeTrainerPackagePrice } from "@shared/pricing-tiers";
 
 function normalizePhone(input: string): string | null {
   let digits = String(input || "").replace(/\D/g, "");
@@ -864,6 +865,27 @@ export async function registerRoutes(
     }
   });
 
+  // Включить/выключить индивидуальные тренировки для ученика (тренер, сам ученик или родитель)
+  app.patch("/api/users/:id/individual-training", requireAuth, async (req, res) => {
+    try {
+      const targetId = req.params.id;
+      if (
+        !isSessionTrainer(req) &&
+        targetId !== sessionUserId(req) &&
+        !(await storage.isParentOfChild(sessionUserId(req), targetId))
+      ) {
+        return res.status(403).json({ message: "Нет доступа" });
+      }
+      const target = await storage.getUser(targetId);
+      if (!target) return res.status(404).json({ message: "Пользователь не найден" });
+      const enabled = req.body?.enabled === true;
+      const user = await storage.setWantsIndividualTraining(targetId, enabled);
+      res.json({ user: toPublicUser(user) });
+    } catch {
+      res.status(500).json({ message: "Не удалось сохранить настройку" });
+    }
+  });
+
   app.post("/api/users/:id/consents/toggle", requireAuth, async (req, res) => {
     try {
       const targetId = req.params.id;
@@ -1222,6 +1244,16 @@ export async function registerRoutes(
       
       if (confirmedBookings.length >= 2) {
         return res.status(400).json({ message: "Все места в этом слоте заняты" });
+      }
+
+      // Индивидуальная тренировка — запись только в свободный слот (без других записей)
+      if (
+        bookingStudent?.wantsIndividualTraining &&
+        existingBookings.some((b) => b.status !== "cancelled")
+      ) {
+        return res.status(400).json({
+          message: "Индивидуальная тренировка доступна только в свободном слоте",
+        });
       }
 
       // Enforce booking deadline (student-self-booking only)
@@ -2163,6 +2195,17 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Ученик уже записан на это время" });
       }
 
+      // Индивидуальная тренировка — запись только в свободный слот (без других записей)
+      const studentUser = await storage.getUser(studentId);
+      if (
+        studentUser?.wantsIndividualTraining &&
+        slotBookings.some((b) => b.status !== "cancelled")
+      ) {
+        return res.status(400).json({
+          message: "Индивидуальная тренировка доступна только в свободном слоте",
+        });
+      }
+
       const dayBookings = await storage.getBookingsByStudent(studentId);
       const alreadyThatDay = dayBookings.find(
         (b) => b.status !== "cancelled" && b.timeSlot.date === slot.date,
@@ -2513,7 +2556,19 @@ export async function registerRoutes(
       const trainerIdRaw = (req.body as any)?.trainerId;
       const trainer = trainerIdRaw ? await storage.getUser(String(trainerIdRaw)) : await storage.getTrainer();
       const createdBy = trainer?.id || id;
-      const payment = await storage.addTrainerPayment(id, parsed.data, createdBy);
+
+      // Зафиксировать цену абонемента по тарифной шкале тренера (с учётом опции индивидуальной)
+      const settings = await storage.getTrainerSettings();
+      const payStudent = await storage.getUser(id);
+      const pkg = computeTrainerPackagePrice(settings.pricingTiers, parsed.data.totalSessions, {
+        individualPriceRub: settings.individualTrainingPriceRub,
+        wantsIndividualTraining: payStudent?.wantsIndividualTraining === true,
+      });
+      const price = pkg
+        ? { pricePerSessionRub: pkg.pricePerSessionRub, totalPriceRub: pkg.totalPriceRub }
+        : undefined;
+
+      const payment = await storage.addTrainerPayment(id, parsed.data, createdBy, price);
       res.json(payment);
     } catch (error: any) {
       res.status(400).json({ message: error?.message || "Не удалось сохранить абонемент" });

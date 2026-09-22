@@ -146,6 +146,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
 
   const isFull = timeSlot.availableSpots === 0;
   const isBlocked = timeSlot.isBlocked;
+  // Индивидуальная тренировка — запись только в свободный слот (без других записей)
+  const individualSlotBusy =
+    !isTrainer() &&
+    (currentUser as any)?.wantsIndividualTraining === true &&
+    timeSlot.bookings.length > 0;
   const blockReason = timeSlot.blockReason;
   const blockNote = timeSlot.blockNote;
   const blockedLabel = getBlockedSlotLabel(blockReason, blockNote);
@@ -686,7 +691,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
               </Button>
             ) : null
           ) : (
-            !isFull && (
+            !isFull && !individualSlotBusy && (
               <>
                 {slotPriceStudentIds.length > 0 && familyBookings.length === 0 && (
                   <SlotSessionPrice studentIds={slotPriceStudentIds} inline />
@@ -713,7 +718,12 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                   {tooLateToBook ? "Запись закрыта" : "Записаться"}
                 </MembershipBlockedButton>
               </>
-            )
+            ) ||
+              (individualSlotBusy && (
+                <div className="text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded px-2 py-1.5 text-center">
+                  Индивидуальная тренировка — слот занят, выберите свободное время
+                </div>
+              ))
           )}
           </div>
         </div>

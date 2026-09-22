@@ -42,6 +42,13 @@ import {
 import { studentIdentityKey, studentFullNameKey, studentLastFirstKey } from "./student-identity";
 import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
 import { resolveBookingSource, type BookingSource } from "@shared/booking-source";
+import {
+  DEFAULT_PRICING_TIERS,
+  resolveSessionRate,
+  parsePricingTiers,
+  serializePricingTiers,
+} from "@shared/pricing-tiers";
+import type { TrainerPaymentPrice } from "./storage";
 
 // Sick periods table (not in shared schema, defined locally)
 const sickPeriods = pgTable("sick_periods", {
@@ -277,6 +284,8 @@ export class DbStorage implements IStorage {
         bookingDeadlineHours: 1,
         defaultCapacity: 2,
         reminderMinutes: null,
+        pricingTiers: serializePricingTiers(DEFAULT_PRICING_TIERS),
+        individualTrainingPriceRub: 1000,
       }).returning();
       this.settingsCache = this.mapSettings(inserted[0]);
     } else {
@@ -296,6 +305,8 @@ export class DbStorage implements IStorage {
       defaultCapacity: (row as any).defaultCapacity ?? 2,
       reminderMinutes: row.reminderMinutes ?? null,
       welcomeMessage: (row as any).welcomeMessage ?? null,
+      pricingTiers: parsePricingTiers((row as any).pricingTiers ?? null),
+      individualTrainingPriceRub: (row as any).individualTrainingPriceRub ?? 1000,
       updatedAt: row.updatedAt ?? null,
     };
   }
@@ -324,6 +335,20 @@ export class DbStorage implements IStorage {
     } catch { /* ignore */ }
     try {
       await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS legal_representative_confirmed boolean NOT NULL DEFAULT false`);
+    } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS wants_individual_training boolean NOT NULL DEFAULT false`);
+    } catch { /* ignore */ }
+    // Pricing tiers + saved subscription price columns (progressive pricing)
+    try {
+      await db.execute(drizzleSql`ALTER TABLE trainer_settings ADD COLUMN IF NOT EXISTS pricing_tiers text NOT NULL DEFAULT '[]'`);
+    } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`ALTER TABLE trainer_settings ADD COLUMN IF NOT EXISTS individual_training_price_rub integer NOT NULL DEFAULT 1000`);
+    } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`ALTER TABLE trainer_payments ADD COLUMN IF NOT EXISTS price_per_session_rub integer NOT NULL DEFAULT 0`);
+      await db.execute(drizzleSql`ALTER TABLE trainer_payments ADD COLUMN IF NOT EXISTS total_price_rub integer NOT NULL DEFAULT 0`);
     } catch { /* ignore */ }
     try {
       await db.execute(drizzleSql`
@@ -372,16 +397,7 @@ export class DbStorage implements IStorage {
         exemptTrainerPayment: true,
       }).where(eq(users.id, trainer.id));
     }
-    const services = await db.select().from(trainerServices);
-    if (services.length === 0) {
-      await db.insert(trainerServices).values({
-        name: "Тренировка",
-        priceRub: 500,
-        isActive: true,
-        isDefault: true,
-        sortOrder: 0,
-      });
-    }
+    // NB: дефолтная услуга больше не создаётся — цена ученика берётся из «Тарифов абонементов».
     // Ensure default documents exist
     const docs = await db.select().from(documents);
     if (docs.length === 0) {
@@ -640,6 +656,10 @@ export class DbStorage implements IStorage {
     return rows[0];
   }
 
+  async setWantsIndividualTraining(userId: string, enabled: boolean): Promise<User> {
+    return this.updateUser(userId, { wantsIndividualTraining: enabled === true });
+  }
+
   async verifyUser(id: string): Promise<User> {
     return this.updateUser(id, { isVerified: true, verificationCode: null });
   }
@@ -868,15 +888,21 @@ export class DbStorage implements IStorage {
     const activeDocs = await this.getDocuments(true);
     const consents = await this.getConsentsByUser(studentId);
     const signedDocumentIds = new Set(consents.map((c) => c.documentId));
-    const service =
-      (refreshed.selectedServiceId && (await this.getTrainerService(refreshed.selectedServiceId))) ||
-      (await this.getDefaultTrainerService());
+    // Цена сессии берётся из «Тарифов абонементов» (+ индивидуальная опция), а не из услуг.
+    const payStatus = await this.getStudentPaymentStatus(studentId, todayStr);
+    const subCount = payStatus.activeTrainerPayment?.totalSessions ?? 1;
+    const settings = await this.loadSettings();
+    const rate = resolveSessionRate(
+      settings.pricingTiers,
+      settings.individualTrainingPriceRub,
+      refreshed.wantsIndividualTraining === true,
+      subCount,
+    );
     const sessionPrice = computeSessionPrice({
-      service: service ? { id: service.id, name: service.name, priceRub: service.priceRub } : null,
+      service: { id: null, name: rate.label, priceRub: rate.pricePerSessionRub },
       documents: activeDocs,
       signedDocumentIds,
     });
-    const payStatus = await this.getStudentPaymentStatus(studentId, todayStr);
     let trainerPaymentRemaining: number | null = null;
     let trainerPaymentTotal: number | null = null;
     if (payStatus.activeTrainerPayment) {
@@ -2194,6 +2220,13 @@ export class DbStorage implements IStorage {
       defaultCapacity: updates.defaultCapacity ?? current.defaultCapacity,
       reminderMinutes: updates.reminderMinutes !== undefined ? updates.reminderMinutes : current.reminderMinutes,
       welcomeMessage: updates.welcomeMessage !== undefined ? updates.welcomeMessage : current.welcomeMessage,
+      pricingTiers: updates.pricingTiers
+        ? updates.pricingTiers.map((t) => ({ ...t }))
+        : current.pricingTiers,
+      individualTrainingPriceRub:
+        updates.individualTrainingPriceRub !== undefined
+          ? updates.individualTrainingPriceRub
+          : current.individualTrainingPriceRub,
       updatedAt: new Date(),
     };
     if (next.dayEndHour <= next.dayStartHour) throw new Error("Окончание рабочего дня должно быть позже начала");
@@ -2207,6 +2240,8 @@ export class DbStorage implements IStorage {
       defaultCapacity: next.defaultCapacity,
       reminderMinutes: next.reminderMinutes,
       welcomeMessage: next.welcomeMessage,
+      pricingTiers: serializePricingTiers(next.pricingTiers),
+      individualTrainingPriceRub: next.individualTrainingPriceRub,
       updatedAt: next.updatedAt!,
     }).where(eq(trainerSettings.id, current.id));
     this.settingsCache = next;
@@ -2244,7 +2279,7 @@ export class DbStorage implements IStorage {
       for (let h = dayStart; h < dayEnd; h++) {
         await this.ensureSlot(dateStr, h, next);
       }
-      for (const h of recurringHours) {
+      for (const h of Array.from(recurringHours)) {
         await this.ensureSlot(dateStr, h, next);
       }
       await this.ensureRecurringSlotsForDate(dateStr, next);
@@ -2508,7 +2543,12 @@ export class DbStorage implements IStorage {
     return Promise.all(rows.map(p => this.withUsage(p)));
   }
 
-  async addTrainerPayment(studentId: string, input: TrainerPaymentInput, createdBy: string): Promise<TrainerPaymentWithUsage> {
+  async addTrainerPayment(
+    studentId: string,
+    input: TrainerPaymentInput,
+    createdBy: string,
+    price?: TrainerPaymentPrice,
+  ): Promise<TrainerPaymentWithUsage> {
     const user = await this.getUser(studentId);
     if (!user) throw new Error("Пользователь не найден");
     if (user.role !== "student" && !(user.role === "parent" && (user as any).isAlsoStudent)) {
@@ -2521,6 +2561,8 @@ export class DbStorage implements IStorage {
       startDate: input.startDate,
       status: "active",
       note: input.note ?? null,
+      pricePerSessionRub: price?.pricePerSessionRub ?? 0,
+      totalPriceRub: price?.totalPriceRub ?? 0,
       createdBy,
     }).returning();
     return this.withUsage(rows[0]);

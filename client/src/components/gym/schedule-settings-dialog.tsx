@@ -17,11 +17,11 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare, Send, Lock, Unlock, Banknote } from "lucide-react";
-import { TrainerServicesSection } from "./trainer-services-section";
 import { TrainerPricingSettings } from "./trainer-pricing-settings";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { type WeeklyTemplate, type WeekdayTemplateEntry, type Holiday } from "@shared/schema";
+import { DEFAULT_PRICING_TIERS, type PricingTier } from "@shared/pricing-tiers";
 
 interface ScheduleSettingsDialogProps {
   open: boolean;
@@ -53,6 +53,8 @@ type SettingsResponse = {
   defaultCapacity: number;
   reminderMinutes: number | null;
   welcomeMessage: string | null;
+  pricingTiers?: PricingTier[];
+  individualTrainingPriceRub?: number;
   holidays: Holiday[];
 };
 
@@ -92,6 +94,10 @@ export function ScheduleSettingsDialog({
   const [welcomeMessage, setWelcomeMessage] = useState<string>("");
   const [newHolidayDate, setNewHolidayDate] = useState<string>(todayLocalStr());
   const [newHolidayName, setNewHolidayName] = useState<string>("");
+  const [tiers, setTiers] = useState<PricingTier[]>(() =>
+    DEFAULT_PRICING_TIERS.map((t) => ({ ...t })),
+  );
+  const [individualPrice, setIndividualPrice] = useState<string>("1000");
 
   useEffect(() => {
     if (data) {
@@ -111,6 +117,12 @@ export function ScheduleSettingsDialog({
         }
       }
       setTemplate(next);
+      setTiers(
+        Array.isArray(data.pricingTiers) && data.pricingTiers.length > 0
+          ? data.pricingTiers.map((t) => ({ ...t }))
+          : DEFAULT_PRICING_TIERS.map((t) => ({ ...t })),
+      );
+      setIndividualPrice(String(data.individualTrainingPriceRub ?? 1000));
     }
   }, [data]);
 
@@ -210,6 +222,49 @@ export function ScheduleSettingsDialog({
       }
     }
     saveSettings.mutate({ weeklyTemplate: template });
+  };
+
+  const updateTier = (id: string, patch: Partial<PricingTier>) => {
+    setTiers((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  };
+
+  const addTier = () => {
+    setTiers((prev) => [
+      ...prev,
+      {
+        id: `tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        label: "Новый тариф",
+        minSessions: 1,
+        maxSessions: null,
+        pricePerSessionRub: 500,
+      },
+    ]);
+  };
+
+  const removeTier = (id: string) => {
+    setTiers((prev) => (prev.length > 1 ? prev.filter((t) => t.id !== id) : prev));
+  };
+
+  const handleSaveTiers = () => {
+    const invalid = tiers.find(
+      (t) =>
+        !t.label.trim() ||
+        t.minSessions < 1 ||
+        (t.maxSessions != null && t.maxSessions < t.minSessions) ||
+        t.pricePerSessionRub < 0,
+    );
+    if (invalid) {
+      toast({
+        title: "Ошибка",
+        description: `Проверьте тариф «${invalid.label || "без названия"}»: диапазон и цена должны быть корректными`,
+        variant: "destructive",
+      });
+      return;
+    }
+    saveSettings.mutate({
+      pricingTiers: tiers,
+      individualTrainingPriceRub: Math.max(0, Number(individualPrice) || 0),
+    });
   };
 
   return (
@@ -697,10 +752,135 @@ export function ScheduleSettingsDialog({
             </TabsContent>
 
             <TabsContent value="pricing" className="space-y-6 pt-4">
-              <div className="space-y-3">
-                <p className="text-sm font-medium">Услуги и базовые цены</p>
-                <TrainerServicesSection enabled={open} />
+              {/* Тарифы абонементов */}
+              <div className="border-t pt-4 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Тарифы абонементов</p>
+                  <p className="text-xs text-gray-500">
+                    Сумма абонемента = количество тренировок × ставка уровня. Базовую цену
+                    (700 ₽ по умолчанию) даёт первый уровень и применяется ко всем ученикам.
+                  </p>
+                </div>
+
+                {/* Индивидуальная тренировка — отдельная выборочная опция */}
+                <div className="border rounded-lg p-2.5 space-y-1.5 min-w-0">
+                  <Label className="text-[11px]">Индивидуальная тренировка (за занятие, ₽)</Label>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      type="number"
+                      min={0}
+                      className="h-8 text-xs w-full min-w-0"
+                      value={individualPrice}
+                      onChange={(e) => setIndividualPrice(e.target.value)}
+                      data-testid="input-individual-price"
+                    />
+                    <span className="text-[11px] text-gray-500 shrink-0">
+                      включается тренером или учеником в профиле
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {tiers.map((tier) => (
+                    <div
+                      key={tier.id}
+                      className="border rounded-lg p-2.5 space-y-2 min-w-0"
+                      data-testid={`row-pricing-tier-${tier.id}`}
+                    >
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 min-w-0">
+                        <div className="col-span-2 sm:col-span-1">
+                          <Label className="text-[11px]">Название</Label>
+                          <Input
+                            className="h-8 text-xs w-full min-w-0"
+                            value={tier.label}
+                            onChange={(e) => updateTier(tier.id, { label: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[11px]">От (занятий)</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            className="h-8 text-xs w-full min-w-0"
+                            value={tier.minSessions}
+                            onChange={(e) =>
+                              updateTier(tier.id, { minSessions: Math.max(1, Number(e.target.value) || 1) })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[11px]">До (занятий)</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            placeholder="∞"
+                            className="h-8 text-xs w-full min-w-0"
+                            value={tier.maxSessions ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              updateTier(tier.id, {
+                                maxSessions: v === "" ? null : Math.max(1, Number(v) || 1),
+                              });
+                            }}
+                          />
+                        </div>
+                        <div className="col-span-2 sm:col-span-1">
+                          <Label className="text-[11px]">₽ за занятие</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            className="h-8 text-xs w-full min-w-0"
+                            value={tier.pricePerSessionRub}
+                            onChange={(e) =>
+                              updateTier(tier.id, {
+                                pricePerSessionRub: Math.max(0, Number(e.target.value) || 0),
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-gray-500 min-w-0 truncate">
+                          {tier.maxSessions != null
+                            ? `${tier.minSessions}–${tier.maxSessions} занятий`
+                            : `от ${tier.minSessions} занятий`}
+                          {" • "}
+                          сумма: {(tier.pricePerSessionRub * (tier.maxSessions ?? tier.minSessions)).toLocaleString("ru-RU")} ₽
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => removeTier(tier.id)}
+                          disabled={tiers.length <= 1}
+                          title="Удалить тариф"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={addTier}
+                  data-testid="button-add-pricing-tier"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Добавить тариф
+                </Button>
+                <Button
+                  className="w-full"
+                  onClick={handleSaveTiers}
+                  disabled={saveSettings.isPending}
+                  data-testid="button-save-pricing-tiers"
+                >
+                  {saveSettings.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Сохранить тарифы
+                </Button>
               </div>
+
               <div className="border-t pt-4">
                 <TrainerPricingSettings enabled={open} />
               </div>

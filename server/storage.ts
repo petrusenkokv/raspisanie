@@ -35,6 +35,7 @@ import {
   type ParentChild,
   type InsertParentChild,
 } from "@shared/schema";
+import { DEFAULT_PRICING_TIERS, resolveSessionRate, type PricingTier } from "@shared/pricing-tiers";
 import type { PushSubscriptionData } from "./push";
 import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
 import { resolveBookingSource, type BookingSource } from "@shared/booking-source";
@@ -68,6 +69,12 @@ export type BlockedPeriod = {
   daysCount: number;
 };
 
+/** Зафиксированная цена абонемента при продаже (по тарифной шкале тренера). */
+export type TrainerPaymentPrice = {
+  pricePerSessionRub: number;
+  totalPriceRub: number;
+};
+
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
@@ -81,6 +88,8 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User>;
   verifyUser(id: string): Promise<User>;
+  /** Включить/выключить индивидуальные тренировки для ученика (только свободные слоты). */
+  setWantsIndividualTraining(userId: string, enabled: boolean): Promise<User>;
   deleteUser(id: string): Promise<void>;
   getChildrenByParent(parentId: string): Promise<User[]>;
   getParentsByChild(childId: string): Promise<User[]>;
@@ -185,7 +194,12 @@ export interface IStorage {
 
   // Payments — trainer subscription
   getTrainerPayments(studentId: string): Promise<TrainerPaymentWithUsage[]>;
-  addTrainerPayment(studentId: string, input: TrainerPaymentInput, createdBy: string): Promise<TrainerPaymentWithUsage>;
+  addTrainerPayment(
+    studentId: string,
+    input: TrainerPaymentInput,
+    createdBy: string,
+    price?: TrainerPaymentPrice,
+  ): Promise<TrainerPaymentWithUsage>;
   cancelTrainerPayment(id: string): Promise<TrainerPaymentWithUsage>;
   deleteTrainerPayment(id: string): Promise<void>;
 
@@ -322,6 +336,8 @@ export class MemStorage implements IStorage {
     defaultCapacity: 2,
     reminderMinutes: null,
     welcomeMessage: null,
+    pricingTiers: DEFAULT_PRICING_TIERS.map((t) => ({ ...t })),
+    individualTrainingPriceRub: 1000,
     updatedAt: new Date(),
   };
 
@@ -360,6 +376,7 @@ export class MemStorage implements IStorage {
       role: "trainer",
       isParent: false,
       isAlsoStudent: false,
+      wantsIndividualTraining: false,
       isVerified: true,
       verificationCode: null,
       password: "12345",
@@ -370,16 +387,7 @@ export class MemStorage implements IStorage {
     };
     this.users.set(trainerId, trainer);
 
-    const defaultServiceId = randomUUID();
-    this.trainerServicesMap.set(defaultServiceId, {
-      id: defaultServiceId,
-      name: "Тренировка",
-      priceRub: 500,
-      isActive: true,
-      isDefault: true,
-      sortOrder: 0,
-      createdAt: new Date(),
-    });
+    // NB: дефолтная услуга больше не создаётся — цена ученика берётся из «Тарифов абонементов».
 
     const seedDocs: { title: string; content: string; kind: "required" | "pricing"; priceSurchargeRub?: number }[] = [
       {
@@ -503,6 +511,7 @@ export class MemStorage implements IStorage {
       role: insertUser.role || "student",
       isParent: (insertUser as any).isParent ?? false,
       isAlsoStudent: (insertUser as any).isAlsoStudent ?? false,
+      wantsIndividualTraining: (insertUser as any).wantsIndividualTraining ?? false,
       isVerified: insertUser.isVerified ?? false,
       verificationCode: null,
       password: insertUser.password ?? "",
@@ -526,6 +535,10 @@ export class MemStorage implements IStorage {
     const updatedUser = { ...user, ...updates };
     this.users.set(id, updatedUser);
     return updatedUser;
+  }
+
+  async setWantsIndividualTraining(userId: string, enabled: boolean): Promise<User> {
+    return this.updateUser(userId, { wantsIndividualTraining: enabled === true });
   }
 
   async verifyUser(id: string): Promise<User> {
@@ -804,15 +817,20 @@ export class MemStorage implements IStorage {
     const activeDocs = await this.getDocuments(true);
     const consents = await this.getConsentsByUser(studentId);
     const signedDocumentIds = new Set(consents.map((c) => c.documentId));
-    const service =
-      (refreshed.selectedServiceId && (await this.getTrainerService(refreshed.selectedServiceId))) ||
-      (await this.getDefaultTrainerService());
+    // Цена сессии берётся из «Тарифов абонементов» (+ индивидуальная опция), а не из услуг.
+    const payStatus = await this.getStudentPaymentStatus(studentId, todayStr);
+    const subCount = payStatus.activeTrainerPayment?.totalSessions ?? 1;
+    const rate = resolveSessionRate(
+      this.settings.pricingTiers,
+      this.settings.individualTrainingPriceRub,
+      refreshed.wantsIndividualTraining === true,
+      subCount,
+    );
     const sessionPrice = computeSessionPrice({
-      service: service ? { id: service.id, name: service.name, priceRub: service.priceRub } : null,
+      service: { id: null, name: rate.label, priceRub: rate.pricePerSessionRub },
       documents: activeDocs,
       signedDocumentIds,
     });
-    const payStatus = await this.getStudentPaymentStatus(studentId, todayStr);
     let trainerPaymentRemaining: number | null = null;
     let trainerPaymentTotal: number | null = null;
     if (payStatus.activeTrainerPayment) {
@@ -1442,6 +1460,7 @@ export class MemStorage implements IStorage {
     studentId: string,
     input: TrainerPaymentInput,
     createdBy: string,
+    price?: TrainerPaymentPrice,
   ): Promise<TrainerPaymentWithUsage> {
     const user = this.users.get(studentId);
     if (!user) throw new Error("Пользователь не найден");
@@ -1458,6 +1477,8 @@ export class MemStorage implements IStorage {
       startDate: input.startDate,
       status: "active",
       note: input.note ?? null,
+      pricePerSessionRub: price?.pricePerSessionRub ?? 0,
+      totalPriceRub: price?.totalPriceRub ?? 0,
       createdBy,
       createdAt: new Date(),
       completedAt: null,
@@ -2343,7 +2364,11 @@ export class MemStorage implements IStorage {
 
   // ----- Trainer schedule settings -----
   async getTrainerSettings(): Promise<TrainerSettings> {
-    return { ...this.settings, weeklyTemplate: { ...this.settings.weeklyTemplate } };
+    return {
+      ...this.settings,
+      weeklyTemplate: { ...this.settings.weeklyTemplate },
+      pricingTiers: this.settings.pricingTiers.map((t) => ({ ...t })),
+    };
   }
 
   async updateTrainerSettings(updates: TrainerSettingsUpdate): Promise<{ settings: TrainerSettings; cancelledCount: number }> {
@@ -2368,6 +2393,13 @@ export class MemStorage implements IStorage {
         updates.welcomeMessage !== undefined
           ? updates.welcomeMessage
           : this.settings.welcomeMessage,
+      pricingTiers: updates.pricingTiers
+        ? updates.pricingTiers.map((t) => ({ ...t }))
+        : this.settings.pricingTiers,
+      individualTrainingPriceRub:
+        updates.individualTrainingPriceRub !== undefined
+          ? updates.individualTrainingPriceRub
+          : this.settings.individualTrainingPriceRub,
       updatedAt: new Date(),
     };
     if (next.dayEndHour <= next.dayStartHour) {

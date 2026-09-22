@@ -34,7 +34,7 @@ export type SessionPriceBreakdown = {
 };
 
 export function computeSessionPrice(params: {
-  service: { id: string; name: string; priceRub: number } | null;
+  service: { id: string | null; name: string; priceRub: number } | null;
   documents: Document[];
   signedDocumentIds: Set<string>;
 }): SessionPriceBreakdown {

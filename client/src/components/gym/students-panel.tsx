@@ -49,12 +49,19 @@ import {
   TrainerStudentConsentsBlock,
   TrainerStudentConsentsManager,
 } from "./trainer-student-consents-block";
+import { IndividualTrainingToggle } from "./individual-training-toggle";
 import {
   TrainerNewStudentServiceFields,
   TrainerStudentServiceSection,
 } from "./trainer-student-service-section";
 import { computeSessionPrice } from "@shared/consents-pricing";
 import type { TrainerService } from "@shared/schema";
+import {
+  computeTrainerPackagePrice,
+  DEFAULT_INDIVIDUAL_TRAINING_PRICE_RUB,
+  DEFAULT_PRICING_TIERS,
+  type PricingTier,
+} from "@shared/pricing-tiers";
 import { Users, Search, UserCheck, Loader2, Calendar, UserPlus, Trash2, Edit, Activity, Heart, Wallet, Dumbbell, X, AlertTriangle, CheckCircle, MoreHorizontal, Eye, KeyRound, Copy } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -1535,7 +1542,10 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
                 )}
               </div>
             )}
-            <TrainerStudentServiceSection studentId={student.id} />
+            <IndividualTrainingToggle
+              userId={student.id}
+              enabled={student.wantsIndividualTraining === true}
+            />
             <TrainerStudentConsentsManager
               studentId={student.id}
               consents={student.consents}
@@ -2254,6 +2264,28 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
     enabled: !!studentId,
   });
 
+  const { data: settingsData } = useQuery<{
+    pricingTiers?: PricingTier[];
+    individualTrainingPriceRub?: number;
+  }>({
+    queryKey: ["/api/schedule/settings"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/schedule/settings");
+      return r.json();
+    },
+    staleTime: 0,
+  });
+
+  const { data: studentData } = useQuery<{ user?: { wantsIndividualTraining?: boolean } }>({
+    queryKey: ["/api/users", studentId],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/users/${studentId}`);
+      return r.json();
+    },
+    enabled: !!studentId,
+    staleTime: 0,
+  });
+
   const addMutation = useMutation({
     mutationFn: async () => {
       const r = await apiRequest("POST", `/api/trainer/students/${studentId}/trainer-payments`, {
@@ -2312,6 +2344,16 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
 
   const active = payments.find((p) => p.status === "active");
   const remaining = active ? Math.max(0, active.totalSessions - active.usedSessions) : 0;
+
+  const tiers = Array.isArray(settingsData?.pricingTiers) && settingsData.pricingTiers.length > 0
+    ? settingsData.pricingTiers
+    : DEFAULT_PRICING_TIERS;
+  const effectiveCount = type === "single" ? 1 : Math.max(1, totalSessions || 1);
+  const pkg = computeTrainerPackagePrice(tiers, effectiveCount, {
+    individualPriceRub:
+      settingsData?.individualTrainingPriceRub ?? DEFAULT_INDIVIDUAL_TRAINING_PRICE_RUB,
+    wantsIndividualTraining: studentData?.user?.wantsIndividualTraining === true,
+  });
 
   return (
     <div className="space-y-2 pt-2 border-t min-w-0">
@@ -2382,6 +2424,27 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
         className="text-sm"
         data-testid="input-trainer-note"
       />
+      {pkg && (
+        <div
+          className="rounded border px-2.5 py-2 text-xs bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900"
+          data-testid="block-trainer-package-price"
+        >
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="font-medium">{pkg.tierLabel}</span>
+            <span className="text-muted-foreground">
+              {pkg.pricePerSessionRub.toLocaleString("ru-RU")} ₽/занятие
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2 flex-wrap mt-0.5">
+            <span className="text-muted-foreground">
+              {pkg.count} {pkg.count === 1 ? "занятие" : "занятий"}
+            </span>
+            <span className="font-semibold">
+              Итого: {pkg.totalPriceRub.toLocaleString("ru-RU")} ₽
+            </span>
+          </div>
+        </div>
+      )}
       <Button
         size="sm"
         className="w-full"
@@ -2424,6 +2487,12 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
                     {format(new Date(p.startDate), "d MMM yyyy", { locale: ru })}
                   </span>
                   <span className="text-gray-500">{statusLabel}</span>
+                  {p.totalPriceRub > 0 && (
+                    <span className="text-gray-500">
+                      Сумма: {p.totalPriceRub.toLocaleString("ru-RU")} ₽
+                      {p.pricePerSessionRub > 0 && ` (${p.pricePerSessionRub.toLocaleString("ru-RU")} ₽/занятие)`}
+                    </span>
+                  )}
                   {p.note && <span className="text-gray-500">{p.note}</span>}
                 </div>
                 <div className="flex items-center gap-1">

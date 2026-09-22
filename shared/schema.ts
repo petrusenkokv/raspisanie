@@ -3,6 +3,7 @@ import { pgTable, text, varchar, timestamp, boolean, integer, time, date, uuid }
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { birthDateValidationError } from "./birth-date";
+import { pricingTierSchema, type PricingTier } from "./pricing-tiers";
 
 // Users table (students and trainer)
 export const users = pgTable("users", {
@@ -30,6 +31,8 @@ export const users = pgTable("users", {
   exemptTrainerPayment: boolean("exempt_trainer_payment").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true), // false = student paused/archived
   isPendingApproval: boolean("is_pending_approval").notNull().default(false), // true = self-registered, awaiting trainer approval
+  // true = ученик (или тренер за него) выбрал индивидуальные тренировки (цена individualTrainingPriceRub)
+  wantsIndividualTraining: boolean("wants_individual_training").notNull().default(false),
   welcomeShown: boolean("welcome_shown").notNull().default(false), // true = student has seen trainer welcome message
   cvRestartDate: text("cv_restart_date"), // YYYY-MM-DD; when set, ignore ЧВ payments before this date
   role: text("role").notNull().default("student"), // "student" | "trainer" | "parent"
@@ -114,6 +117,11 @@ export const trainerSettings = pgTable("trainer_settings", {
   reminderMinutes: integer("reminder_minutes"),
   // Приветственное сообщение — показывается ученику сразу после регистрации.
   welcomeMessage: text("welcome_message"),
+  // Прогрессивные тарифы абонементов: JSON-массив PricingTier[] (см. shared/pricing-tiers.ts).
+  // "[]" => при чтении подставляются DEFAULT_PRICING_TIERS.
+  pricingTiers: text("pricing_tiers").notNull().default("[]"),
+  // Цена индивидуальной тренировки за занятие (выборочная опция ученика).
+  individualTrainingPriceRub: integer("individual_training_price_rub").notNull().default(1000),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -192,6 +200,9 @@ export const trainerPayments = pgTable("trainer_payments", {
   startDate: text("start_date").notNull(), // YYYY-MM-DD
   status: text("status").notNull().default("active"), // "active" | "completed" | "cancelled"
   note: text("note"),
+  // Цена, зафиксированная при продаже абонемента (по тарифной шкале тренера).
+  pricePerSessionRub: integer("price_per_session_rub").notNull().default(0),
+  totalPriceRub: integer("total_price_rub").notNull().default(0),
   createdBy: varchar("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"),
@@ -426,6 +437,10 @@ export const trainerSettingsUpdateSchema = z.object({
   reminderMinutes: z.union([z.literal(15), z.literal(30), z.literal(60), z.literal(120)]).nullable().optional(),
   // Приветственное сообщение для ученика после регистрации.
   welcomeMessage: z.string().max(2000).nullable().optional(),
+  // Прогрессивные тарифы абонементов (см. shared/pricing-tiers.ts)
+  pricingTiers: z.array(pricingTierSchema).min(1).optional(),
+  // Цена индивидуальной тренировки за занятие.
+  individualTrainingPriceRub: z.number().int().min(0).max(1_000_000).optional(),
 }).refine(
   (d) => d.dayStartHour === undefined || d.dayEndHour === undefined || d.dayEndHour > d.dayStartHour,
   { message: "Час окончания дня должен быть позже часа начала дня" },
@@ -536,6 +551,8 @@ export type TrainerSettings = {
   defaultCapacity: number;
   reminderMinutes: number | null;
   welcomeMessage: string | null;
+  pricingTiers: PricingTier[];
+  individualTrainingPriceRub: number;
   updatedAt: Date | null;
 };
 export type TrainerSettingsUpdate = z.infer<typeof trainerSettingsUpdateSchema>;

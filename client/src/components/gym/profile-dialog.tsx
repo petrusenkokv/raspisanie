@@ -19,6 +19,7 @@ import { ru } from "date-fns/locale";
 import { birthDateAgeSuffix, calculateAge, todayLocalStr, formatDateDMY } from "@/lib/utils-gym";
 import { StudentAccountSection } from "@/components/gym/student-account-section";
 import { BirthDateFields } from "@/components/gym/birth-date-fields";
+import { IndividualTrainingToggle } from "@/components/gym/individual-training-toggle";
 
 type FormValues = typeof updateStudentProfileSchema._type;
 
@@ -305,14 +306,21 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                 )}
 
                 {showSelfAccount && user?.id && (
-                  <StudentAccountSection
-                    userId={user.id}
-                    heading={
-                      user.role === "parent" && user.isAlsoStudent
-                        ? "Мои тренировки: цена и согласия"
-                        : "Стоимость и согласия"
-                    }
-                  />
+                  <>
+                    <IndividualTrainingToggle
+                      userId={user.id}
+                      enabled={(user as any)?.wantsIndividualTraining === true}
+                      hint="Включите, если занимаетесь индивидуально (цена за занятие задаётся тренером). Запись возможна только в свободный слот."
+                    />
+                    <StudentAccountSection
+                      userId={user.id}
+                      heading={
+                        user.role === "parent" && user.isAlsoStudent
+                          ? "Мои тренировки: цена и согласия"
+                          : "Стоимость и согласия"
+                      }
+                    />
+                  </>
                 )}
 
                 {(user as any)?.isParent && parentChildren.length > 0 && (
