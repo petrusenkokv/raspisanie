@@ -317,8 +317,27 @@ export class DbStorage implements IStorage {
 
   // ======================== SEED ========================
 
+  /**
+   * Безопасные миграции колонок тарифов абонементов.
+   * Вызывается на Vercel, где seed() пропускается (NODE_ENV=production).
+   */
+  async ensurePricingSchema(): Promise<void> {
+    try {
+      await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS wants_individual_training boolean NOT NULL DEFAULT false`);
+    } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`ALTER TABLE trainer_settings ADD COLUMN IF NOT EXISTS pricing_tiers text NOT NULL DEFAULT '[]'`);
+      await db.execute(drizzleSql`ALTER TABLE trainer_settings ADD COLUMN IF NOT EXISTS individual_training_price_rub integer NOT NULL DEFAULT 1000`);
+    } catch { /* ignore */ }
+    try {
+      await db.execute(drizzleSql`ALTER TABLE trainer_payments ADD COLUMN IF NOT EXISTS price_per_session_rub integer NOT NULL DEFAULT 0`);
+      await db.execute(drizzleSql`ALTER TABLE trainer_payments ADD COLUMN IF NOT EXISTS total_price_rub integer NOT NULL DEFAULT 0`);
+    } catch { /* ignore */ }
+  }
+
   async seed(): Promise<void> {
     await this.ensureServicesAndDocsSchema();
+    await this.ensurePricingSchema();
     // Ensure DB columns exist (safe migrations)
     try {
       await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_pending_approval boolean NOT NULL DEFAULT false`);
@@ -335,20 +354,6 @@ export class DbStorage implements IStorage {
     } catch { /* ignore */ }
     try {
       await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS legal_representative_confirmed boolean NOT NULL DEFAULT false`);
-    } catch { /* ignore */ }
-    try {
-      await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS wants_individual_training boolean NOT NULL DEFAULT false`);
-    } catch { /* ignore */ }
-    // Pricing tiers + saved subscription price columns (progressive pricing)
-    try {
-      await db.execute(drizzleSql`ALTER TABLE trainer_settings ADD COLUMN IF NOT EXISTS pricing_tiers text NOT NULL DEFAULT '[]'`);
-    } catch { /* ignore */ }
-    try {
-      await db.execute(drizzleSql`ALTER TABLE trainer_settings ADD COLUMN IF NOT EXISTS individual_training_price_rub integer NOT NULL DEFAULT 1000`);
-    } catch { /* ignore */ }
-    try {
-      await db.execute(drizzleSql`ALTER TABLE trainer_payments ADD COLUMN IF NOT EXISTS price_per_session_rub integer NOT NULL DEFAULT 0`);
-      await db.execute(drizzleSql`ALTER TABLE trainer_payments ADD COLUMN IF NOT EXISTS total_price_rub integer NOT NULL DEFAULT 0`);
     } catch { /* ignore */ }
     try {
       await db.execute(drizzleSql`

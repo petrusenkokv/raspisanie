@@ -44,6 +44,15 @@ async function initStorage() {
   const { DbStorage } = await import("./storage-db");
   const dbStorage = new DbStorage();
   storage = dbStorage;
+
+  // Безопасные миграции колонок тарифов запускаются и на Vercel,
+  // где полный seed пропускается (NODE_ENV=production).
+  try {
+    await dbStorage.ensurePricingSchema?.();
+  } catch (err) {
+    console.error("[storage] Pricing schema ensure failed:", err);
+  }
+
   if (hasSeed(dbStorage) && shouldSeedOnStartup()) {
     await seedWithRetry(dbStorage);
   } else if (hasSeed(dbStorage)) {
