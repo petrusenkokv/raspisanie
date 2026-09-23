@@ -895,14 +895,20 @@ export class DbStorage implements IStorage {
     const signedDocumentIds = new Set(consents.map((c) => c.documentId));
     // Цена сессии берётся из «Тарифов абонементов» (+ индивидуальная опция), а не из услуг.
     const payStatus = await this.getStudentPaymentStatus(studentId, todayStr);
-    const subCount = payStatus.activeTrainerPayment?.totalSessions ?? 1;
+    const activePay = payStatus.activeTrainerPayment;
+    const subCount = activePay?.totalSessions ?? 1;
     const settings = await this.loadSettings();
-    const rate = resolveSessionRate(
+    let rate = resolveSessionRate(
       settings.pricingTiers,
       settings.individualTrainingPriceRub,
       refreshed.wantsIndividualTraining === true,
       subCount,
     );
+    // Если при продаже абонемента цена за занятие была задана вручную (отличается от тарифа),
+    // используем её как ставку сессии, пока абонемент активен.
+    if (activePay && activePay.pricePerSessionRub > 0 && activePay.pricePerSessionRub !== rate.pricePerSessionRub) {
+      rate = { label: rate.label, pricePerSessionRub: activePay.pricePerSessionRub };
+    }
     const sessionPrice = computeSessionPrice({
       service: { id: null, name: rate.label, priceRub: rate.pricePerSessionRub },
       documents: activeDocs,

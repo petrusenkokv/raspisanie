@@ -2557,16 +2557,26 @@ export async function registerRoutes(
       const trainer = trainerIdRaw ? await storage.getUser(String(trainerIdRaw)) : await storage.getTrainer();
       const createdBy = trainer?.id || id;
 
-      // Зафиксировать цену абонемента по тарифной шкале тренера (с учётом опции индивидуальной)
+      // Цена абонемента: если тренер указал свою цену за занятие — используем её,
+      // иначе считаем автоматически по тарифной шкале (с учётом опции индивидуальной).
       const settings = await storage.getTrainerSettings();
       const payStudent = await storage.getUser(id);
-      const pkg = computeTrainerPackagePrice(settings.pricingTiers, parsed.data.totalSessions, {
-        individualPriceRub: settings.individualTrainingPriceRub,
-        wantsIndividualTraining: payStudent?.wantsIndividualTraining === true,
-      });
-      const price = pkg
-        ? { pricePerSessionRub: pkg.pricePerSessionRub, totalPriceRub: pkg.totalPriceRub }
-        : undefined;
+      let price: { pricePerSessionRub: number; totalPriceRub: number } | undefined;
+      if (parsed.data.pricePerSessionRub != null) {
+        const perSession = Math.max(0, Math.floor(Number(parsed.data.pricePerSessionRub) || 0));
+        price = {
+          pricePerSessionRub: perSession,
+          totalPriceRub: perSession * parsed.data.totalSessions,
+        };
+      } else {
+        const pkg = computeTrainerPackagePrice(settings.pricingTiers, parsed.data.totalSessions, {
+          individualPriceRub: settings.individualTrainingPriceRub,
+          wantsIndividualTraining: payStudent?.wantsIndividualTraining === true,
+        });
+        price = pkg
+          ? { pricePerSessionRub: pkg.pricePerSessionRub, totalPriceRub: pkg.totalPriceRub }
+          : undefined;
+      }
 
       const payment = await storage.addTrainerPayment(id, parsed.data, createdBy, price);
       res.json(payment);

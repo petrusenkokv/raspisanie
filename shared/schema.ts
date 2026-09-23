@@ -379,6 +379,9 @@ export const trainerPaymentInputSchema = z.object({
   totalSessions: z.number().int().min(1).max(50),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   note: z.string().max(300).nullable().optional(),
+  // Ручная цена за одно занятие (переопределяет тарифную шкалу тренера).
+  // Если не указана — цена рассчитывается автоматически по тарифам.
+  pricePerSessionRub: z.number().int().min(0).max(100000).optional(),
 }).refine(
   (d) => {
     if (d.type === "single") return d.totalSessions === 1;

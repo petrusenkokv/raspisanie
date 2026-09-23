@@ -2254,6 +2254,12 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
   const [totalSessions, setTotalSessions] = useState<number>(8);
   const [startDate, setStartDate] = useState<string>(todayLocalStr());
   const [note, setNote] = useState<string>("");
+  // Ручная цена за занятие (null = авторасчёт по тарифам тренера)
+  const [customPricePerSession, setCustomPricePerSession] = useState<string | null>(null);
+  const manualPrice =
+    customPricePerSession !== null && customPricePerSession.trim() !== ""
+      ? Math.max(0, Math.floor(Number(customPricePerSession) || 0))
+      : null;
 
   const { data: payments = [], isLoading } = useQuery<TrainerPaymentWithUsage[]>({
     queryKey: ["/api/trainer/students", studentId, "trainer-payments"],
@@ -2293,6 +2299,7 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
         totalSessions,
         startDate,
         note: note || null,
+        ...(manualPrice !== null ? { pricePerSessionRub: manualPrice } : {}),
       });
       return r.json();
     },
@@ -2354,6 +2361,8 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
       settingsData?.individualTrainingPriceRub ?? DEFAULT_INDIVIDUAL_TRAINING_PRICE_RUB,
     wantsIndividualTraining: studentData?.user?.wantsIndividualTraining === true,
   });
+  const effectivePricePerSession = manualPrice ?? pkg?.pricePerSessionRub ?? 0;
+  const effectiveTotal = effectivePricePerSession * effectiveCount;
 
   return (
     <div className="space-y-2 pt-2 border-t min-w-0">
@@ -2379,7 +2388,7 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-end">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4 sm:items-end">
         <div className="min-w-0">
           <Label className="text-xs">Тип</Label>
           <select
@@ -2416,6 +2425,18 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
             data-testid="input-trainer-start"
           />
         </div>
+        <div className="min-w-0">
+          <Label className="text-xs">Цена за занятие, ₽</Label>
+          <Input
+            type="number"
+            min={0}
+            step={10}
+            value={customPricePerSession ?? (pkg ? String(pkg.pricePerSessionRub) : "")}
+            onChange={(e) => setCustomPricePerSession(e.target.value)}
+            className="text-sm w-full min-w-0"
+            data-testid="input-trainer-price-per-session"
+          />
+        </div>
       </div>
       <Input
         value={note}
@@ -2432,7 +2453,7 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className="font-medium">{pkg.tierLabel}</span>
             <span className="text-muted-foreground">
-              {pkg.pricePerSessionRub.toLocaleString("ru-RU")} ₽/занятие
+              {effectivePricePerSession.toLocaleString("ru-RU")} ₽/занятие
             </span>
           </div>
           <div className="flex items-center justify-between gap-2 flex-wrap mt-0.5">
@@ -2440,9 +2461,24 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
               {pkg.count} {pkg.count === 1 ? "занятие" : "занятий"}
             </span>
             <span className="font-semibold">
-              Итого: {pkg.totalPriceRub.toLocaleString("ru-RU")} ₽
+              Итого: {effectiveTotal.toLocaleString("ru-RU")} ₽
             </span>
           </div>
+          {manualPrice !== null && (
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <span className="text-amber-600 dark:text-amber-400">Цена задана вручную</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-5 px-1.5 text-[10px] text-muted-foreground"
+                onClick={() => setCustomPricePerSession(null)}
+                data-testid="button-reset-trainer-price"
+              >
+                Сбросить
+              </Button>
+            </div>
+          )}
         </div>
       )}
       <Button
