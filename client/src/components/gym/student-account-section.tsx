@@ -49,13 +49,11 @@ type AccountSummaryResponse = {
 interface Props {
   userId: string;
   heading?: string;
-  showServicePicker?: boolean;
 }
 
 export function StudentAccountSection({
   userId,
   heading = "Стоимость и согласия",
-  showServicePicker = true,
 }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -74,15 +72,6 @@ export function StudentAccountSection({
     staleTime: 0,
   });
 
-  const { data: services = [] } = useQuery<TrainerService[]>({
-    queryKey: ["/api/services"],
-    queryFn: async () => {
-      const r = await apiRequest("GET", "/api/services");
-      return r.json();
-    },
-    enabled: showServicePicker,
-  });
-
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: summaryKey });
     queryClient.invalidateQueries({ queryKey: ["/api/users", userId] });
@@ -91,19 +80,6 @@ export function StudentAccountSection({
     queryClient.invalidateQueries({ queryKey: ["schedule"] });
     queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
   };
-
-  const serviceMutation = useMutation({
-    mutationFn: async (serviceId: string) => {
-      const r = await apiRequest("PATCH", `/api/users/${userId}/selected-service`, { serviceId });
-      return r.json();
-    },
-    onSuccess: () => {
-      invalidate();
-      toast({ title: "Услуга сохранена" });
-    },
-    onError: (e: Error) =>
-      toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
-  });
 
   const consentMutation = useMutation({
     mutationFn: async ({ documentId, accepted }: { documentId: string; accepted: boolean }) => {
@@ -163,40 +139,6 @@ export function StudentAccountSection({
         <Banknote className="h-4 w-4 text-blue-600" />
         {heading}
       </p>
-
-      {showServicePicker && services.length > 0 && (
-        <div className="space-y-1">
-          <Label className="text-xs">Услуга</Label>
-          {services.length > 1 ? (
-            <Select
-              value={price.serviceId ?? undefined}
-              onValueChange={(v) => serviceMutation.mutate(v)}
-              disabled={serviceMutation.isPending}
-            >
-              <SelectTrigger className="h-9" data-testid="select-student-service">
-                <SelectValue placeholder="Выберите услугу" />
-              </SelectTrigger>
-              <SelectContent>
-                {services.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {hideSessionPrice ? s.name : `${s.name} — ${s.priceRub} ₽`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <p className="text-sm font-medium rounded-md border bg-white dark:bg-gray-900 px-3 py-2">
-              {price.serviceName}
-              {!hideSessionPrice && (
-                <span className="text-muted-foreground font-normal">
-                  {" "}
-                  — {price.basePriceRub} ₽
-                </span>
-              )}
-            </p>
-          )}
-        </div>
-      )}
 
       {!hideSessionPrice && (
         <div className="rounded-md border bg-white dark:bg-gray-900 p-3 space-y-1">

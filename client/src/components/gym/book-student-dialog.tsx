@@ -11,7 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 import { type User, type TimeSlotWithBookings, type StudentWithConsents } from "@shared/schema";
 import { Calendar, UserCheck, User as UserIcon, Loader2, Search, Dumbbell } from "lucide-react";
 import { TrainerStudentConsentsManager } from "./trainer-student-consents-block";
-import { TrainerStudentServiceSection } from "./trainer-student-service-section";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { ToastAction } from "@/components/ui/toast";
@@ -357,7 +356,6 @@ export function BookStudentDialog({
               </div>
             ) : studentDetail ? (
               <>
-                <TrainerStudentServiceSection studentId={effectiveStudentId} />
                 <TrainerStudentConsentsManager
                   studentId={effectiveStudentId}
                   consents={studentDetail.consents}

@@ -333,6 +333,10 @@ export class DbStorage implements IStorage {
       await db.execute(drizzleSql`ALTER TABLE trainer_payments ADD COLUMN IF NOT EXISTS price_per_session_rub integer NOT NULL DEFAULT 0`);
       await db.execute(drizzleSql`ALTER TABLE trainer_payments ADD COLUMN IF NOT EXISTS total_price_rub integer NOT NULL DEFAULT 0`);
     } catch { /* ignore */ }
+    // Услуги больше не участвуют в ценообразовании — отключаем старые записи (напр. «Тренировка» 550 ₽).
+    try {
+      await db.execute(drizzleSql`UPDATE trainer_services SET is_active = false WHERE is_active = true`);
+    } catch { /* ignore */ }
   }
 
   async seed(): Promise<void> {

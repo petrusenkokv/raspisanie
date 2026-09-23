@@ -334,7 +334,6 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                         key={child.id}
                         userId={child.id}
                         heading={`${child.firstName} ${child.lastName ?? ""}`}
-                        showServicePicker
                       />
                     ))}
                   </div>

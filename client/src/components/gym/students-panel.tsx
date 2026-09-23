@@ -50,11 +50,6 @@ import {
   TrainerStudentConsentsManager,
 } from "./trainer-student-consents-block";
 import { IndividualTrainingToggle } from "./individual-training-toggle";
-import {
-  TrainerNewStudentServiceFields,
-  TrainerStudentServiceSection,
-} from "./trainer-student-service-section";
-import { computeSessionPrice } from "@shared/consents-pricing";
 import type { TrainerService } from "@shared/schema";
 import {
   computeTrainerPackagePrice,
@@ -679,25 +674,10 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     addMutation.mutate({
       ...newStudent,
       consentDocumentIds,
-      selectedServiceId: addStudentServiceId || undefined,
       exemptMembership: addExemptMembership,
       exemptTrainerPayment: addExemptTrainerPayment,
     });
   };
-
-  const addStudentPricePreview = useMemo(() => {
-    const active = trainerServices.filter((s) => s.isActive);
-    const svc = active.find((s) => s.id === addStudentServiceId) ?? active[0];
-    if (!svc) return null;
-    const signed = new Set(
-      documents.filter((d) => addStudentAcceptedDocs[d.id]).map((d) => d.id),
-    );
-    return computeSessionPrice({
-      service: { id: svc.id, name: svc.name, priceRub: svc.priceRub },
-      documents,
-      signedDocumentIds: signed,
-    });
-  }, [trainerServices, addStudentServiceId, documents, addStudentAcceptedDocs]);
 
   const newStudentAge = useMemo(
     () => calculateAge(newStudent.birthDate || null),
@@ -875,14 +855,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
               onExemptMembershipChange={setAddExemptMembership}
               onExemptTrainerPaymentChange={setAddExemptTrainerPayment}
               disabled={addMutation.isPending}
-            />
-
-            <TrainerNewStudentServiceFields
-              services={trainerServices}
-              selectedServiceId={addStudentServiceId}
-              onServiceChange={setAddStudentServiceId}
-              previewTotalRub={addStudentPricePreview?.totalPriceRub ?? null}
-              serviceName={addStudentPricePreview?.serviceName ?? "Тренировка"}
             />
 
             <TrainerStudentConsentsBlock
