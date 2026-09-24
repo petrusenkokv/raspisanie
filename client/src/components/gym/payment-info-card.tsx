@@ -47,6 +47,7 @@ type Props = {
 function normalizeQrUrl(raw: string): string {
   let v = String(raw || "").trim();
   if (!v) return "";
+  if (/^data:image\//i.test(v)) return v;
   v = v.replace(/^client[\\/]+public[\\/]+/i, "");
   v = v.replace(/\\/g, "/");
   if (!/^https?:\/\//i.test(v) && !v.startsWith("/")) v = "/" + v;

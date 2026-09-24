@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, type ChangeEvent } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare, Send, Lock, Unlock, Banknote } from "lucide-react";
+import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare, Send, Lock, Unlock, Banknote, Upload } from "lucide-react";
 import { TrainerPricingSettings } from "./trainer-pricing-settings";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -63,6 +63,172 @@ type SettingsResponse = {
 function todayLocalStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Привести путь к QR к веб-виду: client\public\qr.png → /qr.png; data:image/... оставить как есть */
+function normalizeQrUrl(raw: string): string {
+  let v = String(raw || "").trim();
+  if (!v) return "";
+  if (/^data:image\//i.test(v)) return v;
+  v = v.replace(/^client[\\/]+public[\\/]+/i, "");
+  v = v.replace(/\\/g, "/");
+  if (!/^https?:\/\//i.test(v) && !v.startsWith("/")) v = "/" + v;
+  return v;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Не удалось открыть изображение"));
+    img.src = src;
+  });
+}
+
+/** Сжать большое фото QR-кода (макс. 1400 px по большей стороне), чтобы оно помещалось в настройки. */
+async function compressQrPhoto(file: File, raw: string): Promise<string> {
+  if (file.size <= 350 * 1024) return raw;
+  try {
+    const img = await loadImage(raw);
+    const maxDim = 1400;
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    if (scale >= 1) return raw;
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return raw;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const out = canvas.toDataURL("image/jpeg", 0.92);
+    return out.length < raw.length ? out : raw;
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Загрузка фото QR-кода с компьютера: кнопка выбора файла, предпросмотр и удаление.
+ * Файл читается как base64 (data:image/...) и сохраняется прямо в поле url.
+ */
+function QrImageUpload({
+  value,
+  onChange,
+  inputId,
+}: {
+  value: string;
+  onChange: (url: string) => void;
+  inputId: string;
+}) {
+  const { toast } = useToast();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const previewUrl = value.trim() ? normalizeQrUrl(value) : "";
+
+  const handleFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Неверный формат",
+        description: "Выберите изображение (PNG, JPG, WEBP)",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Файл слишком большой",
+        description: "Загрузите фото до 5 МБ",
+        variant: "destructive",
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      const raw = await readFileAsDataUrl(file);
+      const url = await compressQrPhoto(file, raw);
+      onChange(url);
+      toast({ title: "Фото QR-кода загружено" });
+    } catch (err: any) {
+      toast({
+        title: "Ошибка загрузки",
+        description: err?.message ?? "Попробуйте другое фото",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5 min-w-0">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        id={inputId}
+        onChange={handleFile}
+        data-testid={`input-qr-file-${inputId}`}
+      />
+      <div className="flex items-center gap-2 flex-wrap min-w-0">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs shrink-0"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          data-testid={`button-qr-upload-${inputId}`}
+        >
+          {busy ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+          ) : (
+            <Upload className="h-3.5 w-3.5 mr-1" />
+          )}
+          {previewUrl ? "Заменить фото" : "Загрузить с компьютера"}
+        </Button>
+        {previewUrl && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs text-red-600 hover:text-red-700"
+            onClick={() => onChange("")}
+            data-testid={`button-qr-remove-${inputId}`}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            Удалить
+          </Button>
+        )}
+      </div>
+      {previewUrl ? (
+        <a href={previewUrl} target="_blank" rel="noreferrer" className="inline-block" title="Открыть фото">
+          <img
+            src={previewUrl}
+            alt="QR-код"
+            className="h-20 w-20 object-contain rounded border bg-white dark:bg-gray-100"
+          />
+        </a>
+      ) : (
+        <p className="text-[11px] text-gray-400">Фото ещё не загружено</p>
+      )}
+    </div>
+  );
 }
 
 export function ScheduleSettingsDialog({
@@ -941,7 +1107,7 @@ export function ScheduleSettingsDialog({
                   <Label className="text-[11px]">QR-коды для оплаты зала</Label>
                   {qrs.length === 0 && (
                     <p className="text-[11px] text-gray-400">
-                      QR-кодов пока нет. Добавьте код с названием (например, «Разовое 300 ₽»).
+                      QR-кодов пока нет. Добавьте название (например, «Разовое 300 ₽») и загрузите фото кода.
                     </p>
                   )}
                   {qrs.map((qr) => (
@@ -964,12 +1130,10 @@ export function ScheduleSettingsDialog({
                           <Trash2 className="h-3.5 w-3.5 text-red-500" />
                         </Button>
                       </div>
-                      <Input
-                        className="h-8 text-xs w-full min-w-0"
-                        placeholder="/qr-300.png или https://..."
+                      <QrImageUpload
+                        inputId={`qr-file-${qr.id}`}
                         value={qr.url}
-                        onChange={(e) => updateQr(qr.id, { url: e.target.value })}
-                        data-testid={`input-qr-url-${qr.id}`}
+                        onChange={(url) => updateQr(qr.id, { url })}
                       />
                     </div>
                   ))}
@@ -984,8 +1148,8 @@ export function ScheduleSettingsDialog({
                     Добавить QR-код
                   </Button>
                   <p className="text-[10px] text-gray-400">
-                    Положите файлы в папку client/public и указывайте пути вида /qr-300.png
-                    или полные ссылки на картинки.
+                    Загрузите фото QR-кода с компьютера — оно сохранится и будет показываться ученикам
+                    в блоке «Оплата тренировок».
                   </p>
                 </div>
                 <Button

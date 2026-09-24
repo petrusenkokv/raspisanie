@@ -16,8 +16,9 @@ export async function createApp(options: AppOptions = {}) {
   await ensureStorageReady();
 
   const app = express();
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: false }));
+  // Лимит увеличен: тренер загружает фото QR-кода (base64) в настройки оплаты.
+  app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ extended: false, limit: "10mb" }));
   setupSession(app);
 
   app.get("/healthz", (_req, res) => {
