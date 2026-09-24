@@ -24,6 +24,7 @@ import { Loader2, Banknote, FileText } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DocumentViewDialog } from "@/components/gym/document-view-dialog";
+import { PaymentInfoCard } from "@/components/gym/payment-info-card";
 import type { Document, TrainerService } from "@shared/schema";
 import { isPricingDocument, isRequiredDocument } from "@shared/consents-pricing";
 
@@ -43,17 +44,21 @@ type AccountSummaryResponse = {
   trainerPaymentRemaining: number | null;
   trainerPaymentTotal: number | null;
   exemptTrainerPayment?: boolean;
+  wantsIndividualTraining?: boolean;
   documents: DocWithAccepted[];
 };
 
 interface Props {
   userId: string;
   heading?: string;
+  /** Регистрация ещё не одобрена тренером (пробная тренировка): показываем только разовый QR зала. */
+  pendingApproval?: boolean;
 }
 
 export function StudentAccountSection({
   userId,
   heading = "Стоимость и согласия",
+  pendingApproval = false,
 }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -140,7 +145,7 @@ export function StudentAccountSection({
         {heading}
       </p>
 
-      {!hideSessionPrice && (
+      {!hideSessionPrice && !pendingApproval && (
         <div className="rounded-md border bg-white dark:bg-gray-900 p-3 space-y-1">
           <p className="text-xs text-muted-foreground">Цена за одну тренировку</p>
           <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
@@ -162,6 +167,11 @@ export function StudentAccountSection({
           )}
         </div>
       )}
+
+      <PaymentInfoCard
+        wantsIndividualTraining={data.wantsIndividualTraining === true}
+        pendingApproval={pendingApproval}
+      />
 
       {data.trainerPaymentTotal != null && (
         <p className="text-xs text-muted-foreground">

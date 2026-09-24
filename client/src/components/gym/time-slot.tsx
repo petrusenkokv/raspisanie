@@ -30,6 +30,7 @@ import {
   dayCardStudentBookedClasses,
   dayCardStudentFillClasses,
   getStudentSlotFillLevel,
+  isBookingSickOnDate,
 } from "@/lib/slot-availability-ui";
 import { getBlockedSlotLabel } from "@shared/block-display";
 import { BlockNoteDialog } from "./block-note-dialog";
@@ -190,14 +191,23 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const confirmedBookings = timeSlot.bookings.filter(b => b.status === "confirmed");
   const pendingBookings = timeSlot.bookings.filter(b => b.status === "pending");
   const allActiveBookings = [...confirmedBookings, ...pendingBookings];
+  // Больные ученики остаются записанными, но для тренера их место временно свободно.
+  const healthyActiveBookings = allActiveBookings.filter(
+    (b) => !isBookingSickOnDate(b, timeSlot.date),
+  );
+  const sickCount = allActiveBookings.length - healthyActiveBookings.length;
+  const trainerFull = isTrainer() && healthyActiveBookings.length >= timeSlot.maxCapacity;
+  const trainerAlmostFull =
+    isTrainer() && healthyActiveBookings.length === timeSlot.maxCapacity - 1;
 
   const getSlotStatus = () => {
     if (isBlocked) return "blocked";
-    if (isFull) return "full";
     if (isTrainer()) {
-      if (timeSlot.availableSpots === 1) return "almost-full";
+      if (trainerFull) return "full";
+      if (trainerAlmostFull) return "almost-full";
       return "available";
     }
+    if (isFull) return "full";
     return "available";
   };
 
@@ -330,7 +340,10 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                   data-testid={`button-edit-capacity-${timeSlot.id}`}
                 >
                   <Users className="h-3 w-3" />
-                  <span>{confirmedBookings.length}/{timeSlot.maxCapacity}</span>
+                  <span>
+                    {healthyActiveBookings.length}
+                    {sickCount > 0 ? `+${sickCount} бол.` : ""}/{timeSlot.maxCapacity}
+                  </span>
                   <Pencil className="h-3 w-3 opacity-60" />
                 </button>
               </PopoverTrigger>
@@ -439,6 +452,15 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                         <span className="text-gray-900 dark:text-white truncate">
                           {formatStudentShortName(booking.student)}
                         </span>
+                        {isBookingSickOnDate(booking, timeSlot.date) && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] px-1.5 py-0.5 shrink-0 bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-800"
+                            title="Ученик болеет, место временно свободно для записи тренером"
+                          >
+                            болен
+                          </Badge>
+                        )}
                         {att ? (
                           <AttendanceBadge status={att} />
                         ) : booking.status === "confirmed" ? (
@@ -506,7 +528,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                       </div>
                     </div>
                     {showAttendance && (
-                      <div className="flex flex-nowrap gap-0.5 md:flex-wrap md:gap-1 pt-1 border-t border-gray-100 dark:border-gray-800">
+                      <div className="flex flex-wrap gap-0.5 md:gap-1 pt-1 border-t border-gray-100 dark:border-gray-800">
                         <AttendanceButton
                           label="Пришёл"
                           icon={<UserCheck className="h-3 w-3" />}
@@ -580,6 +602,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                         <span className="text-xs sm:text-sm font-medium truncate text-gray-900 dark:text-white shrink-0 max-w-[40%] sm:max-w-none">
                           {personName}
                         </span>
+                        {isBookingSickOnDate(booking, timeSlot.date) && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border shrink-0 bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-800">
+                            болен
+                          </span>
+                        )}
                         {isPending ? (
                           <span
                             className="inline-flex shrink-0"
@@ -609,6 +636,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                             personName={personName}
                             cancelDeadlineH={cancelDeadlineH}
                             tooLateToCancel={tooLateToCancel}
+                            alwaysAllowCancel={isPending}
                             onReschedule={() =>
                               setRescheduleBooking({
                                 id: booking.id,
@@ -642,7 +670,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
       {/* Trainer: Add student + block buttons */}
       {isTrainer() && !isBlocked && (
         <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-          {!isFull && (
+          {!trainerFull && (
             <Button
               variant="outline"
               size="sm"

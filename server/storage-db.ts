@@ -24,6 +24,8 @@ import {
   type BroadcastLog,
   type ParentChild,
   type InsertParentChild,
+  type PaymentQr,
+  type PaymentReport,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import type { IStorage, AttendanceStats, BlockedPeriod } from "./storage";
@@ -49,6 +51,26 @@ import {
   serializePricingTiers,
 } from "@shared/pricing-tiers";
 import type { TrainerPaymentPrice } from "./storage";
+
+/** Разбор списка QR-кодов зала из JSON-строки настроек. */
+function parsePaymentQrs(raw: string | null | undefined): PaymentQr[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (q): q is PaymentQr =>
+          !!q &&
+          typeof (q as PaymentQr).id === "string" &&
+          typeof (q as PaymentQr).name === "string" &&
+          typeof (q as PaymentQr).url === "string",
+      )
+      .map((q) => ({ id: String(q.id), name: String(q.name), url: String(q.url) }));
+  } catch {
+    return [];
+  }
+}
 
 // Sick periods table (not in shared schema, defined locally)
 const sickPeriods = pgTable("sick_periods", {
@@ -79,6 +101,7 @@ function bookingStudentFromUser(u: {
   role: string;
   exemptMembership: boolean | null;
   exemptTrainerPayment: boolean | null;
+  sickUntil: string | null;
 }): ScheduleBookingStudent {
   return {
     firstName: u.firstName,
@@ -87,6 +110,7 @@ function bookingStudentFromUser(u: {
     role: u.role as ScheduleBookingStudent["role"],
     exemptMembership: u.exemptMembership ?? false,
     exemptTrainerPayment: u.exemptTrainerPayment ?? false,
+    sickUntil: u.sickUntil ?? null,
   };
 }
 
@@ -168,6 +192,7 @@ export class DbStorage implements IStorage {
   private servicesDocsSchemaReady = false;
   private sickPeriodsSchemaReady = false;
   private pushSubscriptionsSchemaReady = false;
+  private paymentReportsSchemaReady = false;
 
   private async ensurePushSubscriptionsSchema(): Promise<void> {
     if (this.pushSubscriptionsSchemaReady) return;
@@ -269,6 +294,34 @@ export class DbStorage implements IStorage {
     }
   }
 
+  private async ensurePaymentReportsSchema(): Promise<void> {
+    if (this.paymentReportsSchemaReady) return;
+    try {
+      await db.execute(drizzleSql`
+        CREATE TABLE IF NOT EXISTS payment_reports (
+          id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          kind text NOT NULL,
+          amount_rub integer,
+          count integer,
+          qr_name text,
+          note text,
+          created_at timestamp DEFAULT now()
+        )
+      `);
+      await db.execute(drizzleSql`
+        ALTER TABLE payment_reports ADD COLUMN IF NOT EXISTS confirmed_at timestamp
+      `);
+      await db.execute(drizzleSql`
+        CREATE INDEX IF NOT EXISTS payment_reports_user_id_idx
+        ON payment_reports (user_id)
+      `);
+      this.paymentReportsSchemaReady = true;
+    } catch {
+      // ignore schema race/fallback issues
+    }
+  }
+
   // ======================== SETTINGS ========================
 
   private async loadSettings(): Promise<TrainerSettings> {
@@ -307,6 +360,8 @@ export class DbStorage implements IStorage {
       welcomeMessage: (row as any).welcomeMessage ?? null,
       pricingTiers: parsePricingTiers((row as any).pricingTiers ?? null),
       individualTrainingPriceRub: (row as any).individualTrainingPriceRub ?? 1000,
+      paymentPhone: (row as any).paymentPhone ?? null,
+      paymentQrs: parsePaymentQrs((row as any).paymentQrs ?? null),
       updatedAt: row.updatedAt ?? null,
     };
   }
@@ -337,11 +392,17 @@ export class DbStorage implements IStorage {
     try {
       await db.execute(drizzleSql`UPDATE trainer_services SET is_active = false WHERE is_active = true`);
     } catch { /* ignore */ }
+    // Платёжные реквизиты тренера (телефон + список QR зала) для учеников.
+    try {
+      await db.execute(drizzleSql`ALTER TABLE trainer_settings ADD COLUMN IF NOT EXISTS payment_phone text`);
+      await db.execute(drizzleSql`ALTER TABLE trainer_settings ADD COLUMN IF NOT EXISTS payment_qrs text NOT NULL DEFAULT '[]'`);
+    } catch { /* ignore */ }
   }
 
   async seed(): Promise<void> {
     await this.ensureServicesAndDocsSchema();
     await this.ensurePricingSchema();
+    await this.ensurePaymentReportsSchema();
     // Ensure DB columns exist (safe migrations)
     try {
       await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_pending_approval boolean NOT NULL DEFAULT false`);
@@ -932,6 +993,7 @@ export class DbStorage implements IStorage {
       trainerPaymentRemaining,
       trainerPaymentTotal,
       exemptTrainerPayment: refreshed.exemptTrainerPayment === true,
+      wantsIndividualTraining: refreshed.wantsIndividualTraining === true,
     };
   }
 
@@ -1034,6 +1096,7 @@ export class DbStorage implements IStorage {
           role: "student",
           exemptMembership: false,
           exemptTrainerPayment: false,
+          sickUntil: null,
         },
       });
       bySlotId.set(booking.timeSlotId, list);
@@ -1483,7 +1546,7 @@ export class DbStorage implements IStorage {
     return stats;
   }
 
-  async setStudentSickLeave(studentId: string, sickUntil: string | null, sickNote: string | null, startDate?: string): Promise<{ user: User; cancelledCount: number }> {
+  async setStudentSickLeave(studentId: string, sickUntil: string | null, sickNote: string | null, startDate?: string): Promise<{ user: User; affectedCount: number }> {
     const user = await this.getUser(studentId);
     if (!user) throw new Error("Пользователь не найден");
     if (user.role !== "student") throw new Error("Только ученики могут уходить на больничный");
@@ -1503,7 +1566,7 @@ export class DbStorage implements IStorage {
       }
     }
 
-    let cancelledCount = 0;
+    let affectedCount = 0;
     if (sickUntil) {
       const fromStr = startDate || localDateStr(new Date());
       const studentBookings = await db.select().from(bookings)
@@ -1515,18 +1578,18 @@ export class DbStorage implements IStorage {
         if (row.bookings.consumedTrainerPaymentId) {
           await this.refundTrainerSession(row.bookings.consumedTrainerPaymentId);
         }
+        // Запись НЕ отменяется: ученик остаётся в слоте с пометкой «болен»,
+        // место временно может занять другой ученик (запись — только тренером).
         await db.update(bookings).set({
-          status: "cancelled",
-          cancelledAt: new Date(),
           attendanceStatus: "excused",
           attendanceNote: sickNote ? `Болезнь: ${sickNote}` : "Болезнь",
           attendanceMarkedAt: new Date(),
           consumedTrainerPaymentId: null,
         }).where(eq(bookings.id, row.bookings.id));
-        cancelledCount++;
+        affectedCount++;
       }
     }
-    return { user: updatedUser, cancelledCount };
+    return { user: updatedUser, affectedCount };
   }
 
   // ======================== NOTIFICATIONS ========================
@@ -1551,6 +1614,75 @@ export class DbStorage implements IStorage {
       relatedUserId: (insertNotification as any).relatedUserId ?? null,
     }).returning();
     return rows[0];
+  }
+
+  // ======================== PAYMENT REPORTS (student «I paid») ========================
+
+  async recordPaymentReport(
+    userId: string,
+    input: {
+      kind: "hall" | "trainer";
+      amountRub?: number;
+      count?: number;
+      qrName?: string | null;
+      note?: string | null;
+    },
+  ): Promise<void> {
+    await this.ensurePaymentReportsSchema();
+    await db.execute(drizzleSql`
+      INSERT INTO payment_reports (user_id, kind, amount_rub, count, qr_name, note)
+      VALUES (${userId}, ${input.kind}, ${input.amountRub ?? null}, ${input.count ?? null}, ${input.qrName ?? null}, ${input.note ?? null})
+    `);
+  }
+
+  async getLatestPaymentReports(userId: string): Promise<PaymentReport[]> {
+    await this.ensurePaymentReportsSchema();
+    const result = await db.execute<{
+      id: string;
+      user_id: string;
+      kind: string;
+      amount_rub: number | null;
+      count: number | null;
+      qr_name: string | null;
+      note: string | null;
+      created_at: Date;
+      confirmed_at: Date | null;
+    }>(drizzleSql`
+      SELECT id, user_id, kind, amount_rub, count, qr_name, note, created_at, confirmed_at
+      FROM payment_reports
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+    `);
+    const rows = result.rows ?? [];
+    const latestByKey = new Map<string, PaymentReport>();
+    for (const r of rows) {
+      const report: PaymentReport = {
+        id: r.id,
+        userId: r.user_id,
+        kind: r.kind === "hall" ? "hall" : "trainer",
+        amountRub: r.amount_rub,
+        count: r.count,
+        qrName: r.qr_name,
+        note: r.note,
+        createdAt: new Date(r.created_at),
+        confirmedAt: r.confirmed_at ? new Date(r.confirmed_at) : null,
+      };
+      const key = report.kind === "hall" ? `hall:${report.qrName ?? ""}` : "trainer";
+      if (!latestByKey.has(key)) latestByKey.set(key, report);
+    }
+    return Array.from(latestByKey.values()).map((report) => ({
+      ...report,
+      trainerConfirmed: report.confirmedAt != null,
+    }));
+  }
+
+  async confirmPaymentReports(studentId: string, kind: "hall" | "trainer"): Promise<void> {
+    await this.ensurePaymentReportsSchema();
+    await db.execute(drizzleSql`
+      UPDATE payment_reports
+      SET confirmed_at = now()
+      WHERE user_id = ${studentId} AND kind = ${kind} AND confirmed_at IS NULL
+    `);
   }
 
   async wasReminderSentRecently(
@@ -2009,6 +2141,7 @@ export class DbStorage implements IStorage {
     const today = localDateStr(new Date());
     const preparedDates = new Set<string>();
     for (const rule of rules) {
+      const ruleStudent = await this.getUser(rule.studentId);
       const start = rule.startDate > today ? rule.startDate : today;
       const end = rule.endDate && rule.endDate < untilDate ? rule.endDate : untilDate;
       if (start > end) continue;
@@ -2027,6 +2160,11 @@ export class DbStorage implements IStorage {
             ),
           );
         if (excepted.length > 0) { skipped++; continue; }
+        // Пропускаем даты, когда ученик на больничном
+        if (ruleStudent?.sickUntil && dateStr <= ruleStudent.sickUntil) {
+          skipped++;
+          continue;
+        }
         if (!preparedDates.has(dateStr)) {
           await this.dedupeTimeSlotsForDate(dateStr);
           await this.ensureRecurringSlotsForDate(dateStr, settings);
@@ -2242,6 +2380,11 @@ export class DbStorage implements IStorage {
         updates.individualTrainingPriceRub !== undefined
           ? updates.individualTrainingPriceRub
           : current.individualTrainingPriceRub,
+      paymentPhone:
+        updates.paymentPhone !== undefined ? updates.paymentPhone : current.paymentPhone,
+      paymentQrs: updates.paymentQrs
+        ? updates.paymentQrs.map((q) => ({ ...q }))
+        : current.paymentQrs,
       updatedAt: new Date(),
     };
     if (next.dayEndHour <= next.dayStartHour) throw new Error("Окончание рабочего дня должно быть позже начала");
@@ -2257,6 +2400,8 @@ export class DbStorage implements IStorage {
       welcomeMessage: next.welcomeMessage,
       pricingTiers: serializePricingTiers(next.pricingTiers),
       individualTrainingPriceRub: next.individualTrainingPriceRub,
+      paymentPhone: next.paymentPhone,
+      paymentQrs: JSON.stringify(next.paymentQrs),
       updatedAt: next.updatedAt!,
     }).where(eq(trainerSettings.id, current.id));
     this.settingsCache = next;

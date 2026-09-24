@@ -22,6 +22,8 @@ type Props = {
   personName: string;
   cancelDeadlineH: number;
   tooLateToCancel: boolean;
+  /** Запись ещё не одобрена тренером (статус «pending») — отмену разрешаем всегда. */
+  alwaysAllowCancel?: boolean;
   onReschedule: () => void;
   onCancel: () => void;
 };
@@ -34,6 +36,7 @@ export function StudentBookingRowActions({
   personName,
   cancelDeadlineH,
   tooLateToCancel,
+  alwaysAllowCancel = false,
   onReschedule,
   onCancel,
 }: Props) {
@@ -49,7 +52,7 @@ export function StudentBookingRowActions({
     isMembershipBookingBlocked(paymentStatus);
 
   const rescheduleHardDisabled = tooLateToCancel && !blockedByMembership;
-  const cancelHardDisabled = tooLateToCancel && !blockedByMembership;
+  const cancelHardDisabled = alwaysAllowCancel ? false : tooLateToCancel && !blockedByMembership;
 
   const rescheduleTitle = blockedByMembership
     ? MEMBERSHIP_RESCHEDULE_BLOCK_MESSAGE
@@ -57,11 +60,13 @@ export function StudentBookingRowActions({
       ? `Перенос закрыт менее чем за ${cancelDeadlineH} ч.`
       : "Перенести запись";
 
-  const cancelTitle = blockedByMembership
-    ? MEMBERSHIP_CANCEL_BLOCK_MESSAGE
-    : tooLateToCancel
-      ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.`
-      : "Отменить запись";
+  const cancelTitle = alwaysAllowCancel
+    ? "Отменить запись (ещё не одобрена тренером)"
+    : blockedByMembership
+      ? MEMBERSHIP_CANCEL_BLOCK_MESSAGE
+      : tooLateToCancel
+        ? `Отмена закрыта менее чем за ${cancelDeadlineH} ч.`
+        : "Отменить запись";
 
   const handleRescheduleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -75,6 +80,11 @@ export function StudentBookingRowActions({
 
   const handleCancelClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Не одобренную тренером запись ученик может отменить в любой момент.
+    if (alwaysAllowCancel) {
+      onCancel();
+      return;
+    }
     if (blockedByMembership) {
       toast({ variant: "destructive", description: MEMBERSHIP_CANCEL_BLOCK_MESSAGE });
       return;

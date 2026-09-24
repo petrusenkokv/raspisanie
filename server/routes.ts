@@ -55,6 +55,16 @@ import {
 } from "./auth";
 import { computeTrainerPackagePrice } from "@shared/pricing-tiers";
 
+/** Привести путь к QR-коду к веб-виду: client\public\qr.png → /qr.png */
+function normalizeQrPath(raw: string): string {
+  let v = String(raw || "").trim();
+  if (!v) return "";
+  v = v.replace(/^client[\\/]+public[\\/]+/i, "");
+  v = v.replace(/\\/g, "/");
+  if (!/^https?:\/\//i.test(v) && !v.startsWith("/")) v = "/" + v;
+  return v;
+}
+
 function normalizePhone(input: string): string | null {
   let digits = String(input || "").replace(/\D/g, "");
   if (digits.length === 10) digits = "7" + digits;
@@ -886,6 +896,79 @@ export async function registerRoutes(
     }
   });
 
+  // Ученик сообщает об оплате («Я оплатил») — тренеру приходит уведомление.
+  app.post("/api/payments/student-notify", requireAuth, async (req, res) => {
+    try {
+      const meId = sessionUserId(req);
+      const me = await storage.getUser(meId);
+      if (!me) return res.status(401).json({ message: "Требуется вход в систему" });
+
+      const { kind, amountRub, count, qrName, note } = req.body ?? {};
+      const trainer = await storage.getTrainer();
+      if (!trainer) return res.status(500).json({ message: "Тренер не найден" });
+
+      const studentLabel = `${me.firstName} ${me.lastName ?? ""}`.trim() || me.phone;
+      let title: string;
+      let message: string;
+      if (kind === "hall") {
+        title = "Ученик оплатил зал";
+        message = `${studentLabel} сообщил(а) об оплате зала${qrName ? ` (${qrName})` : ""}${
+          amountRub ? ` — ${amountRub} ₽` : ""
+        }. Проверьте оплату.`;
+      } else {
+        title = "Ученик оплатил тренировки";
+        message = `${studentLabel} сообщил(а) об оплате тренировок${
+          count ? ` (${count} шт.)` : ""
+        }${amountRub ? ` — ${amountRub} ₽` : ""}. Отметьте абонемент.`;
+      }
+      if (note) message += ` Комментарий: ${note}`;
+
+      await storage.createNotification({
+        userId: trainer.id,
+        type: "payment_reported",
+        title,
+        message,
+        relatedUserId: me.id,
+      } as any);
+
+      // Сохраняем отметку для ученика, чтобы он видел, что уже сообщил об оплате.
+      await storage.recordPaymentReport(me.id, {
+        kind: kind === "hall" ? "hall" : "trainer",
+        amountRub: typeof amountRub === "number" ? amountRub : undefined,
+        count: typeof count === "number" ? count : undefined,
+        qrName: typeof qrName === "string" ? qrName : null,
+        note: typeof note === "string" ? note : null,
+      });
+
+      // Если тренер уже отметил оплату (ЧВ/БВ или абонемент) — сразу считаем отметку
+      // подтверждённой, чтобы блок «Вы сообщили…» не висел до следующего действия тренера.
+      const todayStr = moscowDateString();
+      if (kind === "hall") {
+        const st = await storage.getStudentPaymentStatus(me.id, todayStr);
+        if (st.hasMembership) await storage.confirmPaymentReports(me.id, "hall");
+      } else {
+        const st = await storage.getStudentPaymentStatus(me.id, todayStr);
+        if (st.hasTrainerPayment) await storage.confirmPaymentReports(me.id, "trainer");
+      }
+
+      broadcast({ type: "notification_update" });
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось отправить уведомление" });
+    }
+  });
+
+  // Отметки «Я оплатил» текущего ученика (последняя по каждому виду: зал по QR, тренер).
+  app.get("/api/payments/my-reports", requireAuth, async (req, res) => {
+    try {
+      const meId = sessionUserId(req);
+      const reports = await storage.getLatestPaymentReports(meId);
+      res.json({ reports });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Не удалось загрузить отметки об оплате" });
+    }
+  });
+
   app.post("/api/users/:id/consents/toggle", requireAuth, async (req, res) => {
     try {
       const targetId = req.params.id;
@@ -1224,6 +1307,13 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Ваша регистрация ещё не одобрена тренером. Ожидайте подтверждения." });
       }
 
+      // Block booking while student is on sick leave
+      if (bookingStudent?.sickUntil && targetSlot.date <= bookingStudent.sickUntil) {
+        return res.status(403).json({
+          message: `Вы на больничном до ${bookingStudent.sickUntil}. Запись будет доступна после выздоровления.`,
+        });
+      }
+
       const consentBlock = await assertRequiredConsentsForBooking(studentId);
       if (consentBlock) {
         return res.status(403).json({ message: consentBlock });
@@ -1238,11 +1328,12 @@ export async function registerRoutes(
         }
       }
 
-      // Check if time slot is available
+      // Check if time slot is available (вместимость из слота; больной ученик считается,
+      // поэтому его место может занять только тренер — см. /api/trainer/book-student)
       const existingBookings = await storage.getBookingsByTimeSlot(timeSlotId);
       const confirmedBookings = existingBookings.filter(b => b.status === "confirmed");
       
-      if (confirmedBookings.length >= 2) {
+      if (confirmedBookings.length >= targetSlot.maxCapacity) {
         return res.status(400).json({ message: "Все места в этом слоте заняты" });
       }
 
@@ -1373,20 +1464,24 @@ export async function registerRoutes(
         (await storage.isParentOfChild(canceller.id, existing.studentId));
 
       if (cancelledByStudent || cancelledByParentForChild) {
-        if (!(await studentHasMembershipForDate(existing.studentId, existing.timeSlot.date))) {
-          return res.status(403).json({ message: MEMBERSHIP_CANCEL_BLOCK_MESSAGE });
-        }
-        const settings = await storage.getTrainerSettings();
-        if (settings.cancelDeadlineHours > 0) {
-          const startIso = `${existing.timeSlot.date}T${existing.timeSlot.time.slice(0, 5)}:00+03:00`;
-          const minutesUntil = Math.round(
-            (new Date(startIso).getTime() - Date.now()) / 60_000
-          );
-          if (minutesUntil <= settings.cancelDeadlineHours * 60) {
-            const h = settings.cancelDeadlineHours;
-            return res.status(400).json({
-              message: `Отмена записи закрыта менее чем за ${h} ${h === 1 ? "час" : "ч."} до тренировки. Свяжитесь с тренером.`,
-            });
+        // Пока тренер не одобрил запись (статус «ожидает»), ученик может отменить её в любой момент:
+        // проверка членского взноса и срок отмены применяются только к подтверждённым записям.
+        if (existing.status !== "pending") {
+          if (!(await studentHasMembershipForDate(existing.studentId, existing.timeSlot.date))) {
+            return res.status(403).json({ message: MEMBERSHIP_CANCEL_BLOCK_MESSAGE });
+          }
+          const settings = await storage.getTrainerSettings();
+          if (settings.cancelDeadlineHours > 0) {
+            const startIso = `${existing.timeSlot.date}T${existing.timeSlot.time.slice(0, 5)}:00+03:00`;
+            const minutesUntil = Math.round(
+              (new Date(startIso).getTime() - Date.now()) / 60_000
+            );
+            if (minutesUntil <= settings.cancelDeadlineHours * 60) {
+              const h = settings.cancelDeadlineHours;
+              return res.status(400).json({
+                message: `Отмена записи закрыта менее чем за ${h} ${h === 1 ? "час" : "ч."} до тренировки. Свяжитесь с тренером.`,
+              });
+            }
           }
         }
       }
@@ -1500,6 +1595,17 @@ export async function registerRoutes(
           if (minutesUntil <= settings.cancelDeadlineHours * 60) {
             return res.status(400).json({ message: `Перенос недоступен менее чем за ${settings.cancelDeadlineHours} ч. до тренировки` });
           }
+        }
+      }
+
+      // Нельзя перенести запись на дату, когда ученик на больничном
+      const sickStudent = await storage.getUser(booking.studentId);
+      if (sickStudent?.sickUntil) {
+        const newSlotRaw = await storage.getTimeSlotById(newTimeSlotId);
+        if (newSlotRaw && newSlotRaw.date <= sickStudent.sickUntil) {
+          return res.status(400).json({
+            message: `Ученик на больничном до ${sickStudent.sickUntil}. Перенос на эту дату недоступен.`,
+          });
         }
       }
 
@@ -1633,6 +1739,8 @@ export async function registerRoutes(
       const trainerId = sessionUserId(req);
       await storage.markNewStudentNotificationsAsRead(trainerId, id);
       if (wasPending) {
+        // Одобрение регистрации = подтверждение оплаты пробного занятия (отметка «Я оплатил зал»).
+        await storage.confirmPaymentReports(id, "hall");
         await storage.createNotification({
           userId: user.id,
           type: "registration_approved",
@@ -2195,8 +2303,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Ученик уже записан на это время" });
       }
 
-      // Индивидуальная тренировка — запись только в свободный слот (без других записей)
       const studentUser = await storage.getUser(studentId);
+      // Ученик на больничном — запись невозможна
+      if (studentUser?.sickUntil && slot.date <= studentUser.sickUntil) {
+        return res.status(400).json({
+          message: `Ученик на больничном до ${studentUser.sickUntil}`,
+        });
+      }
+
+      // Индивидуальная тренировка — запись только в свободный слот (без других записей)
       if (
         studentUser?.wantsIndividualTraining &&
         slotBookings.some((b) => b.status !== "cancelled")
@@ -2456,12 +2571,12 @@ export async function registerRoutes(
         parsed.data.sickNote ?? null,
         parsed.data.startDate,
       );
-      if (parsed.data.sickUntil && result.cancelledCount > 0) {
+      if (parsed.data.sickUntil && result.affectedCount > 0) {
         await storage.createNotification({
           userId: id,
           type: "booking_cancelled",
-          title: "Записи отменены — болезнь",
-          message: `Тренер отметил вас как болеющего до ${parsed.data.sickUntil}. Отменено занятий: ${result.cancelledCount}.`,
+          title: "Записи помечены — болезнь",
+          message: `Тренер отметил вас как болеющего до ${parsed.data.sickUntil}. Запись сохраняется, место временно освобождается. Записей с пометкой: ${result.affectedCount}.`,
           relatedBookingId: null as any,
         });
       }
@@ -2506,6 +2621,8 @@ export async function registerRoutes(
       const trainer = trainerIdRaw ? await storage.getUser(String(trainerIdRaw)) : await storage.getTrainer();
       const createdBy = trainer?.id || id;
       const payment = await storage.addMembershipPayment(id, parsed.data, createdBy);
+      // Запись ЧВ/БВ = подтверждение тренером оплаты зала.
+      await storage.confirmPaymentReports(id, "hall");
       const horizon = new Date();
       horizon.setDate(horizon.getDate() + 60);
       const horizonStr = horizon.toISOString().split("T")[0];
@@ -2579,6 +2696,8 @@ export async function registerRoutes(
       }
 
       const payment = await storage.addTrainerPayment(id, parsed.data, createdBy, price);
+      // Создание абонемента = подтверждение тренером оплаты тренировок.
+      await storage.confirmPaymentReports(id, "trainer");
       res.json(payment);
     } catch (error: any) {
       res.status(400).json({ message: error?.message || "Не удалось сохранить абонемент" });
@@ -2748,6 +2867,12 @@ export async function registerRoutes(
       const parsed = trainerSettingsUpdateSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.issues[0]?.message || "Неверные настройки" });
+      }
+      if (parsed.data.paymentQrs != null) {
+        parsed.data.paymentQrs = parsed.data.paymentQrs.map((q) => ({
+          ...q,
+          url: normalizeQrPath(q.url),
+        }));
       }
       const result = await storage.updateTrainerSettings(parsed.data);
       // Notify cancelled bookings: we don't have per-booking detail here, but cancelledCount is enough for response

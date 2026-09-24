@@ -20,7 +20,7 @@ import { Loader2, Trash2, Plus, CalendarOff, Clock, MessageSquare, Send, Lock, U
 import { TrainerPricingSettings } from "./trainer-pricing-settings";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { type WeeklyTemplate, type WeekdayTemplateEntry, type Holiday } from "@shared/schema";
+import { type WeeklyTemplate, type WeekdayTemplateEntry, type Holiday, type PaymentQr } from "@shared/schema";
 import { DEFAULT_PRICING_TIERS, type PricingTier } from "@shared/pricing-tiers";
 
 interface ScheduleSettingsDialogProps {
@@ -55,6 +55,8 @@ type SettingsResponse = {
   welcomeMessage: string | null;
   pricingTiers?: PricingTier[];
   individualTrainingPriceRub?: number;
+  paymentPhone?: string | null;
+  paymentQrs?: PaymentQr[];
   holidays: Holiday[];
 };
 
@@ -98,6 +100,8 @@ export function ScheduleSettingsDialog({
     DEFAULT_PRICING_TIERS.map((t) => ({ ...t })),
   );
   const [individualPrice, setIndividualPrice] = useState<string>("1000");
+  const [paymentPhone, setPaymentPhone] = useState<string>("");
+  const [qrs, setQrs] = useState<PaymentQr[]>([]);
 
   useEffect(() => {
     if (data) {
@@ -123,6 +127,8 @@ export function ScheduleSettingsDialog({
           : DEFAULT_PRICING_TIERS.map((t) => ({ ...t })),
       );
       setIndividualPrice(String(data.individualTrainingPriceRub ?? 1000));
+      setPaymentPhone(data.paymentPhone ?? "");
+      setQrs(Array.isArray(data.paymentQrs) ? data.paymentQrs.map((q) => ({ ...q })) : []);
     }
   }, [data]);
 
@@ -264,6 +270,34 @@ export function ScheduleSettingsDialog({
     saveSettings.mutate({
       pricingTiers: tiers,
       individualTrainingPriceRub: Math.max(0, Number(individualPrice) || 0),
+    });
+  };
+
+  const updateQr = (id: string, patch: Partial<PaymentQr>) => {
+    setQrs((prev) => prev.map((q) => (q.id === id ? { ...q, ...patch } : q)));
+  };
+
+  const addQr = () => {
+    setQrs((prev) => [
+      ...prev,
+      {
+        id: `qr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: "",
+        url: "",
+      },
+    ]);
+  };
+
+  const removeQr = (id: string) => {
+    setQrs((prev) => prev.filter((q) => q.id !== id));
+  };
+
+  const handleSavePayment = () => {
+    saveSettings.mutate({
+      paymentPhone: paymentPhone.trim() || null,
+      paymentQrs: qrs
+        .filter((q) => q.name.trim() && q.url.trim())
+        .map((q) => ({ ...q, name: q.name.trim(), url: q.url.trim() })),
     });
   };
 
@@ -878,6 +912,90 @@ export function ScheduleSettingsDialog({
                 >
                   {saveSettings.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   Сохранить тарифы
+                </Button>
+              </div>
+
+              {/* Оплата для учеников */}
+              <div className="border-t pt-4 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Оплата для учеников</p>
+                  <p className="text-xs text-gray-500">
+                    Ученики увидят телефон и QR-код в своём профиле (блок «Оплата тренировок»).
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <Label className="text-[11px]">Телефон для оплаты тренеру (СБП/перевод)</Label>
+                  <Input
+                    className="h-8 text-xs w-full min-w-0"
+                    placeholder="+7 999 123-45-67"
+                    value={paymentPhone}
+                    onChange={(e) => setPaymentPhone(e.target.value)}
+                    data-testid="input-payment-phone"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Показывается ученику в блоке «Оплата тренировок» — перевод за работу тренера.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[11px]">QR-коды для оплаты зала</Label>
+                  {qrs.length === 0 && (
+                    <p className="text-[11px] text-gray-400">
+                      QR-кодов пока нет. Добавьте код с названием (например, «Разовое 300 ₽»).
+                    </p>
+                  )}
+                  {qrs.map((qr) => (
+                    <div key={qr.id} className="border rounded-lg p-2 space-y-1.5 min-w-0">
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          className="h-8 text-xs w-full min-w-0"
+                          placeholder="Название (например, 300 ₽ — разовое)"
+                          value={qr.name}
+                          onChange={(e) => updateQr(qr.id, { name: e.target.value })}
+                          data-testid={`input-qr-name-${qr.id}`}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          onClick={() => removeQr(qr.id)}
+                          title="Удалить QR-код"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                        </Button>
+                      </div>
+                      <Input
+                        className="h-8 text-xs w-full min-w-0"
+                        placeholder="/qr-300.png или https://..."
+                        value={qr.url}
+                        onChange={(e) => updateQr(qr.id, { url: e.target.value })}
+                        data-testid={`input-qr-url-${qr.id}`}
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={addQr}
+                    data-testid="button-add-qr"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1.5" />
+                    Добавить QR-код
+                  </Button>
+                  <p className="text-[10px] text-gray-400">
+                    Положите файлы в папку client/public и указывайте пути вида /qr-300.png
+                    или полные ссылки на картинки.
+                  </p>
+                </div>
+                <Button
+                  className="w-full"
+                  onClick={handleSavePayment}
+                  disabled={saveSettings.isPending}
+                  data-testid="button-save-payment"
+                >
+                  {saveSettings.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Сохранить оплату
                 </Button>
               </div>
 

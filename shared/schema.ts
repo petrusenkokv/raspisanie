@@ -5,6 +5,30 @@ import { z } from "zod";
 import { birthDateValidationError } from "./birth-date";
 import { pricingTierSchema, type PricingTier } from "./pricing-tiers";
 
+// QR-код для оплаты зала (название + путь/URL картинки)
+export const paymentQrSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1, "Укажите название QR-кода"),
+  url: z.string().min(1, "Укажите путь или URL QR-кода"),
+});
+export type PaymentQr = z.infer<typeof paymentQrSchema>;
+
+// Отметка ученика «Я оплатил» (зал / тренировки тренеру) — чтобы не отправлять повторно.
+export type PaymentReport = {
+  id: string;
+  userId: string;
+  kind: "hall" | "trainer";
+  amountRub: number | null;
+  count: number | null;
+  qrName: string | null;
+  note: string | null;
+  createdAt: Date;
+  /** Когда тренер подтвердил оплату (записал ЧВ/БВ, создал абонемент или одобрил регистрацию). */
+  confirmedAt: Date | null;
+  /** Удобный флаг для клиента: true, если отметка «Я оплатил» уже подтверждена тренером. */
+  trainerConfirmed?: boolean;
+};
+
 // Users table (students and trainer)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -122,6 +146,10 @@ export const trainerSettings = pgTable("trainer_settings", {
   pricingTiers: text("pricing_tiers").notNull().default("[]"),
   // Цена индивидуальной тренировки за занятие (выборочная опция ученика).
   individualTrainingPriceRub: integer("individual_training_price_rub").notNull().default(1000),
+  // Платёжные реквизиты тренера для учеников: телефон (СБП/перевод) и список QR-кодов зала.
+  // paymentQrs — JSON-массив PaymentQr[]: [{ id, name, url }]
+  paymentPhone: text("payment_phone"),
+  paymentQrs: text("payment_qrs").notNull().default("[]"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -444,6 +472,9 @@ export const trainerSettingsUpdateSchema = z.object({
   pricingTiers: z.array(pricingTierSchema).min(1).optional(),
   // Цена индивидуальной тренировки за занятие.
   individualTrainingPriceRub: z.number().int().min(0).max(1_000_000).optional(),
+  // Платёжные реквизиты: телефон и список QR-кодов (зал).
+  paymentPhone: z.string().max(30).nullable().optional(),
+  paymentQrs: z.array(paymentQrSchema).optional(),
 }).refine(
   (d) => d.dayStartHour === undefined || d.dayEndHour === undefined || d.dayEndHour > d.dayStartHour,
   { message: "Час окончания дня должен быть позже часа начала дня" },
@@ -512,6 +543,8 @@ export type StudentAccountSummary = {
   trainerPaymentRemaining: number | null;
   trainerPaymentTotal: number | null;
   exemptTrainerPayment: boolean;
+  /** Ученик выбрал индивидуальные тренировки. */
+  wantsIndividualTraining: boolean;
 };
 export type InsertUserConsent = z.infer<typeof insertUserConsentSchema>;
 export type UserConsent = typeof userConsents.$inferSelect;
@@ -556,6 +589,8 @@ export type TrainerSettings = {
   welcomeMessage: string | null;
   pricingTiers: PricingTier[];
   individualTrainingPriceRub: number;
+  paymentPhone: string | null;
+  paymentQrs: PaymentQr[];
   updatedAt: Date | null;
 };
 export type TrainerSettingsUpdate = z.infer<typeof trainerSettingsUpdateSchema>;
@@ -564,7 +599,13 @@ export type SlotCapacityUpdate = z.infer<typeof slotCapacityUpdateSchema>;
 import type { BookingSource } from "./booking-source";
 export type ScheduleBookingStudent = Pick<
   User,
-  "firstName" | "lastName" | "phone" | "role" | "exemptMembership" | "exemptTrainerPayment"
+  | "firstName"
+  | "lastName"
+  | "phone"
+  | "role"
+  | "exemptMembership"
+  | "exemptTrainerPayment"
+  | "sickUntil"
 >;
 
 export type ScheduleBooking = Booking & {

@@ -34,6 +34,8 @@ import {
   type BroadcastLog,
   type ParentChild,
   type InsertParentChild,
+  type PaymentQr,
+  type PaymentReport,
 } from "@shared/schema";
 import { DEFAULT_PRICING_TIERS, resolveSessionRate, type PricingTier } from "@shared/pricing-tiers";
 import type { PushSubscriptionData } from "./push";
@@ -118,7 +120,7 @@ export interface IStorage {
   cancelBooking(id: string): Promise<Booking>;
   markAttendance(bookingId: string, status: AttendanceStatus | null, note: string | null): Promise<Booking>;
   getStudentAttendanceStats(studentId: string): Promise<AttendanceStats>;
-  setStudentSickLeave(studentId: string, sickUntil: string | null, sickNote: string | null, startDate?: string): Promise<{ user: User; cancelledCount: number }>;
+  setStudentSickLeave(studentId: string, sickUntil: string | null, sickNote: string | null, startDate?: string): Promise<{ user: User; affectedCount: number }>;
   
   // Notifications
   getNotificationsByUser(userId: string): Promise<Notification[]>;
@@ -202,6 +204,21 @@ export interface IStorage {
   ): Promise<TrainerPaymentWithUsage>;
   cancelTrainerPayment(id: string): Promise<TrainerPaymentWithUsage>;
   deleteTrainerPayment(id: string): Promise<void>;
+
+  // Payments — student «I paid» reports (marker for the student that they already notified)
+  recordPaymentReport(
+    userId: string,
+    input: {
+      kind: "hall" | "trainer";
+      amountRub?: number;
+      count?: number;
+      qrName?: string | null;
+      note?: string | null;
+    },
+  ): Promise<void>;
+  getLatestPaymentReports(userId: string): Promise<PaymentReport[]>;
+  /** Пометить все неподтверждённые отметки «Я оплатил» ученика как подтверждённые тренером. */
+  confirmPaymentReports(studentId: string, kind: "hall" | "trainer"): Promise<void>;
 
   // Payment status for a student on a particular date
   getStudentPaymentStatus(studentId: string, dateStr: string): Promise<StudentPaymentStatus>;
@@ -322,6 +339,7 @@ export class MemStorage implements IStorage {
   private blockedPeriods: Map<string, { id: string; startDate: string; endDate: string; createdAt: Date }> = new Map();
   private membershipPayments: Map<string, MembershipPayment> = new Map();
   private trainerPayments: Map<string, TrainerPayment> = new Map();
+  private paymentReports: Map<string, PaymentReport> = new Map();
   private sickPeriods: Map<string, SickPeriod> = new Map();
   private broadcastLogs: Map<string, BroadcastLog> = new Map();
   private pushSubscriptions: Map<string, PushSubscriptionData> = new Map();
@@ -338,6 +356,8 @@ export class MemStorage implements IStorage {
     welcomeMessage: null,
     pricingTiers: DEFAULT_PRICING_TIERS.map((t) => ({ ...t })),
     individualTrainingPriceRub: 1000,
+    paymentPhone: null,
+    paymentQrs: [],
     updatedAt: new Date(),
   };
 
@@ -851,6 +871,7 @@ export class MemStorage implements IStorage {
       trainerPaymentRemaining,
       trainerPaymentTotal,
       exemptTrainerPayment: refreshed.exemptTrainerPayment === true,
+      wantsIndividualTraining: refreshed.wantsIndividualTraining === true,
     };
   }
 
@@ -954,6 +975,7 @@ export class MemStorage implements IStorage {
         role: student.role,
         exemptMembership: student.exemptMembership ?? false,
         exemptTrainerPayment: student.exemptTrainerPayment ?? false,
+        sickUntil: student.sickUntil ?? null,
       },
       timeSlot
     };
@@ -978,6 +1000,7 @@ export class MemStorage implements IStorage {
             role: student.role,
             exemptMembership: student.exemptMembership ?? false,
             exemptTrainerPayment: student.exemptTrainerPayment ?? false,
+            sickUntil: student.sickUntil ?? null,
           },
           timeSlot
         };
@@ -1010,6 +1033,7 @@ export class MemStorage implements IStorage {
             role: student.role,
             exemptMembership: student.exemptMembership ?? false,
             exemptTrainerPayment: student.exemptTrainerPayment ?? false,
+            sickUntil: student.sickUntil ?? null,
           },
           timeSlot
         };
@@ -1295,7 +1319,7 @@ export class MemStorage implements IStorage {
     sickUntil: string | null,
     sickNote: string | null,
     startDate?: string,
-  ): Promise<{ user: User; cancelledCount: number }> {
+  ): Promise<{ user: User; affectedCount: number }> {
     const user = this.users.get(studentId);
     if (!user) throw new Error("Пользователь не найден");
     if (user.role !== "student") throw new Error("Только ученики могут уходить на больничный");
@@ -1322,7 +1346,7 @@ export class MemStorage implements IStorage {
       }
     }
 
-    let cancelledCount = 0;
+    let affectedCount = 0;
     if (sickUntil) {
       const fromStr = startDate || localDateStr(new Date());
       for (const [bid, booking] of Array.from(this.bookings.entries())) {
@@ -1337,20 +1361,20 @@ export class MemStorage implements IStorage {
           this.refundTrainerSession(consumedId);
           consumedId = null;
         }
-        const cancelled: Booking = {
+        // Запись НЕ отменяется: ученик остаётся в слоте с пометкой «болен»,
+        // место временно может занять другой ученик (запись — только тренером).
+        const marked: Booking = {
           ...booking,
-          status: "cancelled",
-          cancelledAt: new Date(),
           attendanceStatus: "excused",
           attendanceNote: sickNote ? `Болезнь: ${sickNote}` : "Болезнь",
           attendanceMarkedAt: new Date(),
           consumedTrainerPaymentId: consumedId,
         };
-        this.bookings.set(bid, cancelled);
-        cancelledCount++;
+        this.bookings.set(bid, marked);
+        affectedCount++;
       }
     }
-    return { user: updatedUser, cancelledCount };
+    return { user: updatedUser, affectedCount };
   }
 
   // ====== Payments: membership (ЧВ/БВ) ======
@@ -1453,6 +1477,54 @@ export class MemStorage implements IStorage {
   // ====== Payments: trainer subscription ======
   private withUsage(p: TrainerPayment): TrainerPaymentWithUsage {
     return { ...p, usedSessions: this.countUsedSessions(p.id) };
+  }
+
+  async recordPaymentReport(
+    userId: string,
+    input: {
+      kind: "hall" | "trainer";
+      amountRub?: number;
+      count?: number;
+      qrName?: string | null;
+      note?: string | null;
+    },
+  ): Promise<void> {
+    const report: PaymentReport = {
+      id: randomUUID(),
+      userId,
+      kind: input.kind,
+      amountRub: input.amountRub ?? null,
+      count: input.count ?? null,
+      qrName: input.qrName ?? null,
+      note: input.note ?? null,
+      createdAt: new Date(),
+      confirmedAt: null,
+    };
+    this.paymentReports.set(report.id, report);
+  }
+
+  async confirmPaymentReports(studentId: string, kind: "hall" | "trainer"): Promise<void> {
+    const now = new Date();
+    for (const [pid, r] of Array.from(this.paymentReports.entries())) {
+      if (r.userId === studentId && r.kind === kind && r.confirmedAt == null) {
+        this.paymentReports.set(pid, { ...r, confirmedAt: now });
+      }
+    }
+  }
+
+  async getLatestPaymentReports(userId: string): Promise<PaymentReport[]> {
+    const all = Array.from(this.paymentReports.values())
+      .filter((r) => r.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const latestByKey = new Map<string, PaymentReport>();
+    for (const r of all) {
+      const key = r.kind === "hall" ? `hall:${r.qrName ?? ""}` : "trainer";
+      if (!latestByKey.has(key)) latestByKey.set(key, r);
+    }
+    return Array.from(latestByKey.values()).map((r) => ({
+      ...r,
+      trainerConfirmed: r.confirmedAt != null,
+    }));
   }
 
   async getTrainerPayments(studentId: string): Promise<TrainerPaymentWithUsage[]> {
@@ -2164,6 +2236,7 @@ export class MemStorage implements IStorage {
     const today = localDateStr(new Date());
     const rules = Array.from(this.recurringBookings.values());
     for (const rule of rules) {
+      const ruleStudent = this.users.get(rule.studentId);
       const start = rule.startDate > today ? rule.startDate : today;
       const end = rule.endDate && rule.endDate < untilDate ? rule.endDate : untilDate;
       if (start > end) continue;
@@ -2173,6 +2246,11 @@ export class MemStorage implements IStorage {
         if (!rule.weekdays.includes(wd)) continue;
         const dateStr = localDateStr(d);
         if (this.recurringBookingExceptions.has(`${rule.id}:${dateStr}`)) {
+          skipped++;
+          continue;
+        }
+        // Пропускаем даты, когда ученик на больничном
+        if (ruleStudent?.sickUntil && dateStr <= ruleStudent.sickUntil) {
           skipped++;
           continue;
         }
@@ -2374,6 +2452,7 @@ export class MemStorage implements IStorage {
       ...this.settings,
       weeklyTemplate: { ...this.settings.weeklyTemplate },
       pricingTiers: this.settings.pricingTiers.map((t) => ({ ...t })),
+      paymentQrs: this.settings.paymentQrs.map((q) => ({ ...q })),
     };
   }
 
@@ -2406,6 +2485,11 @@ export class MemStorage implements IStorage {
         updates.individualTrainingPriceRub !== undefined
           ? updates.individualTrainingPriceRub
           : this.settings.individualTrainingPriceRub,
+      paymentPhone:
+        updates.paymentPhone !== undefined ? updates.paymentPhone : this.settings.paymentPhone,
+      paymentQrs: updates.paymentQrs
+        ? updates.paymentQrs.map((q) => ({ ...q }))
+        : this.settings.paymentQrs,
       updatedAt: new Date(),
     };
     if (next.dayEndHour <= next.dayStartHour) {

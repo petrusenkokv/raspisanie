@@ -1,5 +1,26 @@
 import type { TimeSlotWithBookings } from "@shared/schema";
 
+/**
+ * Записан ли ученик как болеющий на эту дату (по отметке болезни тренера).
+ * Пока ученик болеет, его место временно может занять другой ученик (запись — только тренером),
+ * а при выздоровлении запись автоматически снова занимает место.
+ */
+export function isBookingSickOnDate(
+  booking: { student?: { sickUntil?: string | null } },
+  dateStr: string,
+): boolean {
+  const until = booking.student?.sickUntil;
+  return !!until && dateStr <= until;
+}
+
+/** Количество активных записей слота без учёта больных (свободные места для тренера). */
+export function countHealthyActiveBookings(
+  bookings: { status: string; student?: { sickUntil?: string | null } }[],
+  dateStr: string,
+): number {
+  return bookings.filter((b) => b.status !== "cancelled" && !isBookingSickOnDate(b, dateStr)).length;
+}
+
 export type StudentSlotAvailability = "blocked" | "full" | "available";
 
 export type StudentSlotFillLevel = "blocked" | "empty" | "partial" | "full";

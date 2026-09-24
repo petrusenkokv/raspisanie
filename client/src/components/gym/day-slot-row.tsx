@@ -13,6 +13,7 @@ import {
   dayCardStudentBookedClasses,
   dayCardStudentFillClasses,
   getStudentSlotFillLevel,
+  isBookingSickOnDate,
 } from "@/lib/slot-availability-ui";
 import { CalendarCellHint, type CalendarCellHintLevel } from "./calendar-cell-hint";
 import { SlotSessionPrice } from "./slot-session-price";
@@ -69,6 +70,11 @@ export function DaySlotRow({
   const confirmedBookings = timeSlot.bookings.filter((b) => b.status === "confirmed");
   const pendingBookings = timeSlot.bookings.filter((b) => b.status === "pending");
   const allActiveBookings = [...confirmedBookings, ...pendingBookings];
+  // Больные остаются записанными, но для тренера их место временно свободно.
+  const healthyActive = allActiveBookings.filter(
+    (b) => !isBookingSickOnDate(b, timeSlot.date),
+  );
+  const isTrainerFull = isTrainer() && healthyActive.length >= timeSlot.maxCapacity;
 
   const bookingStudentIds =
     familyStudentIds.length > 0
@@ -117,7 +123,7 @@ export function DaySlotRow({
   const rowClass = (() => {
     if (isTrainer()) {
       if (isBlocked) return dayCardStudentFillClasses.blocked;
-      if (isFull) return dayCardStudentFillClasses.full;
+      if (isTrainerFull) return dayCardStudentFillClasses.full;
       if (allActiveBookings.length > 0) {
         return "bg-green-100 dark:bg-green-900/40 border-green-300 dark:border-green-700";
       }
@@ -134,10 +140,12 @@ export function DaySlotRow({
       if (allActiveBookings.length === 0) return "Нет записей";
       const names = allActiveBookings
         .slice(0, 2)
-        .map((b) => formatStudentShortName(b.student))
+        .map((b) =>
+          `${formatStudentShortName(b.student)}${isBookingSickOnDate(b, timeSlot.date) ? " 🤒" : ""}`,
+        )
         .join(", ");
       const extra = allActiveBookings.length > 2 ? ` +${allActiveBookings.length - 2}` : "";
-      return `${confirmedBookings.length}/${timeSlot.maxCapacity} · ${names}${extra}`;
+      return `${healthyActive.length}${allActiveBookings.length > healthyActive.length ? `+${allActiveBookings.length - healthyActive.length}бол` : ""}/${timeSlot.maxCapacity} · ${names}${extra}`;
     }
     if (familyBookings.length > 0) {
       const name = formatStudentShortName(userBooking!.student);
