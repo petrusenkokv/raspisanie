@@ -366,7 +366,7 @@ export function PaymentInfoCard({
         <DialogContent className="w-[calc(100vw-2rem)] max-w-sm">
           <DialogHeader>
             <DialogTitle>{qrDialog?.name || "QR-код для оплаты"}</DialogTitle>
-            <DialogDescription>Отсканируйте камерой телефона, чтобы оплатить.</DialogDescription>
+            <DialogDescription>Открой приложение банка, а потом сканируй.</DialogDescription>
           </DialogHeader>
           {qrDialog && (
             <div className="flex justify-center">
@@ -381,9 +381,6 @@ export function PaymentInfoCard({
               />
             </div>
           )}
-          <p className="text-xs text-center text-muted-foreground">
-            Если QR-код не виден — проверьте путь в настройках тренера.
-          </p>
         </DialogContent>
       </Dialog>
     </div>
