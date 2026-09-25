@@ -89,7 +89,7 @@ export type SessionRate = {
 
 /**
  * Ставка за одно занятие для ученика:
- * - если у ученика включена индивидуальная тренировка и считается 1 занятие → individualPriceRub;
+ * - если у ученика включена индивидуальная тренировка → individualPriceRub (для любого количества занятий);
  * - иначе — ставка уровня абонемента для заданного количества (базовый = первый уровень, обычно 700 ₽).
  */
 export function resolveSessionRate(
@@ -99,7 +99,7 @@ export function resolveSessionRate(
   sessionCount: number,
 ): SessionRate {
   const count = Math.max(1, Math.floor(sessionCount));
-  if (count === 1 && wantsIndividualTraining) {
+  if (wantsIndividualTraining) {
     return {
       label: "Индивидуальная тренировка",
       pricePerSessionRub: Math.max(0, Math.floor(Number(individualPriceRub) || 0)),
@@ -120,7 +120,7 @@ export type PackagePrice = {
 };
 
 export type PackagePriceOptions = {
-  /** Цена индивидуальной тренировки (применяется для 1 занятия, если включена опция). */
+  /** Цена индивидуальной тренировки (применяется для любого количества занятий, если включена опция). */
   individualPriceRub?: number;
   /** Ученик выбрал индивидуальную тренировку. */
   wantsIndividualTraining?: boolean;

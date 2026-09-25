@@ -64,9 +64,15 @@ export function guestWeekCellLabel(isFull: boolean): string {
 
 export type MonthDayFillLevel = "booked" | "empty" | "partial" | "full";
 
+/** Количество активных записей слота (confirmed + pending). */
+function countActiveSlotBookings(ts: TimeSlotWithBookings): number {
+  return ts.bookings.filter((b) => b.status === "confirmed" || b.status === "pending").length;
+}
+
 export function getMonthDayStudentFillLevel(
   openSlots: TimeSlotWithBookings[],
   familyStudentIds: string[],
+  individualMode = false,
 ): MonthDayFillLevel {
   const hasFamilyBooking = openSlots.some((ts) =>
     ts.bookings.some(
@@ -76,14 +82,16 @@ export function getMonthDayStudentFillLevel(
     ),
   );
   if (hasFamilyBooking) return "booked";
+  const totalBooked = openSlots.reduce((sum, ts) => sum + countActiveSlotBookings(ts), 0);
+  if (individualMode) {
+    // Индивидуальная тренировка — подходит только полностью свободный слот (без записей).
+    const hasEmptySlot = openSlots.some((ts) => countActiveSlotBookings(ts) === 0);
+    if (!hasEmptySlot) return "full";
+    if (totalBooked === 0) return "empty";
+    return "partial";
+  }
   const hasAvailable = openSlots.some((ts) => ts.availableSpots > 0);
   if (!hasAvailable) return "full";
-  const totalBooked = openSlots.reduce(
-    (sum, ts) =>
-      sum +
-      ts.bookings.filter((b) => b.status === "confirmed" || b.status === "pending").length,
-    0,
-  );
   if (totalBooked === 0) return "empty";
   return "partial";
 }
@@ -152,7 +160,10 @@ export function getMonthOpenSlotTimesPreview(
     .slice(0, max);
 }
 
-export function monthDayStudentHint(fill: MonthDayFillLevel): {
+export function monthDayStudentHint(
+  fill: MonthDayFillLevel,
+  individualMode = false,
+): {
   shortLabel: string;
   labelClass: string;
   timeClass: string;
@@ -172,7 +183,7 @@ export function monthDayStudentHint(fill: MonthDayFillLevel): {
       };
     case "partial":
       return {
-        shortLabel: "Мало мест",
+        shortLabel: individualMode ? "Есть места" : "Мало мест",
         labelClass: "text-amber-800 dark:text-amber-300",
         timeClass: "text-amber-900 dark:text-amber-200",
       };
@@ -224,6 +235,7 @@ export function monthDayStudentLabel(
 export function monthDayStudentTooltip(
   openSlots: TimeSlotWithBookings[],
   familyStudentIds: string[],
+  individualMode = false,
 ): string {
   if (openSlots.length === 0) return "";
   const hasFamilyBooking = openSlots.some((ts) =>
@@ -234,8 +246,10 @@ export function monthDayStudentTooltip(
     ),
   );
   if (hasFamilyBooking) return "На этот день есть ваша запись";
-  const hasAvailable = openSlots.some((ts) => ts.availableSpots > 0);
-  return hasAvailable ? "Можно записаться" : "Все занято";
+  const canBook = individualMode
+    ? openSlots.some((ts) => countActiveSlotBookings(ts) === 0)
+    : openSlots.some((ts) => ts.availableSpots > 0);
+  return canBook ? "Можно записаться" : "Все занято";
 }
 
 /** Week grid: ученик — зелёный / оранжевый / синий / красный / серый (без цифр). */

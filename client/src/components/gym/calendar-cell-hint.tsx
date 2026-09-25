@@ -41,7 +41,7 @@ function HintIcon({
   }
 }
 
-function getHint(fillLevel: CalendarCellHintLevel) {
+function getHint(fillLevel: CalendarCellHintLevel, individualMode: boolean) {
   if (fillLevel === "blocked") {
     return {
       shortLabel: "Закрыто",
@@ -51,19 +51,21 @@ function getHint(fillLevel: CalendarCellHintLevel) {
   const isGuest = fillLevel === "guest-empty" || fillLevel === "guest-full";
   const hint = isGuest
     ? monthDayGuestHint(fillLevel)
-    : monthDayStudentHint(fillLevel as MonthDayFillLevel);
+    : monthDayStudentHint(fillLevel as MonthDayFillLevel, individualMode);
   return { shortLabel: hint.shortLabel, labelClass: hint.labelClass };
 }
 
 type CalendarCellHintProps = {
   fillLevel: CalendarCellHintLevel;
   layout: "month" | "week" | "day";
+  /** Ученик с включённой индивидуальной тренировкой: занятые слоты подписываются «Занято». */
+  individualMode?: boolean;
 };
 
-export function CalendarCellHint({ fillLevel, layout }: CalendarCellHintProps) {
-  const hint = getHint(fillLevel);
+export function CalendarCellHint({ fillLevel, layout, individualMode = false }: CalendarCellHintProps) {
+  const hint = getHint(fillLevel, individualMode);
   const showLabel =
-    fillLevel !== "full" && fillLevel !== "guest-full";
+    (fillLevel !== "full" && fillLevel !== "guest-full") || individualMode;
 
   if (layout === "day") {
     return (

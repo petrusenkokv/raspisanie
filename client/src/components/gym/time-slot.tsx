@@ -749,7 +749,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
             ) ||
               (individualSlotBusy && (
                 <div className="text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded px-2 py-1.5 text-center">
-                  Индивидуальная тренировка — слот занят, выберите свободное время
+                  Слот занят, выберите свободное время
                 </div>
               ))
           )}

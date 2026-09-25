@@ -168,6 +168,10 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
           : [];
     const viewerIsTrainer = isTrainer();
     const viewerIsGuest = !currentUser && !viewerIsTrainer;
+    const viewerWantsIndividual =
+      !!currentUser &&
+      !viewerIsTrainer &&
+      (currentUser as any)?.wantsIndividualTraining === true;
 
     // Build a sorted list of holiday dates for fast period lookup.
     const holidayMap = new Map(holidays.map((h) => [h.date, h]));
@@ -307,7 +311,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
               } else if (openSlots.length > 0 && currentUser && !viewerIsTrainer) {
                 tooltipNode = (
                   <div className="text-xs">
-                    {monthDayStudentTooltip(openSlots, monthFamilyIds)}
+                    {monthDayStudentTooltip(openSlots, monthFamilyIds, viewerWantsIndividual)}
                   </div>
                 );
               } else if (openSlots.length > 0 && viewerIsGuest) {
@@ -322,7 +326,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 !isTemplateDayOff &&
                 currentUser &&
                 !viewerIsTrainer
-                  ? getMonthDayStudentFillLevel(openSlots, monthFamilyIds)
+                  ? getMonthDayStudentFillLevel(openSlots, monthFamilyIds, viewerWantsIndividual)
                   : null;
               const monthGuestFill =
                 openSlots.length > 0 &&
@@ -404,6 +408,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                         openSlots={openSlots}
                         fillLevel={monthStudentFill}
                         familyStudentIds={monthFamilyIds}
+                        individualMode={viewerWantsIndividual}
                       />
                     )}
                     {monthColorFill && monthGuestFill && (
@@ -709,15 +714,24 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   const blockedLabel = getBlockedSlotLabel(timeSlot.blockReason, timeSlot.blockNote);
   const occupiedCount = allActive.length;
   const studentAvailability = getStudentSlotAvailability(isBlocked, isFull);
-  const studentFillLevel = getStudentSlotFillLevel(isBlocked, isFull, occupiedCount);
+  let studentFillLevel = getStudentSlotFillLevel(isBlocked, isFull, occupiedCount);
   const hasFamilyBooking = familyBookings.length > 0;
-  const hintLevel = getWeekSlotHintLevel(
+  let hintLevel = getWeekSlotHintLevel(
     isBlocked,
     isGuest,
     isFull,
     occupiedCount,
     hasFamilyBooking,
   );
+  // Индивидуальная тренировка: слот с любой записью (кроме вашей) недоступен → «Занято».
+  const viewerWantsIndividual =
+    !isGuest &&
+    !isTrainer &&
+    (currentUser as any)?.wantsIndividualTraining === true;
+  if (viewerWantsIndividual && hintLevel === "partial") {
+    hintLevel = "full";
+    studentFillLevel = "full";
+  }
 
   // Cell colour
   const cellClass = isBlocked
@@ -775,7 +789,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
           </span>
         </>
       ) : (
-        <CalendarCellHint fillLevel={hintLevel} layout="week" />
+        <CalendarCellHint fillLevel={hintLevel} layout="week" individualMode={viewerWantsIndividual} />
       )}
     </button>
   );
