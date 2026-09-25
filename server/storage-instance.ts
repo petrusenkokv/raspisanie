@@ -47,11 +47,16 @@ async function initStorage() {
 
   // Безопасные миграции колонок тарифов запускаются и на Vercel,
   // где полный seed пропускается (NODE_ENV=production).
-  try {
-    await dbStorage.ensurePricingSchema?.();
-  } catch (err) {
+  // НЕ блокируем холодный старт лямбды дольше 3 секунд: если БД
+  // медленная или недоступна, запросы начнут обрабатываться сразу,
+  // а сами миграции (идемпотентные) продолжат выполняться в фоне.
+  const pricingMigration = dbStorage.ensurePricingSchema?.().catch((err) => {
     console.error("[storage] Pricing schema ensure failed:", err);
-  }
+  });
+  const startupDeadline = new Promise<void>((resolve) =>
+    setTimeout(resolve, 3000),
+  );
+  await Promise.race([pricingMigration ?? Promise.resolve(), startupDeadline]);
 
   if (hasSeed(dbStorage) && shouldSeedOnStartup()) {
     await seedWithRetry(dbStorage);
