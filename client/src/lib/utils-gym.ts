@@ -79,7 +79,7 @@ export function shouldShowTrainerPaymentBadge(student: PaymentBadgeStudent): boo
   return student.exemptTrainerPayment !== true;
 }
 
-/** Имя и первая буква фамилии: «Елена П.» */
+/** Имя и полная фамилия: «Елена Петрова» */
 export function formatStudentShortName(student: {
   firstName?: string | null;
   lastName?: string | null;
@@ -88,8 +88,7 @@ export function formatStudentShortName(student: {
   const last = (student.lastName ?? "").trim();
   if (!first && !last) return "";
   if (!last) return first;
-  const initial = last.charAt(0).toLocaleUpperCase("ru-RU");
-  return `${first} ${initial}.`;
+  return `${first} ${last}`;
 }
 
 export function formatDateDMY(dateStr: string | null | undefined): string {
