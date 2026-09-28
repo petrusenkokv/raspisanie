@@ -4,6 +4,7 @@ import connectPgSimple from "connect-pg-simple";
 import MemoryStore from "memorystore";
 import bcrypt from "bcryptjs";
 import { getPgPool } from "./pg-pool";
+import { getDatabaseUrl } from "./db-url";
 import type { User } from "@shared/schema";
 
 const BCRYPT_ROUNDS = 12;
@@ -89,7 +90,7 @@ export function setupSession(app: Express): void {
     },
   };
 
-  if (process.env.DATABASE_URL) {
+  if (getDatabaseUrl()) {
     const PgStore = connectPgSimple(session);
     sessionOptions.store = new PgStore({
       pool: getPgPool(),

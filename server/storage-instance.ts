@@ -1,5 +1,6 @@
 import { MemStorage } from "./storage";
 import type { IStorage } from "./storage";
+import { getDatabaseUrl } from "./db-url";
 
 export let storage: IStorage = new MemStorage();
 
@@ -38,7 +39,7 @@ function hasSeed(target: IStorage): target is IStorage & { seed(): Promise<void>
 }
 
 async function initStorage() {
-  if (!process.env.DATABASE_URL) {
+  if (!getDatabaseUrl()) {
     return;
   }
   const { DbStorage } = await import("./storage-db");
@@ -77,6 +78,6 @@ export async function ensureStorageReady(): Promise<void> {
 
 void storageInitPromise;
 
-if (!process.env.DATABASE_URL) {
+if (!getDatabaseUrl()) {
   console.log("[storage] DATABASE_URL not set — using in-memory storage");
 }
