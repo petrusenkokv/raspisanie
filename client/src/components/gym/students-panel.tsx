@@ -2045,7 +2045,10 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
 
   const nextAllowedDate = nextCvData?.nextAllowedDate ?? null;
   const today = todayLocalStr();
-  const cvBlocked = type === "monthly_cv" && nextAllowedDate !== null && today < nextAllowedDate;
+  // effectiveStartDate — когда начнётся новый месяц (день после окончания текущего)
+  const effectiveStartLabel = nextAllowedDate
+    ? `Новый месяц начнётся ${format(new Date(nextAllowedDate + "T00:00:00"), "d MMMM yyyy", { locale: ru })}`
+    : null;
 
   const addMutation = useMutation({
     mutationFn: async () => {
@@ -2106,16 +2109,9 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
         </span>
       </div>
 
-      {nextAllowedDate && (
-        <p className={`text-[11px] rounded px-2 py-1 border ${
-          cvBlocked
-            ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800"
-            : "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
-        }`}>
-          {cvBlocked
-            ? `Следующая отметка ЧВ доступна с ${format(new Date(nextAllowedDate + "T00:00:00"), "d MMMM yyyy", { locale: ru })}`
-            : `Отметка ЧВ доступна с ${format(new Date(nextAllowedDate + "T00:00:00"), "d MMMM yyyy", { locale: ru })}`
-          }
+      {effectiveStartLabel && (
+        <p className="text-[11px] rounded px-2 py-1 border bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800">
+          {effectiveStartLabel}
         </p>
       )}
 
@@ -2170,9 +2166,8 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
         size="sm"
         className="w-full"
         onClick={() => addMutation.mutate()}
-        disabled={addMutation.isPending || cvBlocked || (type === "monthly_cv" ? !paidDate : !date)}
+        disabled={addMutation.isPending || (type === "monthly_cv" ? !paidDate : !date)}
         data-testid="button-add-membership"
-        title={cvBlocked && nextAllowedDate ? `Доступно с ${nextAllowedDate}` : undefined}
       >
         {addMutation.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
         Отметить оплату

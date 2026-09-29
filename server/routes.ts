@@ -2707,10 +2707,6 @@ export async function registerRoutes(
       broadcast({ type: "schedule_update" });
       res.json(payment);
     } catch (error: any) {
-      if (error?.message?.startsWith("BEFORE_NEXT_ALLOWED_DATE:")) {
-        const date = error.message.split(":")[1];
-        return res.status(409).json({ message: `Следующая отметка ЧВ доступна с ${date}`, nextAllowedDate: date });
-      }
       if (error?.message === "DUPLICATE_DATE") {
         return res.status(409).json({ message: "БВ на эту дату уже отмечен" });
       }

@@ -2646,13 +2646,16 @@ export class DbStorage implements IStorage {
     }
 
     let derivedMonth: string | null = null;
+    let effectiveStartDate: string | null = null;
     if (input.type === "monthly_cv") {
       derivedMonth = input.paidDate.slice(0, 7);
+      // Auto-calculate effectiveStartDate: day after the current period ends
       const nextAllowed = await this.getNextCvAllowedDate(studentId);
       if (nextAllowed) {
-        const today = localDateStr(new Date());
-        if (today < nextAllowed) throw new Error(`BEFORE_NEXT_ALLOWED_DATE:${nextAllowed}`);
+        effectiveStartDate = nextAllowed;
       }
+      // No longer block if today < nextAllowed — allow early payments.
+      // The effectiveStartDate will be set to the day after the current period ends.
     } else {
       const dup = await db.select().from(membershipPayments).where(
         and(eq(membershipPayments.studentId, studentId), eq(membershipPayments.type, "one_time_bv"), eq(membershipPayments.date, input.date))
@@ -2665,6 +2668,7 @@ export class DbStorage implements IStorage {
       type: input.type,
       month: input.type === "monthly_cv" ? derivedMonth : null,
       paidDate: input.type === "monthly_cv" ? input.paidDate : null,
+      effectiveStartDate,
       date: input.type === "one_time_bv" ? input.date : null,
       note: input.note ?? null,
       createdBy,
@@ -2687,8 +2691,10 @@ export class DbStorage implements IStorage {
     const last = cvPayments[0];
     if (!last?.paidDate) return null;
 
-    const sickDays = await this.getSickDaysAfter(studentId, last.paidDate);
-    return nextCvAllowedDateStr(last.paidDate, sickDays.size);
+    // Use effectiveStartDate if set (new behavior), otherwise fall back to paidDate
+    const baseDate = last.effectiveStartDate ?? last.paidDate;
+    const sickDays = await this.getSickDaysAfter(studentId, baseDate);
+    return nextCvAllowedDateStr(baseDate, sickDays.size);
   }
 
   private async getSickDaysAfter(studentId: string, afterDate: string): Promise<Set<string>> {
@@ -2836,16 +2842,18 @@ export class DbStorage implements IStorage {
       .filter(p => p.paidDate && (!cvRestartDate || p.paidDate >= cvRestartDate))
       .sort((a, b) => b.paidDate!.localeCompare(a.paidDate!));
 
-    const cvCoveringEndDate = async (paidDateStr: string): Promise<string | null> => {
-      const sickDays = await this.getSickDaysAfter(studentId, paidDateStr);
-      return cvValidUntilForDate(paidDateStr, dateStr, sickDays.size);
+    const cvCoveringEndDate = async (payment: (typeof membershipPayments.$inferSelect)): Promise<string | null> => {
+      // Use effectiveStartDate if set, otherwise fall back to paidDate
+      const baseDate = payment.effectiveStartDate ?? payment.paidDate!;
+      const sickDays = await this.getSickDaysAfter(studentId, baseDate);
+      return cvValidUntilForDate(baseDate, dateStr, sickDays.size);
     };
 
     let membershipKind: "monthly_cv" | "one_time_bv" | null = null;
     let cvPaidDate: string | null = null;
     let cvValidUntil: string | null = null;
     for (const p of cvPayments) {
-      const validUntil = await cvCoveringEndDate(p.paidDate!);
+      const validUntil = await cvCoveringEndDate(p);
       if (validUntil) {
         membershipKind = "monthly_cv";
         cvPaidDate = p.paidDate!;
@@ -2876,8 +2884,9 @@ export class DbStorage implements IStorage {
     let hasMembershipToday = exemptMembership;
     if (!hasMembershipToday) {
       for (const p of cvPayments) {
-        const sickDays = await this.getSickDaysAfter(studentId, p.paidDate!);
-        if (cvValidUntilForDate(p.paidDate!, todayStr, sickDays.size)) {
+        const baseDate = p.effectiveStartDate ?? p.paidDate!;
+        const sickDays = await this.getSickDaysAfter(studentId, baseDate);
+        if (cvValidUntilForDate(baseDate, todayStr, sickDays.size)) {
           hasMembershipToday = true;
           break;
         }
@@ -2896,9 +2905,10 @@ export class DbStorage implements IStorage {
 
     let latestCvPeriodEnd: string | null = null;
     if (cvPayments.length > 0) {
-      const latestPaid = cvPayments[0].paidDate!;
-      const sickDays = await this.getSickDaysAfter(studentId, latestPaid);
-      latestCvPeriodEnd = cvPeriodValidUntilInclusive(latestPaid, sickDays.size);
+      const latest = cvPayments[0];
+      const baseDate = latest.effectiveStartDate ?? latest.paidDate!;
+      const sickDays = await this.getSickDaysAfter(studentId, baseDate);
+      latestCvPeriodEnd = cvPeriodValidUntilInclusive(baseDate, sickDays.size);
     }
 
     const grace = computeMembershipGraceFields(

@@ -213,6 +213,8 @@ export const membershipPayments = pgTable("membership_payments", {
   type: text("type").notNull(), // "monthly_cv" | "one_time_bv"
   month: text("month"), // YYYY-MM (only for monthly_cv) — derived from paidDate
   paidDate: text("paid_date"), // YYYY-MM-DD — фактическая дата оплаты ЧВ (только для monthly_cv)
+  /** Date when the new period starts (auto-calculated for ЧВ; null = use paidDate for backwards compat). */
+  effectiveStartDate: text("effective_start_date"),
   date: text("date"), // YYYY-MM-DD (only for one_time_bv)
   note: text("note"),
   createdBy: varchar("created_by").notNull().references(() => users.id),
@@ -372,6 +374,7 @@ export const insertHolidaySchema = createInsertSchema(holidays).omit({
 export const insertMembershipPaymentSchema = createInsertSchema(membershipPayments).omit({
   id: true,
   createdAt: true,
+  effectiveStartDate: true, // auto-calculated
 });
 
 export const insertTrainerPaymentSchema = createInsertSchema(trainerPayments).omit({
@@ -397,6 +400,12 @@ export const membershipPaymentInputSchema = z.discriminatedUnion("type", [
     note: z.string().max(300).nullable().optional(),
   }),
 ]);
+
+export const membershipPaymentInputWithEffectiveSchema = z.object({
+  type: z.literal("monthly_cv"),
+  paidDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата оплаты должна быть в формате YYYY-MM-DD"),
+  note: z.string().max(300).nullable().optional(),
+});
 
 // Trainer payment subscription input
 export const TRAINER_PAYMENT_TYPES = ["single", "weekly", "monthly"] as const;

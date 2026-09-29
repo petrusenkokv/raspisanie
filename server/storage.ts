@@ -1482,16 +1482,16 @@ export class MemStorage implements IStorage {
     }
 
     let derivedMonth: string | null = null;
+    let effectiveStartDate: string | null = null;
     if (input.type === "monthly_cv") {
       derivedMonth = input.paidDate.slice(0, 7);
-      // Check if today is before the next allowed date
+      // Auto-calculate effectiveStartDate: day after the current period ends
       const nextAllowed = await this.getNextCvAllowedDate(studentId);
       if (nextAllowed) {
-        const today = localDateStr(new Date());
-        if (today < nextAllowed) {
-          throw new Error(`BEFORE_NEXT_ALLOWED_DATE:${nextAllowed}`);
-        }
+        effectiveStartDate = nextAllowed;
       }
+      // No longer block if today < nextAllowed — allow early payments.
+      // The effectiveStartDate will be set to the day after the current period ends.
     } else {
       const dup = Array.from(this.membershipPayments.values()).find(
         p => p.studentId === studentId && p.type === "one_time_bv" && p.date === input.date,
@@ -1506,6 +1506,7 @@ export class MemStorage implements IStorage {
       type: input.type,
       month: input.type === "monthly_cv" ? derivedMonth : null,
       paidDate: input.type === "monthly_cv" ? input.paidDate : null,
+      effectiveStartDate,
       date: input.type === "one_time_bv" ? input.date : null,
       note: input.note ?? null,
       createdBy,
@@ -1537,8 +1538,10 @@ export class MemStorage implements IStorage {
     const last = cvPayments[0];
     if (!last?.paidDate) return null;
 
-    const sickDays = this.collectSickDaysAfter(studentId, last.paidDate);
-    return nextCvAllowedDateStr(last.paidDate, sickDays.size);
+    // Use effectiveStartDate if set (new behavior), otherwise fall back to paidDate
+    const baseDate = last.effectiveStartDate ?? last.paidDate;
+    const sickDays = this.collectSickDaysAfter(studentId, baseDate);
+    return nextCvAllowedDateStr(baseDate, sickDays.size);
   }
 
   private collectSickDaysAfter(studentId: string, afterDate: string): Set<string> {
@@ -1687,16 +1690,18 @@ export class MemStorage implements IStorage {
 
     // Возвращает дату окончания действия ЧВ (включительно) для платежа,
     // если он покрывает dateStr. Иначе — null.
-    const cvCoveringEndDate = (paidDateStr: string): string | null => {
-      const sickDays = this.collectSickDaysAfter(studentId, paidDateStr);
-      return cvValidUntilForDate(paidDateStr, dateStr, sickDays.size);
+    const cvCoveringEndDate = (payment: MembershipPayment): string | null => {
+      // Use effectiveStartDate if set, otherwise fall back to paidDate
+      const baseDate = payment.effectiveStartDate ?? payment.paidDate!;
+      const sickDays = this.collectSickDaysAfter(studentId, baseDate);
+      return cvValidUntilForDate(baseDate, dateStr, sickDays.size);
     };
 
     let membershipKind: "monthly_cv" | "one_time_bv" | null = null;
     let cvPaidDate: string | null = null;
     let cvValidUntil: string | null = null;
     for (const p of cvPayments) {
-      const validUntil = cvCoveringEndDate(p.paidDate!);
+      const validUntil = cvCoveringEndDate(p);
       if (validUntil) {
         membershipKind = "monthly_cv";
         cvPaidDate = p.paidDate!;
@@ -1729,8 +1734,9 @@ export class MemStorage implements IStorage {
     let hasMembershipToday = exemptMembership;
     if (!hasMembershipToday) {
       for (const p of cvPayments) {
-        const sickDays = this.collectSickDaysAfter(studentId, p.paidDate!);
-        if (cvValidUntilForDate(p.paidDate!, todayStr, sickDays.size)) {
+        const baseDate = p.effectiveStartDate ?? p.paidDate!;
+        const sickDays = this.collectSickDaysAfter(studentId, baseDate);
+        if (cvValidUntilForDate(baseDate, todayStr, sickDays.size)) {
           hasMembershipToday = true;
           break;
         }
@@ -1754,9 +1760,10 @@ export class MemStorage implements IStorage {
     );
     let latestCvPeriodEnd: string | null = null;
     if (sortedCvPayments.length > 0 && sortedCvPayments[0].paidDate) {
-      const latestPaid = sortedCvPayments[0].paidDate;
-      const sickDays = this.collectSickDaysAfter(studentId, latestPaid);
-      latestCvPeriodEnd = cvPeriodValidUntilInclusive(latestPaid, sickDays.size);
+      const latest = sortedCvPayments[0];
+      const baseDate = latest.effectiveStartDate ?? latest.paidDate!;
+      const sickDays = this.collectSickDaysAfter(studentId, baseDate);
+      latestCvPeriodEnd = cvPeriodValidUntilInclusive(baseDate, sickDays.size);
     }
 
     const grace = computeMembershipGraceFields(
