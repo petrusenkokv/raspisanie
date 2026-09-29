@@ -42,6 +42,15 @@ import {
   cvPeriodValidUntilInclusive,
 } from "./membership-grace";
 import { studentIdentityKey, studentFullNameKey, studentLastFirstKey } from "./student-identity";
+import {
+  findIndividualSlotConflict,
+  IndividualSlotConflictError,
+  formatSlotLabel,
+  slotParticipantName,
+  type IndividualConflict,
+  type RecurringIndividualConflictNotice,
+  type SlotParticipant,
+} from "@shared/individual-slot-conflict";
 import { computeSessionPrice, missingRequiredDocumentIds } from "@shared/consents-pricing";
 import { resolveBookingSource, type BookingSource } from "@shared/booking-source";
 import {
@@ -1387,6 +1396,63 @@ export class DbStorage implements IStorage {
     return db.select().from(bookings).where(ne(bookings.status, "cancelled"));
   }
 
+  /** Участники слота (активные записи) — для проверки наложения индивидуальной тренировки. */
+  private async slotOccupants(
+    timeSlotId: string,
+    excludeBookingId?: string,
+  ): Promise<SlotParticipant[]> {
+    const rows = await db
+      .select({ b: bookings, u: users })
+      .from(bookings)
+      .innerJoin(users, eq(bookings.studentId, users.id))
+      .where(and(eq(bookings.timeSlotId, timeSlotId), ne(bookings.status, "cancelled")));
+    return rows
+      .filter((r) => !excludeBookingId || r.b.id !== excludeBookingId)
+      .map((r) => ({
+        studentId: r.b.studentId,
+        identity: studentIdentityKey(r.u),
+        individual: r.u.wantsIndividualTraining === true,
+        name: slotParticipantName(r.u),
+      }));
+  }
+
+  async findIndividualSlotConflict(
+    timeSlotId: string,
+    candidateStudentId: string,
+    excludeBookingId?: string,
+  ): Promise<IndividualConflict | null> {
+    const candidate = await this.getUser(candidateStudentId);
+    const slot = await this.getTimeSlotById(timeSlotId);
+    if (!candidate || !slot) return null;
+    return findIndividualSlotConflict(
+      {
+        studentId: candidateStudentId,
+        identity: studentIdentityKey(candidate),
+        individual: candidate.wantsIndividualTraining === true,
+      },
+      await this.slotOccupants(timeSlotId, excludeBookingId),
+    );
+  }
+
+  /** Бросает IndividualSlotConflictError, если индивидуальная тренировка пересекается с чужой записью. */
+  private async assertIndividualSlotFree(
+    timeSlotId: string,
+    candidateStudentId: string,
+    excludeBookingId?: string,
+  ): Promise<void> {
+    const conflict = await this.findIndividualSlotConflict(
+      timeSlotId,
+      candidateStudentId,
+      excludeBookingId,
+    );
+    if (!conflict) return;
+    const slot = await this.getTimeSlotById(timeSlotId);
+    throw new IndividualSlotConflictError(
+      conflict,
+      slot ? formatSlotLabel(slot.date, slot.time) : "",
+    );
+  }
+
   async createBooking(insertBooking: InsertBooking): Promise<Booking> {
     const existing = await db.select().from(bookings).where(
       and(
@@ -1398,6 +1464,7 @@ export class DbStorage implements IStorage {
     if (existing.length > 0) {
       throw new Error("Ученик уже записан на это время");
     }
+    await this.assertIndividualSlotFree(insertBooking.timeSlotId, insertBooking.studentId);
 
     const status = insertBooking.status || "pending";
     const rows = await db.insert(bookings).values({
@@ -1467,6 +1534,7 @@ export class DbStorage implements IStorage {
       and(ne(bookings.id, bookingId), eq(bookings.studentId, booking.studentId), eq(bookings.timeSlotId, newTimeSlotId), ne(bookings.status, "cancelled"))
     );
     if (existingInNew.length > 0) throw new Error("У ученика уже есть запись на этот час");
+    await this.assertIndividualSlotFree(newTimeSlotId, booking.studentId, bookingId);
 
     const newStatus = byRole === "student" && booking.status === "confirmed" ? "pending" : booking.status;
     const newConfirmedAt = newStatus === "pending" ? null : booking.confirmedAt;
@@ -2130,7 +2198,9 @@ export class DbStorage implements IStorage {
     await this.dedupeDuplicateStudentSlotBookings();
   }
 
-  async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
+  async materializeRecurringBookings(
+    untilDate: string,
+  ): Promise<{ created: number; skipped: number; conflicts: RecurringIndividualConflictNotice[] }> {
     await this.ensureRecurringExceptionsSchema();
     this.recurringMembershipCache.clear();
     await this.dedupeDuplicateStudentSlotBookings();
@@ -2138,6 +2208,7 @@ export class DbStorage implements IStorage {
     const rules = await db.select().from(recurringBookings);
     let created = 0;
     let skipped = 0;
+    const conflicts: RecurringIndividualConflictNotice[] = [];
     const today = localDateStr(new Date());
     const preparedDates = new Set<string>();
     for (const rule of rules) {
@@ -2213,6 +2284,21 @@ export class DbStorage implements IStorage {
           skipped++;
           continue;
         }
+        // В слоте уже индивидуальная тренировка — постоянную не подсаживаем,
+        // иначе наложение уйдёт в расписание молча.
+        const individualConflict = await this.findIndividualSlotConflict(slot.id, rule.studentId);
+        if (individualConflict) {
+          skipped++;
+          conflicts.push({
+            recurringBookingId: rule.id,
+            studentId: rule.studentId,
+            studentName: ruleStudent ? slotParticipantName(ruleStudent) : "Ученик",
+            date: dateStr,
+            hour: rule.hour,
+            blockingName: individualConflict.blockingName,
+          });
+          continue;
+        }
         try {
           await db.insert(bookings).values({
             studentId: rule.studentId,
@@ -2230,7 +2316,7 @@ export class DbStorage implements IStorage {
       }
     }
     await this.dedupeDuplicateStudentSlotBookings();
-    return { created, skipped };
+    return { created, skipped, conflicts };
   }
 
   // ======================== SLOT BLOCKING ========================

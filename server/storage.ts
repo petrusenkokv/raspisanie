@@ -54,6 +54,15 @@ import {
   cvPeriodValidUntilInclusive,
 } from "./membership-grace";
 import { studentIdentityKey, studentFullNameKey, studentLastFirstKey } from "./student-identity";
+import {
+  findIndividualSlotConflict,
+  IndividualSlotConflictError,
+  formatSlotLabel,
+  slotParticipantName,
+  type IndividualConflict,
+  type RecurringIndividualConflictNotice,
+  type SlotParticipant,
+} from "@shared/individual-slot-conflict";
 
 export type AttendanceStats = {
   total: number;
@@ -111,6 +120,15 @@ export interface IStorage {
   getBooking(id: string): Promise<BookingWithDetails | undefined>;
   getBookingsByStudent(studentId: string): Promise<BookingWithDetails[]>;
   getBookingsByTimeSlot(timeSlotId: string): Promise<BookingWithDetails[]>;
+  /**
+   * Наложение индивидуальной тренировки: null — записывать можно,
+   * иначе — структурированный конфликт (текст зависит от роли делающего запись).
+   */
+  findIndividualSlotConflict(
+    timeSlotId: string,
+    candidateStudentId: string,
+    excludeBookingId?: string,
+  ): Promise<IndividualConflict | null>;
   listActiveBookings(): Promise<Booking[]>;
   getRawBooking(id: string): Promise<Booking | undefined>;
   rescheduleBooking(bookingId: string, newTimeSlotId: string, byRole: "trainer" | "student"): Promise<Booking>;
@@ -171,7 +189,9 @@ export interface IStorage {
   getRecurringBookingExceptions(recurringBookingId: string): Promise<string[]>;
   addRecurringBookingException(recurringBookingId: string, date: string): Promise<void>;
   removeRecurringBookingException(recurringBookingId: string, date: string): Promise<void>;
-  materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }>;
+  materializeRecurringBookings(
+    untilDate: string,
+  ): Promise<{ created: number; skipped: number; conflicts: RecurringIndividualConflictNotice[] }>;
 
   // Slot blocking
   blockSlot(timeSlotId: string, blocked: boolean, blockNote?: string | null): Promise<{ slot: TimeSlot; cancelledBookings: Booking[] }>;
@@ -1043,6 +1063,65 @@ export class MemStorage implements IStorage {
     return bookingsWithDetails.filter(Boolean) as BookingWithDetails[];
   }
 
+  /** Активные записи слота — участники для проверки наложения индивидуальной тренировки. */
+  private slotOccupants(timeSlotId: string, excludeBookingId?: string): SlotParticipant[] {
+    const out: SlotParticipant[] = [];
+    for (const b of Array.from(this.bookings.values())) {
+      if (b.timeSlotId !== timeSlotId || b.status === "cancelled") continue;
+      if (excludeBookingId && b.id === excludeBookingId) continue;
+      const user = this.users.get(b.studentId);
+      if (!user) continue;
+      out.push({
+        studentId: b.studentId,
+        identity: studentIdentityKey(user),
+        individual: user.wantsIndividualTraining === true,
+        name: slotParticipantName(user),
+      });
+    }
+    return out;
+  }
+
+  private individualConflictFor(
+    timeSlotId: string,
+    candidateStudentId: string,
+    excludeBookingId?: string,
+  ): IndividualConflict | null {
+    const candidate = this.users.get(candidateStudentId);
+    const slot = this.timeSlots.get(timeSlotId);
+    if (!candidate || !slot) return null;
+    return findIndividualSlotConflict(
+      {
+        studentId: candidateStudentId,
+        identity: studentIdentityKey(candidate),
+        individual: candidate.wantsIndividualTraining === true,
+      },
+      this.slotOccupants(timeSlotId, excludeBookingId),
+    );
+  }
+
+  async findIndividualSlotConflict(
+    timeSlotId: string,
+    candidateStudentId: string,
+    excludeBookingId?: string,
+  ): Promise<IndividualConflict | null> {
+    return this.individualConflictFor(timeSlotId, candidateStudentId, excludeBookingId);
+  }
+
+  /** Бросает IndividualSlotConflictError, если индивидуальная тренировка пересекается с чужой записью. */
+  private assertIndividualSlotFree(
+    timeSlotId: string,
+    candidateStudentId: string,
+    excludeBookingId?: string,
+  ): void {
+    const conflict = this.individualConflictFor(timeSlotId, candidateStudentId, excludeBookingId);
+    if (!conflict) return;
+    const slot = this.timeSlots.get(timeSlotId);
+    throw new IndividualSlotConflictError(
+      conflict,
+      slot ? formatSlotLabel(slot.date, slot.time) : "",
+    );
+  }
+
   async createBooking(insertBooking: InsertBooking): Promise<Booking> {
     const duplicate = Array.from(this.bookings.values()).find(
       (b) =>
@@ -1053,6 +1132,7 @@ export class MemStorage implements IStorage {
     if (duplicate) {
       throw new Error("Ученик уже записан на это время");
     }
+    this.assertIndividualSlotFree(insertBooking.timeSlotId, insertBooking.studentId);
 
     const id = randomUUID();
     const status = insertBooking.status || "pending";
@@ -1125,6 +1205,8 @@ export class MemStorage implements IStorage {
       return b.timeSlotId === newTimeSlotId;
     });
     if (existingInNewSlot) throw new Error("У ученика уже есть запись на этот час");
+
+    this.assertIndividualSlotFree(newTimeSlotId, booking.studentId, bookingId);
 
     // If student-initiated reschedule of a confirmed booking → back to pending
     const newStatus =
@@ -2228,11 +2310,14 @@ export class MemStorage implements IStorage {
     this.dedupeDuplicateStudentSlotBookings();
   }
 
-  async materializeRecurringBookings(untilDate: string): Promise<{ created: number; skipped: number }> {
+  async materializeRecurringBookings(
+    untilDate: string,
+  ): Promise<{ created: number; skipped: number; conflicts: RecurringIndividualConflictNotice[] }> {
     this.recurringMembershipCache.clear();
     this.dedupeDuplicateStudentSlotBookings();
     let created = 0;
     let skipped = 0;
+    const conflicts: RecurringIndividualConflictNotice[] = [];
     const today = localDateStr(new Date());
     const rules = Array.from(this.recurringBookings.values());
     for (const rule of rules) {
@@ -2288,6 +2373,21 @@ export class MemStorage implements IStorage {
           skipped++;
           continue;
         }
+        // В слоте уже индивидуальная тренировка — постоянную не подсаживаем,
+        // иначе наложение уйдёт в расписание молча.
+        const individualConflict = this.individualConflictFor(slot.id, rule.studentId);
+        if (individualConflict) {
+          skipped++;
+          conflicts.push({
+            recurringBookingId: rule.id,
+            studentId: rule.studentId,
+            studentName: ruleStudent ? slotParticipantName(ruleStudent) : "Ученик",
+            date: dateStr,
+            hour: rule.hour,
+            blockingName: individualConflict.blockingName,
+          });
+          continue;
+        }
         const bid = randomUUID();
         this.bookings.set(bid, {
           id: bid,
@@ -2309,7 +2409,7 @@ export class MemStorage implements IStorage {
       }
     }
     this.dedupeDuplicateStudentSlotBookings();
-    return { created, skipped };
+    return { created, skipped, conflicts };
   }
 
   // ----- Slot blocking -----

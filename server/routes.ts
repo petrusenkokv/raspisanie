@@ -41,6 +41,15 @@ import {
   MEMBERSHIP_RESCHEDULE_BLOCK_MESSAGE,
 } from "@shared/membership-booking";
 import {
+  asIndividualSlotConflict,
+  individualConflictStudentMessage,
+  individualConflictTrainerMessage,
+  RECURRING_INDIVIDUAL_CONFLICT_TITLE,
+  recurringConflictLabel,
+  recurringSkippedByIndividualMessage,
+  type RecurringIndividualConflictNotice,
+} from "@shared/individual-slot-conflict";
+import {
   establishSession,
   destroySession,
   hashPassword,
@@ -198,6 +207,61 @@ async function canActForStudent(req: any, studentId: string): Promise<boolean> {
     return storage.isParentOfChild(uid, studentId);
   }
   return false;
+}
+
+/**
+ * Ответ на конфликт индивидуальной тренировки: тренеру — с именем мешающего
+ * ученика, остальным — нейтральный текст без чужих имён.
+ */
+function individualConflictResponse(
+  error: unknown,
+  forTrainer: boolean,
+): { status: number; message: string } | null {
+  const conflict = asIndividualSlotConflict(error);
+  if (!conflict) return null;
+  const label = (error as any)?.label ?? "";
+  return {
+    status: 409,
+    message: forTrainer
+      ? individualConflictTrainerMessage(conflict, label)
+      : individualConflictStudentMessage(conflict),
+  };
+}
+
+/**
+ * Тренеру — уведомление + push на каждую постоянную запись, пропущенную из-за
+ * чужой индивидуальной. Синхронизация запускается часто (оплата, создание
+ * правила, снятие исключения), поэтому ключ предупреждения включает ученика и
+ * слот: одно и то же наложение не спамит, а разные конфликты не теряются.
+ */
+async function notifyRecurringIndividualConflicts(
+  conflicts: RecurringIndividualConflictNotice[] | undefined,
+): Promise<void> {
+  if (!conflicts || conflicts.length === 0) return;
+  const trainer = await storage.getTrainer();
+  if (!trainer) return;
+  let sent = 0;
+  for (const notice of conflicts) {
+    const title = `${RECURRING_INDIVIDUAL_CONFLICT_TITLE}: ${notice.studentName}, ${recurringConflictLabel(notice)}`;
+    const message = recurringSkippedByIndividualMessage(notice);
+    try {
+      if (await storage.wasReminderSentRecently(trainer.id, "recurring_conflict", title, null, 24 * 60)) {
+        continue;
+      }
+      await storage.createNotification({
+        userId: trainer.id,
+        type: "recurring_conflict",
+        title,
+        message,
+        relatedBookingId: null,
+      });
+      pushNotifyUser(trainer.id, title, message);
+      sent++;
+    } catch (e: any) {
+      console.error("recurring conflict notify error:", e?.message);
+    }
+  }
+  if (sent > 0) broadcast({ type: "notification_update" });
 }
 
 /** User id may appear in recurring_bookings.student_id (students, trainer self, parent-athlete). */
@@ -1398,6 +1462,10 @@ export async function registerRoutes(
       broadcast({ type: "notification_update" });
       res.status(201).json(bookingWithDetails);
     } catch (error) {
+      const conflict = individualConflictResponse(error, isSessionTrainer(req));
+      if (conflict) {
+        return res.status(conflict.status).json({ message: conflict.message });
+      }
       res.status(500).json({ message: "Не удалось создать запись" });
     }
   });
@@ -1653,6 +1721,8 @@ export async function registerRoutes(
       broadcast({ type: "notification_update" });
       res.json(bookingWithDetails);
     } catch (error: any) {
+      const conflict = individualConflictResponse(error, isSessionTrainer(req));
+      if (conflict) return res.status(conflict.status).json({ message: conflict.message });
       res.status(400).json({ message: error?.message || "Не удалось перенести запись" });
     }
   });
@@ -2354,6 +2424,8 @@ export async function registerRoutes(
       broadcast({ type: "notification_update" });
       res.status(201).json(bookingWithDetails);
     } catch (error) {
+      const conflict = individualConflictResponse(error, true);
+      if (conflict) return res.status(conflict.status).json({ message: conflict.message });
       res.status(500).json({ message: "Не удалось записать ученика" });
     }
   });
@@ -2400,6 +2472,8 @@ export async function registerRoutes(
       broadcast({ type: "schedule_update" });
       res.status(201).json(bookingWithDetails);
     } catch (error: any) {
+      const conflict = individualConflictResponse(error, true);
+      if (conflict) return res.status(conflict.status).json({ message: conflict.message });
       res.status(500).json({ message: error?.message || "Не удалось записаться" });
     }
   });
@@ -2470,6 +2544,7 @@ export async function registerRoutes(
       horizon.setDate(horizon.getDate() + 60);
       const horizonStr = horizon.toISOString().split("T")[0];
       const result = await storage.materializeRecurringBookings(horizonStr);
+      await notifyRecurringIndividualConflicts(result.conflicts);
       broadcast({ type: "schedule_update" });
       res.json(result);
     } catch (error: any) {
@@ -2627,7 +2702,8 @@ export async function registerRoutes(
       const horizon = new Date();
       horizon.setDate(horizon.getDate() + 60);
       const horizonStr = horizon.toISOString().split("T")[0];
-      await storage.materializeRecurringBookings(horizonStr);
+      const materialized = await storage.materializeRecurringBookings(horizonStr);
+      await notifyRecurringIndividualConflicts(materialized.conflicts);
       broadcast({ type: "schedule_update" });
       res.json(payment);
     } catch (error: any) {
@@ -2833,6 +2909,7 @@ export async function registerRoutes(
       horizon.setDate(horizon.getDate() + 60);
       const horizonStr = horizon.toISOString().split("T")[0];
       const result = await storage.materializeRecurringBookings(horizonStr);
+      await notifyRecurringIndividualConflicts(result.conflicts);
 
       // Notify student (not for trainer's own recurring rule)
       if (target.role === "student" || (target.role === "parent" && target.isAlsoStudent)) {
@@ -2926,7 +3003,8 @@ export async function registerRoutes(
       const rule = await storage.getRecurringBooking(ruleId);
       if (!rule) return res.status(404).json({ message: "Правило не найдено" });
       await storage.removeRecurringBookingException(ruleId, date);
-      await storage.materializeRecurringBookings(date);
+      const result = await storage.materializeRecurringBookings(date);
+      await notifyRecurringIndividualConflicts(result.conflicts);
       broadcast({ type: "schedule_update" });
       res.json({ success: true });
     } catch (error: any) {
