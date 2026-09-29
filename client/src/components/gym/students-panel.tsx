@@ -1834,6 +1834,7 @@ function AttendanceSection({ studentId }: { studentId: string }) {
       return r.json();
     },
     enabled: !!studentId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const total = data?.total ?? 0;
@@ -2032,6 +2033,7 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
       return r.json();
     },
     enabled: !!studentId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: nextCvData } = useQuery<{ nextAllowedDate: string | null }>({
@@ -2041,6 +2043,7 @@ function MembershipSubsection({ studentId }: { studentId: string }) {
       return r.json();
     },
     enabled: !!studentId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const nextAllowedDate = nextCvData?.nextAllowedDate ?? null;
@@ -2235,6 +2238,7 @@ function TrainerSubscriptionSubsection({ studentId }: { studentId: string }) {
       return r.json();
     },
     enabled: !!studentId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: settingsData } = useQuery<{
