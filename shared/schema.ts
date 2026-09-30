@@ -102,7 +102,10 @@ export const parentChildren = pgTable("parent_children", {
   parentId: varchar("parent_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   childId: varchar("child_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_parent_children_parent").on(table.parentId),
+  index("idx_parent_children_child").on(table.childId),
+]);
 
 // Records of which user accepted which document
 export const userConsents = pgTable("user_consents", {
@@ -110,7 +113,9 @@ export const userConsents = pgTable("user_consents", {
   userId: varchar("user_id").notNull().references(() => users.id),
   documentId: varchar("document_id").notNull().references(() => documents.id),
   acceptedAt: timestamp("accepted_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_user_consents_user").on(table.userId),
+]);
 
 // Time slots for the schedule (8:00-20:00)
 export const timeSlots = pgTable("time_slots", {
@@ -219,7 +224,10 @@ export const membershipPayments = pgTable("membership_payments", {
   note: text("note"),
   createdBy: varchar("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_membership_payments_student").on(table.studentId),
+  index("idx_membership_payments_student_type").on(table.studentId, table.type),
+]);
 
 // Trainer payment subscriptions: разовая / неделя / месяц
 export const trainerPayments = pgTable("trainer_payments", {
@@ -236,7 +244,10 @@ export const trainerPayments = pgTable("trainer_payments", {
   createdBy: varchar("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"),
-});
+}, (table) => [
+  index("idx_trainer_payments_student").on(table.studentId),
+  index("idx_trainer_payments_student_status").on(table.studentId, table.status),
+]);
 
 // Payment requests — student declares they've paid or will pay
 export const paymentRequests = pgTable("payment_requests", {
