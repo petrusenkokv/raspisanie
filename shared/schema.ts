@@ -602,6 +602,8 @@ export type StudentPaymentStatus = {
   membershipInGrace: boolean;
   membershipBlockDate: string | null;
   membershipGraceDaysLeft: number | null;
+  /** Следующий месяц уже оплачен — не показывать предупреждение «скоро нужна оплата» */
+  nextMonthAlreadyPaid: boolean;
 };
 export type WeekdayTemplateEntry = z.infer<typeof weekdayTemplateEntrySchema>;
 export type WeeklyTemplate = Partial<Record<"1" | "2" | "3" | "4" | "5" | "6" | "7", WeekdayTemplateEntry>>;

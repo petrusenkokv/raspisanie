@@ -6,6 +6,9 @@ import { pushNotifyUser } from "./push-notify-user";
 // Key: `${userId}:${type}:${relatedBookingId}`
 const sentReminders = new Map<string, number>();
 
+// Guard to prevent concurrent tick() executions
+let isTickRunning = false;
+
 const TICK_MS = 60_000;
 
 function slotStartTime(date: string, time: string): Date | null {
@@ -97,6 +100,9 @@ async function createTrainingReminder(params: {
     return;
   }
   
+  // Set in-memory dedup BEFORE DB insert to prevent race conditions
+  sentReminders.set(dedupKey, now);
+  
   await storage.createNotification({
     userId: params.userId,
     type: params.type,
@@ -109,8 +115,6 @@ async function createTrainingReminder(params: {
     tag: `${params.type}:${params.relatedBookingId ?? ""}`,
     url: "/",
   });
-
-  sentReminders.set(dedupKey, now);
   
   // Clean old entries (keep only last 5000 to handle more users)
   if (sentReminders.size > 5000) {
@@ -385,6 +389,12 @@ async function cleanupOldNotifications() {
 }
 
 async function tick() {
+  // Prevent concurrent ticks
+  if (isTickRunning) {
+    console.log("[reminders] tick skipped — already running");
+    return;
+  }
+  isTickRunning = true;
   try {
     const bookings = await storage.listActiveBookings();
     const now = Date.now();
@@ -469,6 +479,8 @@ async function tick() {
     await checkStudentBirthdays(new Date(now));
   } catch (err) {
     console.error("[reminders] tick failed:", err);
+  } finally {
+    isTickRunning = false;
   }
 }
 

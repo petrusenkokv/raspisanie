@@ -1789,6 +1789,20 @@ export class MemStorage implements IStorage {
       latestCvPeriodEnd,
     );
 
+    // Проверяем, есть ли оплата на следующий месяц (после cvValidUntil)
+    let nextMonthAlreadyPaid = false;
+    if (cvValidUntil) {
+      const nextDayStr = addDaysToDateStr(cvValidUntil, 1);
+      for (const p of cvPayments) {
+        const baseDate = p.effectiveStartDate ?? p.paidDate!;
+        const sickDays = this.collectSickDaysAfter(studentId, baseDate);
+        if (cvValidUntilForDate(baseDate, nextDayStr, sickDays.size)) {
+          nextMonthAlreadyPaid = true;
+          break;
+        }
+      }
+    }
+
     return {
       hasMembership: exemptMembership ? true : membershipKind !== null,
       membershipKind,
@@ -1797,6 +1811,7 @@ export class MemStorage implements IStorage {
       hasTrainerPayment: exemptTrainerPayment ? true : sub !== null,
       activeTrainerPayment: sub ? this.withUsage(sub) : null,
       ...grace,
+      nextMonthAlreadyPaid,
     };
   }
 

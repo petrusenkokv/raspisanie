@@ -93,9 +93,9 @@ export function BookingPaymentBadges({
         <div className="font-semibold">ЧВ оплачен</div>
         <div>Оплата: {format(paid, "d MMMM yyyy", { locale: ru })}</div>
         <div>Действует до: {format(validUntil, "d MMMM yyyy", { locale: ru })} вкл.</div>
-        <div className={daysLeft <= 3 ? "text-orange-300 font-medium" : "text-gray-300 dark:text-gray-400"}>
+        <div className={daysLeft <= 3 && !data.nextMonthAlreadyPaid ? "text-orange-300 font-medium" : "text-gray-300 dark:text-gray-400"}>
           Осталось дней: {daysLeft}
-          {daysLeft <= 3 && " — скоро нужна оплата"}
+          {daysLeft <= 3 && !data.nextMonthAlreadyPaid && " — скоро нужна оплата"}
         </div>
       </div>
     );
