@@ -1,5 +1,9 @@
 /* Web Push + notifications when the app is closed (PWA). */
 
+// In-memory dedup for push notifications (resets on service worker restart)
+const shownNotifications = new Map<string, number>();
+const DEDUP_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
@@ -32,12 +36,34 @@ self.addEventListener("push", (event) => {
       const appVisible = clients.some((c) => c.visibilityState === "visible");
       if (appVisible) return;
 
+      // Deduplication: create a unique key from tag + title + body
+      const dedupKey = `${data.tag || "gym"}:${data.title}:${data.body}`;
+      const now = Date.now();
+      
+      // Check if similar notification was shown recently
+      const lastShown = shownNotifications.get(dedupKey);
+      if (lastShown && now - lastShown < DEDUP_WINDOW_MS) {
+        console.log("[sw] Skipping duplicate notification:", dedupKey);
+        return;
+      }
+      
+      // Clean old entries
+      if (shownNotifications.size > 100) {
+        const entries = Array.from(shownNotifications.entries());
+        entries.sort((a, b) => a[1] - b[1]);
+        for (let i = 0; i < entries.length - 100; i++) {
+          shownNotifications.delete(entries[i][0]);
+        }
+      }
+      
+      shownNotifications.set(dedupKey, now);
+
       await self.registration.showNotification(data.title, {
         body: data.body,
         icon: data.icon || "/icon-192.svg",
         badge: "/icon-192.svg",
         tag: data.tag || "gym-notification",
-        renotify: true,
+        renotify: false, // Changed from true to false to prevent re-notify spam
         silent: false,
         data: { url: data.url || "/" },
       });
@@ -47,6 +73,18 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  
+  // Remove from dedup cache so we can show it again later if needed
+  const notificationTag = event.notification.tag;
+  if (notificationTag) {
+    for (const key of Array.from(shownNotifications.keys())) {
+      if (key.startsWith(notificationTag + ":")) {
+        shownNotifications.delete(key);
+        break;
+      }
+    }
+  }
+  
   const targetUrl = event.notification.data?.url || "/";
   event.waitUntil(
     (async () => {

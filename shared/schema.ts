@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, integer, time, date, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, time, date, uuid, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { birthDateValidationError } from "./birth-date";
@@ -263,7 +263,15 @@ export const notifications = pgTable("notifications", {
   relatedBookingId: varchar("related_booking_id").references(() => bookings.id),
   relatedUserId: varchar("related_user_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Index for reminder deduplication checks
+  index("idx_notifications_dedup").on(
+    table.userId,
+    table.type,
+    table.relatedBookingId,
+    table.createdAt.desc(),
+  ),
+]);
 
 export const pushSubscriptions = pgTable("push_subscriptions", {
   endpoint: text("endpoint").primaryKey(),

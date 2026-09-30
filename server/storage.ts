@@ -150,10 +150,12 @@ export interface IStorage {
     title: string,
     relatedBookingId: string | null,
     withinMinutes: number,
+    message?: string,
   ): Promise<boolean>;
   markNotificationAsRead(id: string): Promise<Notification>;
   markAllNotificationsAsRead(userId: string): Promise<number>;
   deleteReadNotifications(userId: string): Promise<number>;
+  deleteReadNotificationsOlderThan(cutoff: Date): Promise<number>;
   markBookingNotificationsAsRead(bookingId: string): Promise<number>;
   markNewStudentNotificationsAsRead(trainerId: string, studentId: string): Promise<number>;
   
@@ -1907,6 +1909,7 @@ export class MemStorage implements IStorage {
     title: string,
     relatedBookingId: string | null,
     withinMinutes: number,
+    message?: string,
   ): Promise<boolean> {
     const cutoff = Date.now() - withinMinutes * 60_000;
     return Array.from(this.notifications.values()).some(
@@ -1971,6 +1974,24 @@ export class MemStorage implements IStorage {
     let count = 0;
     for (const [id, notif] of Array.from(this.notifications.entries())) {
       if (notif.userId === userId && notif.isRead) {
+        this.notifications.delete(id);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async deleteReadNotificationsOlderThan(cutoff: Date): Promise<number> {
+    let count = 0;
+    const reminderTypes = new Set([
+      "training_reminder",
+      "trainer_training_reminder",
+      "cv_expiry_reminder",
+      "trainer_subscription_reminder",
+      "birthday_reminder",
+    ]);
+    for (const [id, notif] of Array.from(this.notifications.entries())) {
+      if (notif.isRead && notif.createdAt && notif.createdAt < cutoff && reminderTypes.has(notif.type)) {
         this.notifications.delete(id);
         count++;
       }

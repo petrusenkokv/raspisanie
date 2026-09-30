@@ -1777,6 +1777,7 @@ export class DbStorage implements IStorage {
     title: string,
     relatedBookingId: string | null,
     withinMinutes: number,
+    message?: string, // Optional: also check by message content for stricter dedup
   ): Promise<boolean> {
     const cutoff = new Date(Date.now() - withinMinutes * 60_000);
     const conditions = [
@@ -1795,7 +1796,25 @@ export class DbStorage implements IStorage {
       .from(notifications)
       .where(and(...conditions))
       .limit(1);
-    return rows.length > 0;
+    if (rows.length > 0) return true;
+    
+    // Stricter dedup: if message is provided, check for exact message match
+    // This prevents duplicates when title is generic but message content is identical
+    if (message) {
+      const messageRows = await db
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(and(
+          eq(notifications.userId, userId),
+          eq(notifications.type, type),
+          eq(notifications.message, message),
+          gte(notifications.createdAt, cutoff),
+        ))
+        .limit(1);
+      if (messageRows.length > 0) return true;
+    }
+    
+    return false;
   }
 
   async markNotificationAsRead(id: string): Promise<Notification> {
@@ -1812,6 +1831,25 @@ export class DbStorage implements IStorage {
 
   async deleteReadNotifications(userId: string): Promise<number> {
     const result = await db.delete(notifications).where(and(eq(notifications.userId, userId), eq(notifications.isRead, true)));
+    return (result as any).rowCount ?? 0;
+  }
+
+  async deleteReadNotificationsOlderThan(cutoff: Date): Promise<number> {
+    // Delete read reminder notifications older than cutoff
+    // This reduces database size and improves performance
+    const result = await db.delete(notifications)
+      .where(and(
+        eq(notifications.isRead, true),
+        lt(notifications.createdAt, cutoff),
+        // Only delete reminder-type notifications (not booking requests, etc.)
+        or(
+          eq(notifications.type, "training_reminder"),
+          eq(notifications.type, "trainer_training_reminder"),
+          eq(notifications.type, "cv_expiry_reminder"),
+          eq(notifications.type, "trainer_subscription_reminder"),
+          eq(notifications.type, "birthday_reminder"),
+        ),
+      ));
     return (result as any).rowCount ?? 0;
   }
 

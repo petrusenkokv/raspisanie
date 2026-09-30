@@ -70,23 +70,32 @@ async function createTrainingReminder(params: {
   relatedBookingId: string | null;
   window: keyof typeof REMINDER_WINDOW_MINUTES;
 }): Promise<void> {
-  const dedupKey = `${params.userId}:${params.type}:${params.relatedBookingId ?? "none"}`;
+  // Use message as part of dedup key to prevent duplicates with same content
+  const dedupKey = `${params.userId}:${params.type}:${params.relatedBookingId ?? "none"}:${params.message.slice(0, 50)}`;
   const now = Date.now();
   
-  // Check in-memory cache first
+  // Check in-memory cache first (fast path, survives within single process lifetime)
   const lastSent = sentReminders.get(dedupKey);
   if (lastSent && now - lastSent < REMINDER_WINDOW_MINUTES[params.window] * 60_000) {
     return;
   }
   
+  // Check database for existing reminders (persists across server restarts)
   const already = await storage.wasReminderSentRecently(
     params.userId,
     params.type,
     params.title,
     params.relatedBookingId,
     REMINDER_WINDOW_MINUTES[params.window],
+    params.message, // Pass message for stricter deduplication
   );
   if (already) return;
+  
+  // Double-check in-memory one more time to prevent race conditions
+  const lastSent2 = sentReminders.get(dedupKey);
+  if (lastSent2 && now - lastSent2 < REMINDER_WINDOW_MINUTES[params.window] * 60_000) {
+    return;
+  }
   
   await storage.createNotification({
     userId: params.userId,
@@ -103,11 +112,11 @@ async function createTrainingReminder(params: {
 
   sentReminders.set(dedupKey, now);
   
-  // Clean old entries (keep only last 1000)
-  if (sentReminders.size > 1000) {
+  // Clean old entries (keep only last 5000 to handle more users)
+  if (sentReminders.size > 5000) {
     const entries = Array.from(sentReminders.entries());
     entries.sort((a, b) => a[1] - b[1]);
-    for (let i = 0; i < entries.length - 1000; i++) {
+    for (let i = 0; i < entries.length - 5000; i++) {
       sentReminders.delete(entries[i][0]);
     }
   }
@@ -364,12 +373,30 @@ async function notifyTrainerUpcomingSlots(
   }
 }
 
+// Clean up old read notifications to reduce database size and load
+async function cleanupOldNotifications() {
+  try {
+    // Delete read notifications older than 7 days (reminders only)
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60_000);
+    await storage.deleteReadNotificationsOlderThan(cutoff);
+  } catch (err) {
+    console.error("[reminders] cleanup failed:", err);
+  }
+}
+
 async function tick() {
   try {
     const bookings = await storage.listActiveBookings();
     const now = Date.now();
     const settings = await storage.getTrainerSettings();
     const reminderMinutes = settings.reminderMinutes;
+
+    // Clean up old notifications every 6 hours (on every tick, 6am/12pm/6pm/12am Moscow)
+    const moscowNow = new Date(now);
+    const moscowHour = moscowNow.getUTCHours() + 3;
+    if (moscowHour % 6 === 0) {
+      await cleanupOldNotifications();
+    }
 
     await notifyTrainerUpcomingSlots(bookings, now, reminderMinutes);
 
