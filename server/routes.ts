@@ -3155,11 +3155,12 @@ export async function registerRoutes(
   app.get("/api/notifications/:userId", requireSelfOrTrainer("userId"), async (req, res) => {
     try {
       const { userId } = req.params;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
       const notifications = await storage.getNotificationsByUser(userId);
       res.json(
-        notifications.sort(
-          (a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
-        )
+        notifications
+          .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))
+          .slice(0, limit)
       );
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить уведомления" });

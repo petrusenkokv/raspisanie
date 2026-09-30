@@ -2,25 +2,6 @@ import { storage } from "./storage-instance";
 import { moscowDateString } from "./moscow-date";
 import { pushNotifyUser } from "./push-notify-user";
 
-const sent24h = new Set<string>();
-const sent1h = new Set<string>();
-// Дедупликация дополнительных напоминаний (общая настройка тренера для всех учеников).
-// Ключ: `${bookingId}:custom:${reminderMinutes}`.
-const sentCustom = new Set<string>();
-// Напоминания тренеру о предстоящих слотах (по timeSlotId).
-const sentTrainer24h = new Set<string>();
-const sentTrainer1h = new Set<string>();
-const sentTrainerCustom = new Set<string>();
-// Дедупликация напоминаний об окончании ЧВ.
-// Ключ вида `${studentId}:${cvValidUntil}:${bucket}`, где bucket = "3d" | "1d" | "0d".
-const sentCvExpiry = new Set<string>();
-// Дедупликация напоминаний об абонементе к тренеру.
-// Ключи: `${subscriptionId}:1left` и `${subscriptionId}:done`.
-const sentTrainerSub = new Set<string>();
-// Дедупликация напоминаний о ДР ученика.
-// Ключ вида `${studentId}:${YYYY}:${bucket}` — bucket = "7d" | "1d" | "0d".
-const sentBirthday = new Set<string>();
-
 const TICK_MS = 60_000;
 
 function slotStartTime(date: string, time: string): Date | null {
@@ -83,11 +64,8 @@ async function createTrainingReminder(params: {
   title: string;
   message: string;
   relatedBookingId: string | null;
-  memoryKey: string;
-  memorySet: Set<string>;
   window: keyof typeof REMINDER_WINDOW_MINUTES;
 }): Promise<void> {
-  if (params.memorySet.has(params.memoryKey)) return;
   const already = await storage.wasReminderSentRecently(
     params.userId,
     params.type,
@@ -95,10 +73,7 @@ async function createTrainingReminder(params: {
     params.relatedBookingId,
     REMINDER_WINDOW_MINUTES[params.window],
   );
-  if (already) {
-    params.memorySet.add(params.memoryKey);
-    return;
-  }
+  if (already) return;
   await storage.createNotification({
     userId: params.userId,
     type: params.type,
@@ -108,11 +83,9 @@ async function createTrainingReminder(params: {
   });
 
   await pushNotifyUser(params.userId, params.title, params.message, {
-    tag: `${params.type}:${params.memoryKey}`,
+    tag: `${params.type}:${params.relatedBookingId ?? ""}`,
     url: "/",
   });
-
-  params.memorySet.add(params.memoryKey);
 }
 
 // Проверка окончания ЧВ: за 3 дня, за 1 день, в день окончания.
@@ -156,23 +129,12 @@ async function checkCvExpiry(now: Date) {
       continue;
     }
 
-    const key = `${student.id}:${status.cvValidUntil}:${bucket}`;
-    if (sentCvExpiry.has(key)) continue;
     await storage.createNotification({
       userId: student.id,
       type: "cv_expiry_reminder",
       title,
       message,
     });
-    sentCvExpiry.add(key);
-  }
-
-  // Очистка устаревших ключей (когда период давно истёк).
-  if (sentCvExpiry.size > 5000) {
-    for (const key of Array.from(sentCvExpiry)) {
-      const validUntil = key.split(":")[1];
-      if (validUntil && validUntil < todayStr) sentCvExpiry.delete(key);
-    }
   }
 }
 
@@ -193,31 +155,23 @@ async function checkTrainerSubscriptions() {
 
       // Абонемент закончился (израсходованы все сеансы).
       if (sub.status === "completed" || (sub.status === "active" && remaining === 0)) {
-        const key = `${sub.id}:done`;
-        if (!sentTrainerSub.has(key)) {
-          await storage.createNotification({
-            userId: student.id,
-            type: "trainer_subscription_reminder",
-            title: "Абонемент к тренеру закончился",
-            message: `Все сеансы из абонемента (${sub.totalSessions}) использованы. Не забудьте оплатить новый абонемент.`,
-          });
-          sentTrainerSub.add(key);
-        }
+        await storage.createNotification({
+          userId: student.id,
+          type: "trainer_subscription_reminder",
+          title: "Абонемент к тренеру закончился",
+          message: `Все сеансы из абонемента (${sub.totalSessions}) использованы. Не забудьте оплатить новый абонемент.`,
+        });
         continue;
       }
 
       // Остался последний сеанс — предупреждение.
       if (sub.status === "active" && remaining === 1) {
-        const key = `${sub.id}:1left`;
-        if (!sentTrainerSub.has(key)) {
-          await storage.createNotification({
-            userId: student.id,
-            type: "trainer_subscription_reminder",
-            title: "Осталась последняя тренировка",
-            message: `В абонементе к тренеру осталась 1 тренировка из ${sub.totalSessions}. Не забудьте оплатить новый абонемент.`,
-          });
-          sentTrainerSub.add(key);
-        }
+        await storage.createNotification({
+          userId: student.id,
+          type: "trainer_subscription_reminder",
+          title: "Осталась последняя тренировка",
+          message: `В абонементе к тренеру осталась 1 тренировка из ${sub.totalSessions}. Не забудьте оплатить новый абонемент.`,
+        });
       }
     }
   }
@@ -284,23 +238,12 @@ async function checkStudentBirthdays(now: Date) {
       continue;
     }
 
-    const key = `${student.id}:${todayYear}:${bucket}`;
-    if (sentBirthday.has(key)) continue;
     await storage.createNotification({
       userId: trainer.id,
       type: "birthday_reminder",
       title,
       message,
     });
-    sentBirthday.add(key);
-  }
-
-  // Очистка устаревших ключей за прошлые годы.
-  if (sentBirthday.size > 5000) {
-    for (const key of Array.from(sentBirthday)) {
-      const year = key.split(":")[1];
-      if (year && year < todayYear) sentBirthday.delete(key);
-    }
   }
 }
 
@@ -361,8 +304,6 @@ async function notifyTrainerUpcomingSlots(
         title: "Напоминание о тренировке",
         message,
         relatedBookingId: group.firstBookingId,
-        memoryKey: slotId,
-        memorySet: sentTrainer24h,
         window: "day",
       });
     }
@@ -374,15 +315,12 @@ async function notifyTrainerUpcomingSlots(
         title: "Тренировка через час",
         message: `Через час тренировка: ${when} — ${students}`,
         relatedBookingId: group.firstBookingId,
-        memoryKey: slotId,
-        memorySet: sentTrainer1h,
         window: "hour",
       });
     }
 
     const m = reminderMinutes;
     if (m && m > 0) {
-      const customKey = `${slotId}:custom:${m}`;
       if (minutesUntil <= m && minutesUntil >= m - 1) {
         const minutesText =
           m % 60 === 0
@@ -394,33 +332,9 @@ async function notifyTrainerUpcomingSlots(
           title: `Тренировка через ${minutesText}`,
           message: `Через ${minutesText} тренировка: ${when} — ${students}`,
           relatedBookingId: group.firstBookingId,
-          memoryKey: customKey,
-          memorySet: sentTrainerCustom,
           window: "custom",
         });
       }
-    }
-  }
-
-  if (sentTrainer24h.size > 5000 || sentTrainer1h.size > 5000 || sentTrainerCustom.size > 5000) {
-    const activeSlotIds = new Set(
-      Array.from(slotMap.keys()).filter((slotId) => {
-        const group = slotMap.get(slotId);
-        if (!group) return false;
-        const start = slotStartTime(group.slotDate, group.slotTime);
-        if (!start) return false;
-        return start.getTime() > now;
-      }),
-    );
-    for (const id of Array.from(sentTrainer24h)) {
-      if (!activeSlotIds.has(id)) sentTrainer24h.delete(id);
-    }
-    for (const id of Array.from(sentTrainer1h)) {
-      if (!activeSlotIds.has(id)) sentTrainer1h.delete(id);
-    }
-    for (const key of Array.from(sentTrainerCustom)) {
-      const slotId = key.split(":")[0];
-      if (!activeSlotIds.has(slotId)) sentTrainerCustom.delete(key);
     }
   }
 }
@@ -460,8 +374,6 @@ async function tick() {
           title: "Напоминание о тренировке",
           message,
           relatedBookingId: booking.id,
-          memoryKey: booking.id,
-          memorySet: sent24h,
           window: "day",
         });
       }
@@ -475,8 +387,6 @@ async function tick() {
           title: "Тренировка через час",
           message: `Через час у вас тренировка: ${when}`,
           relatedBookingId: booking.id,
-          memoryKey: booking.id,
-          memorySet: sent1h,
           window: "hour",
         });
       }
@@ -484,7 +394,6 @@ async function tick() {
       // Дополнительное напоминание (общая настройка тренера для всех учеников).
       const m = reminderMinutes;
       if (m && m > 0) {
-        const customKey = `${booking.id}:custom:${m}`;
         // Срабатываем когда minutesUntil попадает в [m-1, m] — небольшой допуск под тик в 60с.
         if (minutesUntil <= m && minutesUntil >= m - 1) {
           const minutesText =
@@ -497,23 +406,9 @@ async function tick() {
             title: `Тренировка через ${minutesText}`,
             message: `Через ${minutesText} у вас тренировка: ${when}`,
             relatedBookingId: booking.id,
-            memoryKey: customKey,
-            memorySet: sentCustom,
             window: "custom",
           });
         }
-      }
-    }
-
-    if (sent24h.size > 5000 || sent1h.size > 5000 || sentCustom.size > 5000) {
-      const activeIds = new Set(bookings.map((b) => b.id));
-      for (const id of Array.from(sent24h))
-        if (!activeIds.has(id)) sent24h.delete(id);
-      for (const id of Array.from(sent1h))
-        if (!activeIds.has(id)) sent1h.delete(id);
-      for (const key of Array.from(sentCustom)) {
-        const bookingId = key.split(":")[0];
-        if (!activeIds.has(bookingId)) sentCustom.delete(key);
       }
     }
 
