@@ -2708,7 +2708,12 @@ export class DbStorage implements IStorage {
       for (const period of periods) {
         const startStr = period.startDate > dayAfterPaid ? period.startDate : dayAfterPaid;
         for (const day of eachDateStrInRange(startStr, period.endDate)) {
-          sickDays.add(day);
+          // Limit: max 15 sick days per calendar month count toward ЧВ extension
+          const monthKey = day.slice(0, 7); // "YYYY-MM"
+          const countInMonth = Array.from(sickDays).filter((d) => d.slice(0, 7) === monthKey).length;
+          if (countInMonth < 15) {
+            sickDays.add(day);
+          }
         }
       }
       return sickDays;
