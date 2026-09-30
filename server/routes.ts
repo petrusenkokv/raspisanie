@@ -1763,37 +1763,54 @@ export async function registerRoutes(
     try {
       const includeInactive = req.query.includeInactive === "true";
       const students = await storage.getStudentsList(includeInactive);
+      if (students.length === 0) return res.json([]);
+
       const todayStr = moscowDateString();
-      const studentsWithConsents = await Promise.all(
-        students.map(async (student) => {
-          const signed = await getSignedDocumentIds(student.id);
-          const activeDocs = await storage.getDocuments(true);
-          const pendingDocumentCount = missingRequiredDocumentIds(activeDocs, signed).length;
-          let hasMembership = false;
-          let hasTrainerPayment = false;
-          try {
-            const payStatus = await storage.getStudentPaymentStatus(student.id, todayStr);
-            hasMembership = payStatus.hasMembership;
-            hasTrainerPayment = payStatus.hasTrainerPayment;
-          } catch (err) {
-            console.error(
-              `[students] payment status for ${student.id} (${student.lastName} ${student.firstName}):`,
-              err,
-            );
-          }
-          const hasLinkedChildren =
-            student.role === "parent"
-              ? (await storage.getChildrenByParent(student.id)).length > 0
-              : false;
-          return {
-            ...student,
-            pendingDocumentCount,
-            hasMembership,
-            hasTrainerPayment,
-            hasLinkedChildren,
-          };
-        })
-      );
+
+      // Batch 1: fetch ALL active documents ONCE
+      const activeDocs = await storage.getDocuments(true);
+
+      // Batch 2: fetch ALL consents for ALL students in ONE query
+      const studentIds = students.map(s => s.id);
+      const allConsents = await storage.getConsentsByUsers(studentIds);
+      // Group consents by userId
+      const consentsByUser = new Map<string, Set<string>>();
+      for (const consent of allConsents) {
+        if (!consentsByUser.has(consent.userId)) consentsByUser.set(consent.userId, new Set());
+        consentsByUser.get(consent.userId)!.add(consent.documentId);
+      }
+
+      // Batch 3: fetch ALL parent-child links in ONE query
+      const parentChildLinks = await storage.getParentChildLinksForParents(studentIds);
+
+      // Batch 4: fetch ALL payment statuses (batched internally)
+      const paymentStatuses = await storage.getBatchPaymentStatuses(studentIds, todayStr);
+
+      // Process in memory
+      const studentsWithConsents = students.map((student) => {
+        const signed = consentsByUser.get(student.id) ?? new Set();
+        const pendingDocumentCount = missingRequiredDocumentIds(activeDocs, signed).length;
+
+        const payStatus = paymentStatuses.get(student.id);
+        const hasMembership = payStatus?.hasMembership ?? false;
+        const hasTrainerPayment = payStatus?.hasTrainerPayment ?? false;
+
+        const childIds = new Set(
+          parentChildLinks
+            .filter(l => l.parentId === student.id)
+            .map(l => l.childId)
+        );
+        const hasLinkedChildren = student.role === "parent" && childIds.size > 0;
+
+        return {
+          ...student,
+          pendingDocumentCount,
+          hasMembership,
+          hasTrainerPayment,
+          hasLinkedChildren,
+        };
+      });
+
       res.json(studentsWithConsents);
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить список учеников" });
@@ -3156,12 +3173,8 @@ export async function registerRoutes(
     try {
       const { userId } = req.params;
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-      const notifications = await storage.getNotificationsByUser(userId);
-      res.json(
-        notifications
-          .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))
-          .slice(0, limit)
-      );
+      const notifications = await storage.getNotificationsByUser(userId, limit);
+      res.json(notifications);
     } catch (error) {
       res.status(500).json({ message: "Не удалось получить уведомления" });
     }

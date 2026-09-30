@@ -141,7 +141,7 @@ export interface IStorage {
   setStudentSickLeave(studentId: string, sickUntil: string | null, sickNote: string | null, startDate?: string): Promise<{ user: User; affectedCount: number }>;
   
   // Notifications
-  getNotificationsByUser(userId: string): Promise<Notification[]>;
+  getNotificationsByUser(userId: string, limit?: number): Promise<Notification[]>;
   getNotification(id: string): Promise<Notification | undefined>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   wasReminderSentRecently(
@@ -242,6 +242,15 @@ export interface IStorage {
 
   // Payment status for a student on a particular date
   getStudentPaymentStatus(studentId: string, dateStr: string): Promise<StudentPaymentStatus>;
+
+  // Batch: get payment status for multiple students
+  getBatchPaymentStatuses(studentIds: string[], dateStr: string): Promise<Map<string, { hasMembership: boolean; hasTrainerPayment: boolean }>>;
+
+  // Batch: fetch consents for multiple users
+  getConsentsByUsers(userIds: string[]): Promise<{ userId: string; documentId: string }[]>;
+
+  // Batch: fetch parent-child links for multiple parents
+  getParentChildLinksForParents(parentIds: string[]): Promise<{ parentId: string; childId: string }[]>;
 
   // Student active status
   setUserActiveStatus(id: string, isActive: boolean, resetCv?: boolean): Promise<User>;
@@ -1789,8 +1798,89 @@ export class MemStorage implements IStorage {
     };
   }
 
-  async getNotificationsByUser(userId: string): Promise<Notification[]> {
-    return Array.from(this.notifications.values()).filter(n => n.userId === userId);
+  // Batch: get payment status for multiple students (in-memory)
+  async getBatchPaymentStatuses(studentIds: string[], dateStr: string): Promise<Map<string, { hasMembership: boolean; hasTrainerPayment: boolean }>> {
+    const result = new Map<string, { hasMembership: boolean; hasTrainerPayment: boolean }>();
+
+    const cvByStudent = new Map<string, MembershipPayment[]>();
+    const bvByStudent = new Map<string, MembershipPayment[]>();
+    const subsByStudent = new Map<string, TrainerPayment[]>();
+
+    for (const payment of Array.from(this.membershipPayments.values())) {
+      if (!studentIds.includes(payment.studentId)) continue;
+      if (payment.type === "monthly_cv") {
+        if (!cvByStudent.has(payment.studentId)) cvByStudent.set(payment.studentId, []);
+        cvByStudent.get(payment.studentId)!.push(payment);
+      } else if (payment.type === "one_time_bv" && payment.date === dateStr) {
+        if (!bvByStudent.has(payment.studentId)) bvByStudent.set(payment.studentId, []);
+        bvByStudent.get(payment.studentId)!.push(payment);
+      }
+    }
+
+    for (const sub of Array.from(this.trainerPayments.values())) {
+      if (!studentIds.includes(sub.studentId)) continue;
+      if (!subsByStudent.has(sub.studentId)) subsByStudent.set(sub.studentId, []);
+      subsByStudent.get(sub.studentId)!.push(sub);
+    }
+
+    for (const studentId of studentIds) {
+      const student = this.users.get(studentId);
+      if (!student) continue;
+
+      const cvPayments = (cvByStudent.get(studentId) ?? [])
+        .filter(p => p.paidDate && (!student.cvRestartDate || p.paidDate >= student.cvRestartDate));
+
+      let hasMembership = student.exemptMembership === true;
+      if (!hasMembership) {
+        if ((bvByStudent.get(studentId) ?? []).length > 0) {
+          hasMembership = true;
+        } else {
+          for (const p of cvPayments) {
+            const baseDate = p.effectiveStartDate ?? p.paidDate!;
+            if (cvValidUntilForDate(baseDate, dateStr, 0)) {
+              hasMembership = true;
+              break;
+            }
+          }
+        }
+      }
+
+      let hasTrainerPayment = student.exemptTrainerPayment === true;
+      if (!hasTrainerPayment) {
+        const subs = subsByStudent.get(studentId) ?? [];
+        for (const sub of subs) {
+          if (sub.status === "active" || sub.status === "completed") {
+            hasTrainerPayment = true;
+            break;
+          }
+        }
+      }
+
+      result.set(studentId, { hasMembership, hasTrainerPayment });
+    }
+
+    return result;
+  }
+
+  // Batch: fetch consents for multiple users (in-memory)
+  async getConsentsByUsers(userIds: string[]): Promise<{ userId: string; documentId: string }[]> {
+    return Array.from(this.consents.values())
+      .filter((c: UserConsent) => userIds.includes(c.userId))
+      .map((c: UserConsent) => ({ userId: c.userId, documentId: c.documentId }));
+  }
+
+  // Batch: fetch parent-child links for multiple parents (in-memory)
+  async getParentChildLinksForParents(parentIds: string[]): Promise<{ parentId: string; childId: string }[]> {
+    return Array.from(this.parentChildren.values())
+      .filter(l => parentIds.includes(l.parentId))
+      .map(l => ({ parentId: l.parentId, childId: l.childId }));
+  }
+
+  async getNotificationsByUser(userId: string, limit: number = 50): Promise<Notification[]> {
+    return Array.from(this.notifications.values())
+      .filter(n => n.userId === userId)
+      .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))
+      .slice(0, limit);
   }
 
   async getNotification(id: string): Promise<Notification | undefined> {

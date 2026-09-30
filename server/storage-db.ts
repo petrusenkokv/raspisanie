@@ -861,6 +861,24 @@ export class DbStorage implements IStorage {
     });
   }
 
+  // Batch: fetch consents for multiple users in ONE query
+  async getConsentsByUsers(userIds: string[]): Promise<{ userId: string; documentId: string }[]> {
+    if (userIds.length === 0) return [];
+    const rows = await db.select({ userId: userConsents.userId, documentId: userConsents.documentId })
+      .from(userConsents)
+      .where(inArray(userConsents.userId, userIds));
+    return rows;
+  }
+
+  // Batch: fetch parent-child links for multiple parents in ONE query
+  async getParentChildLinksForParents(parentIds: string[]): Promise<{ parentId: string; childId: string }[]> {
+    if (parentIds.length === 0) return [];
+    const rows = await db.select({ parentId: parentChildren.parentId, childId: parentChildren.childId })
+      .from(parentChildren)
+      .where(inArray(parentChildren.parentId, parentIds));
+    return rows;
+  }
+
   async recordConsent(userId: string, documentId: string): Promise<UserConsent> {
     const existing = await db
       .select()
@@ -1662,8 +1680,8 @@ export class DbStorage implements IStorage {
 
   // ======================== NOTIFICATIONS ========================
 
-  async getNotificationsByUser(userId: string): Promise<Notification[]> {
-    return db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt));
+  async getNotificationsByUser(userId: string, limit: number = 50): Promise<Notification[]> {
+    return db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt)).limit(limit);
   }
 
   async getNotification(id: string): Promise<Notification | undefined> {
@@ -2932,6 +2950,108 @@ export class DbStorage implements IStorage {
       activeTrainerPayment: sub ? await this.withUsage(sub) : null,
       ...grace,
     };
+  }
+
+  // Batch: get payment status for multiple students with minimal queries
+  async getBatchPaymentStatuses(studentIds: string[], dateStr: string): Promise<Map<string, { hasMembership: boolean; hasTrainerPayment: boolean }>> {
+    if (studentIds.length === 0) return new Map();
+
+    const result = new Map<string, { hasMembership: boolean; hasTrainerPayment: boolean }>();
+
+    // Fetch all students at once
+    const students = await db.select().from(users).where(inArray(users.id, studentIds));
+    const studentMap = new Map(students.map(s => [s.id, s]));
+
+    // Batch 1: fetch ALL CV payments for ALL students
+    const allCvPayments = await db.select().from(membershipPayments).where(
+      and(
+        eq(membershipPayments.type, "monthly_cv"),
+        inArray(membershipPayments.studentId, studentIds)
+      )
+    );
+
+    // Batch 2: fetch ALL BV payments for this date
+    const allBvPayments = await db.select().from(membershipPayments).where(
+      and(
+        eq(membershipPayments.type, "one_time_bv"),
+        eq(membershipPayments.date, dateStr),
+        inArray(membershipPayments.studentId, studentIds)
+      )
+    );
+
+    // Batch 3: fetch ALL trainer subscriptions
+    const allTrainerSubs = await db.select().from(trainerPayments).where(
+      inArray(trainerPayments.studentId, studentIds)
+    );
+
+    // Group by student
+    const cvByStudent = new Map<string, typeof allCvPayments>();
+    for (const p of allCvPayments) {
+      if (!cvByStudent.has(p.studentId)) cvByStudent.set(p.studentId, []);
+      cvByStudent.get(p.studentId)!.push(p);
+    }
+
+    const bvByStudent = new Map<string, typeof allBvPayments>();
+    for (const p of allBvPayments) {
+      if (!bvByStudent.has(p.studentId)) bvByStudent.set(p.studentId, []);
+      bvByStudent.get(p.studentId)!.push(p);
+    }
+
+    const subsByStudent = new Map<string, typeof allTrainerSubs>();
+    for (const sub of allTrainerSubs) {
+      if (!subsByStudent.has(sub.studentId)) subsByStudent.set(sub.studentId, []);
+      subsByStudent.get(sub.studentId)!.push(sub);
+    }
+
+    // Process each student in memory
+    for (const studentId of studentIds) {
+      const student = studentMap.get(studentId);
+      if (!student) continue;
+
+      const cvRestartDate = student.cvRestartDate;
+      const cvPayments = (cvByStudent.get(studentId) ?? [])
+        .filter(p => p.paidDate && (!cvRestartDate || p.paidDate >= cvRestartDate))
+        .sort((a, b) => b.paidDate!.localeCompare(a.paidDate!));
+
+      // Check membership
+      let hasMembership = student.exemptMembership === true;
+      if (!hasMembership) {
+        // Check BV first
+        const bvList = bvByStudent.get(studentId) ?? [];
+        if (bvList.length > 0) {
+          hasMembership = true;
+        } else {
+          // Check CV - simplified (no sick days for batch, assume no sick days)
+          for (const p of cvPayments) {
+            const baseDate = p.effectiveStartDate ?? p.paidDate!;
+            if (cvValidUntilForDate(baseDate, dateStr, 0)) {
+              hasMembership = true;
+              break;
+            }
+          }
+        }
+      }
+
+      // Check trainer payment
+      let hasTrainerPayment = student.exemptTrainerPayment === true;
+      if (!hasTrainerPayment) {
+        const subs = subsByStudent.get(studentId) ?? [];
+        for (const sub of subs) {
+          if (sub.status === "active") {
+            hasTrainerPayment = true;
+            break;
+          }
+          if (sub.status === "completed") {
+            hasTrainerPayment = true;
+            break;
+          }
+        }
+      }
+
+      result.set(studentId, { hasMembership, hasTrainerPayment });
+    }
+
+    return result;
   }
 
   // ======================== BROADCAST LOGS (in-memory) ========================
