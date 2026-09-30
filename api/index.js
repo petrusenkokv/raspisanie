@@ -1,1 +1,3 @@
-export { default } from "../dist/api.mjs";
+import handler from "../dist/api.mjs";
+
+export default handler;
