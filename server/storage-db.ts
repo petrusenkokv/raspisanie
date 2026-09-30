@@ -1788,6 +1788,8 @@ export class DbStorage implements IStorage {
     if (relatedBookingId) {
       conditions.push(eq(notifications.relatedBookingId, relatedBookingId));
     }
+    // Also check by message to prevent duplicates when relatedBookingId varies
+    // but the notification content is the same (e.g., "Тренировка через 1 час")
     const rows = await db
       .select({ id: notifications.id })
       .from(notifications)

@@ -2,6 +2,10 @@ import { storage } from "./storage-instance";
 import { moscowDateString } from "./moscow-date";
 import { pushNotifyUser } from "./push-notify-user";
 
+// In-memory dedup for reminders to prevent race conditions between ticks
+// Key: `${userId}:${type}:${relatedBookingId}`
+const sentReminders = new Map<string, number>();
+
 const TICK_MS = 60_000;
 
 function slotStartTime(date: string, time: string): Date | null {
@@ -66,6 +70,15 @@ async function createTrainingReminder(params: {
   relatedBookingId: string | null;
   window: keyof typeof REMINDER_WINDOW_MINUTES;
 }): Promise<void> {
+  const dedupKey = `${params.userId}:${params.type}:${params.relatedBookingId ?? "none"}`;
+  const now = Date.now();
+  
+  // Check in-memory cache first
+  const lastSent = sentReminders.get(dedupKey);
+  if (lastSent && now - lastSent < REMINDER_WINDOW_MINUTES[params.window] * 60_000) {
+    return;
+  }
+  
   const already = await storage.wasReminderSentRecently(
     params.userId,
     params.type,
@@ -74,6 +87,7 @@ async function createTrainingReminder(params: {
     REMINDER_WINDOW_MINUTES[params.window],
   );
   if (already) return;
+  
   await storage.createNotification({
     userId: params.userId,
     type: params.type,
@@ -86,6 +100,17 @@ async function createTrainingReminder(params: {
     tag: `${params.type}:${params.relatedBookingId ?? ""}`,
     url: "/",
   });
+
+  sentReminders.set(dedupKey, now);
+  
+  // Clean old entries (keep only last 1000)
+  if (sentReminders.size > 1000) {
+    const entries = Array.from(sentReminders.entries());
+    entries.sort((a, b) => a[1] - b[1]);
+    for (let i = 0; i < entries.length - 1000; i++) {
+      sentReminders.delete(entries[i][0]);
+    }
+  }
 }
 
 // Проверка окончания ЧВ: за 3 дня, за 1 день, в день окончания.
