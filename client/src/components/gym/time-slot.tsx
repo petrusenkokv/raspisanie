@@ -131,13 +131,10 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
       });
       return r.json();
     },
-    onSuccess: (_data, vars) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
       queryClient.invalidateQueries({ queryKey: ["payment-status"] });
-      toast({
-        title: vars.status === null ? "Отметка снята" : "Посещаемость отмечена",
-      });
     },
     onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
   });
