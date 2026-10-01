@@ -859,7 +859,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
               >
                 <div className="flex items-center gap-1 min-w-0 flex-wrap">
                   {booking.status === "confirmed"
-                    ? <UserCheck className="h-3 w-3 text-green-600 shrink-0" />
+                    ? <Clock className="h-3 w-3 text-green-600 shrink-0" />
                     : <Clock className="h-3 w-3 text-yellow-600 shrink-0" />}
                   <span className="truncate text-gray-900 dark:text-white">
                     {formatStudentShortName(booking.student)}

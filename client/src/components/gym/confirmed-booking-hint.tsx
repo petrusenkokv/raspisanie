@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ConfirmedBookingHintProps = {
@@ -20,6 +20,6 @@ export const ConfirmedBookingHint = ({
     onClick={(e) => e.stopPropagation()}
     onKeyDown={(e) => e.stopPropagation()}
   >
-    <Check className={cn(iconClassName)} aria-hidden />
+    <Clock className={cn(iconClassName)} aria-hidden />
   </span>
 );
