@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, ArrowLeftRight, Repeat } from "lucide-react";
+import { Clock, Users, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, ArrowLeftRight, Repeat } from "lucide-react";
 import { RescheduleDialog } from "./reschedule-dialog";
 import { Input } from "@/components/ui/input";
 import { type TimeSlotWithBookings, type AttendanceStatus } from "@shared/schema";
@@ -458,8 +458,33 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                             болен
                           </Badge>
                         )}
-                        {att ? (
+                        {att && att !== "attended" ? (
+                          // Старые отметки «Опоздал/Уваж./Прогул» — показываем как есть (без кнопок)
                           <AttendanceBadge status={att} />
+                        ) : att === "attended" ? (
+                          <AttendanceToggleBadge
+                            active
+                            onClick={() =>
+                              attendanceMutation.mutate({
+                                bookingId: booking.id,
+                                status: null,
+                              })
+                            }
+                            disabled={attendanceMutation.isPending}
+                            testId={`button-attend-off-${booking.id}`}
+                          />
+                        ) : booking.status === "confirmed" && showAttendance ? (
+                          <AttendanceToggleBadge
+                            active={false}
+                            onClick={() =>
+                              attendanceMutation.mutate({
+                                bookingId: booking.id,
+                                status: "attended",
+                              })
+                            }
+                            disabled={attendanceMutation.isPending}
+                            testId={`button-attend-${booking.id}`}
+                          />
                         ) : booking.status === "confirmed" ? (
                           <ConfirmedBookingHint iconClassName="h-3 w-3" />
                         ) : (
@@ -524,22 +549,6 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                         </Button>
                       </div>
                     </div>
-                    {showAttendance && (
-                      <div className="flex flex-wrap gap-0.5 md:gap-1 pt-1 border-t border-gray-100 dark:border-gray-800">
-                        <AttendanceButton
-                          label="Пришёл"
-                          icon={<UserCheck className="h-3 w-3" />}
-                          color="green"
-                          active={att === "attended"}
-                          onClick={() => attendanceMutation.mutate({
-                            bookingId: booking.id,
-                            status: att === "attended" ? null : "attended",
-                          })}
-                          disabled={attendanceMutation.isPending}
-                          testId={`button-attend-${booking.id}`}
-                        />
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -812,49 +821,33 @@ function AttendanceBadge({ status }: { status: AttendanceStatus }) {
   );
 }
 
-function AttendanceButton({
-  label,
-  icon,
-  color,
+// Кликабельный бейдж «Пришёл» рядом с именем ученика:
+// контурный — ещё не отмечен, зелёный — отмечен. Повторный клик снимает отметку.
+function AttendanceToggleBadge({
   active,
   onClick,
   disabled,
   testId,
 }: {
-  label: string;
-  icon: React.ReactNode;
-  color: "green" | "yellow" | "blue" | "red";
   active: boolean;
   onClick: () => void;
   disabled?: boolean;
   testId?: string;
 }) {
-  const colors: Record<string, string> = {
-    green: active
-      ? "bg-green-600 text-white border-green-600"
-      : "text-green-700 border-green-300 hover:bg-green-50 dark:text-green-300 dark:border-green-800 dark:hover:bg-green-900/30",
-    yellow: active
-      ? "bg-yellow-500 text-white border-yellow-500"
-      : "text-yellow-700 border-yellow-300 hover:bg-yellow-50 dark:text-yellow-300 dark:border-yellow-800 dark:hover:bg-yellow-900/30",
-    blue: active
-      ? "bg-blue-600 text-white border-blue-600"
-      : "text-blue-700 border-blue-300 hover:bg-blue-50 dark:text-blue-300 dark:border-blue-800 dark:hover:bg-blue-900/30",
-    red: active
-      ? "bg-red-600 text-white border-red-600"
-      : "text-red-600 border-red-300 hover:bg-red-50 dark:text-red-300 dark:border-red-800 dark:hover:bg-red-900/30",
-  };
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
       data-testid={testId}
-      aria-label={label}
-      title={label}
-      className={`flex items-center justify-center gap-1 text-[11px] font-medium h-7 w-7 p-0 md:h-auto md:w-auto md:px-1.5 md:py-0.5 rounded border transition disabled:opacity-50 shrink-0 ${colors[color]}`}
+      title={active ? "Снять отметку «Пришёл»" : "Отметить «Пришёл»"}
+      className={`text-[10px] font-medium px-1.5 py-0.5 rounded border shrink-0 transition disabled:opacity-50 ${
+        active
+          ? "bg-green-600 text-white border-green-600"
+          : "text-green-700 border-green-300 hover:bg-green-50 dark:text-green-300 dark:border-green-800 dark:hover:bg-green-900/30"
+      }`}
     >
-      {icon}
-      <span className="hidden md:inline">{label}</span>
+      Пришёл
     </button>
   );
 }
