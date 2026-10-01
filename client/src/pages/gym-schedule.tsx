@@ -422,7 +422,7 @@ export function GymSchedulePage() {
   }, [queryClient, currentUser?.id, canManageChildren]);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-[env(safe-area-inset-bottom)] overflow-x-hidden">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-[env(safe-area-inset-bottom)]">
       <PullToRefresh onRefresh={handlePullRefresh}>
       <CalendarHeader
         onStudentsOpen={() => setStudentsPanelOpen(true)}
