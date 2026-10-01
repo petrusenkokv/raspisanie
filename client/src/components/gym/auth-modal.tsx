@@ -124,10 +124,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
       } else {
         setUser(data.user);
         resetCalendarToToday();
-        const greeting = data.user.role === "trainer"
-          ? `Добро пожаловать, тренер!`
-          : `Добро пожаловать, ${data.user.firstName}!`;
-        toast({ title: greeting });
         onOpenChange(false);
         resetForm();
       }
@@ -163,7 +159,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
       } else {
         setUser(pendingLoginUser);
         resetCalendarToToday();
-        toast({ title: "Добро пожаловать!", description: `Вы вошли как ${pendingLoginUser.firstName}` });
         onOpenChange(false);
         resetForm();
       }
