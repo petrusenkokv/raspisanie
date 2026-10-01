@@ -230,13 +230,13 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         ) : (
           <>
             {/* Avatar + name */}
-            <div className="flex items-center gap-4 rounded-xl border bg-muted/40 p-4">
-              <Avatar className="h-14 w-14 text-lg">
+            <div className="flex items-center gap-4 rounded-xl border bg-muted/40 p-4 min-w-0">
+              <Avatar className="h-14 w-14 text-lg flex-shrink-0">
                 <AvatarFallback className="bg-blue-100 text-blue-700 font-semibold">{initials}</AvatarFallback>
               </Avatar>
-              <div>
-                <div className="font-semibold text-base leading-tight">{fullName || user?.firstName}</div>
-                <div className="text-sm text-muted-foreground">{user?.phone}</div>
+              <div className="min-w-0">
+                <div className="font-semibold text-base leading-tight truncate">{fullName || user?.firstName}</div>
+                <div className="text-sm text-muted-foreground truncate">{user?.phone}</div>
                 {viewAge !== null && (
                   <div className="text-xs text-muted-foreground mt-0.5">{viewAge} лет</div>
                 )}

@@ -1810,9 +1810,9 @@ function PaymentExemptSection({
 
 function Field({ label, value, multiline }: { label: string; value: string; multiline?: boolean }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-xs text-gray-500">{label}</div>
-      <div className={multiline ? "whitespace-pre-wrap" : ""}>{value}</div>
+      <div className={multiline ? "whitespace-pre-wrap break-words" : "truncate"}>{value}</div>
     </div>
   );
 }
