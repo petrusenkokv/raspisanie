@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, CircleSlash, Heart, AlarmClock, ArrowLeftRight, Repeat } from "lucide-react";
+import { Clock, Users, UserCheck, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, ArrowLeftRight, Repeat } from "lucide-react";
 import { RescheduleDialog } from "./reschedule-dialog";
 import { Input } from "@/components/ui/input";
 import { type TimeSlotWithBookings, type AttendanceStatus } from "@shared/schema";
@@ -540,42 +540,6 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                           })}
                           disabled={attendanceMutation.isPending}
                           testId={`button-attend-${booking.id}`}
-                        />
-                        <AttendanceButton
-                          label="Опоздал"
-                          icon={<AlarmClock className="h-3 w-3" />}
-                          color="yellow"
-                          active={att === "late"}
-                          onClick={() => attendanceMutation.mutate({
-                            bookingId: booking.id,
-                            status: att === "late" ? null : "late",
-                          })}
-                          disabled={attendanceMutation.isPending}
-                          testId={`button-late-${booking.id}`}
-                        />
-                        <AttendanceButton
-                          label="Уваж."
-                          icon={<Heart className="h-3 w-3" />}
-                          color="blue"
-                          active={att === "excused"}
-                          onClick={() => attendanceMutation.mutate({
-                            bookingId: booking.id,
-                            status: att === "excused" ? null : "excused",
-                          })}
-                          disabled={attendanceMutation.isPending}
-                          testId={`button-excused-${booking.id}`}
-                        />
-                        <AttendanceButton
-                          label="Прогул"
-                          icon={<CircleSlash className="h-3 w-3" />}
-                          color="red"
-                          active={att === "no_show"}
-                          onClick={() => attendanceMutation.mutate({
-                            bookingId: booking.id,
-                            status: att === "no_show" ? null : "no_show",
-                          })}
-                          disabled={attendanceMutation.isPending}
-                          testId={`button-noshow-${booking.id}`}
                         />
                       </div>
                     )}
