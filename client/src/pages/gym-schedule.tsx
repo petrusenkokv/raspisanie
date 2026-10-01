@@ -403,8 +403,8 @@ export function GymSchedulePage() {
     cancelMutation.mutate({ bookingId, message });
 
   const handleLogout = async () => {
+    // Без тоста: сообщения «Выход выполнен / Вы успешно вышли из системы» не показываем
     await logoutFromServer();
-    toast({ title: "Выход выполнен", description: "Вы успешно вышли из системы" });
   };
 
   const handlePullRefresh = useCallback(async () => {
