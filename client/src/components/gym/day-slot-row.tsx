@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, Check, Clock } from "lucide-react";
+import { ChevronRight, Clock } from "lucide-react";
 import { useGymStore } from "@/store/gym-store";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -188,7 +188,7 @@ export function DaySlotRow({
         </span>
         <span className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
           {familyBookings.length > 0 && userBooking?.status === "confirmed" && (
-            <Check className="h-3.5 w-3.5 text-green-600 shrink-0" aria-hidden />
+            <Clock className="h-3.5 w-3.5 text-green-600 shrink-0" aria-hidden />
           )}
           {familyBookings.length > 0 && userBooking?.status === "pending" && (
             <Clock className="h-3.5 w-3.5 text-yellow-600 shrink-0" aria-hidden />
