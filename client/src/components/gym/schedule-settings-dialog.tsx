@@ -258,7 +258,6 @@ export function ScheduleSettingsDialog({
   const [cancelDeadline, setCancelDeadline] = useState(3);
   const [bookingDeadline, setBookingDeadline] = useState(1);
   const [defaultCapacity, setDefaultCapacity] = useState(2);
-  const [reminderMinutes, setReminderMinutes] = useState<string>("off");
   const [welcomeMessage, setWelcomeMessage] = useState<string>("");
   const [newHolidayDate, setNewHolidayDate] = useState<string>(todayLocalStr());
   const [newHolidayName, setNewHolidayName] = useState<string>("");
@@ -276,7 +275,6 @@ export function ScheduleSettingsDialog({
       setCancelDeadline(data.cancelDeadlineHours ?? 0);
       setBookingDeadline(data.bookingDeadlineHours ?? 0);
       setDefaultCapacity(data.defaultCapacity ?? 2);
-      setReminderMinutes(data.reminderMinutes != null ? String(data.reminderMinutes) : "off");
       setWelcomeMessage(data.welcomeMessage ?? "");
       // Fill in any missing weekdays with default working values
       const next: WeeklyTemplate = { ...data.weeklyTemplate };
@@ -803,32 +801,11 @@ export function ScheduleSettingsDialog({
                   </p>
                 </div>
               </div>
-              <div className="border-t pt-4 mt-2 space-y-2">
-                <Label>Дополнительное напоминание о тренировке</Label>
-                <select
-                  className="w-full border rounded px-3 py-2 bg-white dark:bg-gray-900"
-                  value={reminderMinutes}
-                  onChange={(e) => setReminderMinutes(e.target.value)}
-                  data-testid="select-reminder-minutes"
-                >
-                  <option value="off">Не отправлять</option>
-                  <option value="15">за 15 минут до начала</option>
-                  <option value="30">за 30 минут до начала</option>
-                  <option value="60">за 1 час до начала</option>
-                  <option value="120">за 2 часа до начала</option>
-                </select>
-                <p className="text-xs text-gray-500">
-                  Применяется ученикам и вам как тренеру. Это дополнительное напоминание —
-                  стандартные оповещения за сутки и за час продолжают работать.
-                </p>
-              </div>
               <Button
                 onClick={() =>
                   saveSettings.mutate({
                     bookingDeadlineHours: bookingDeadline,
                     cancelDeadlineHours: cancelDeadline,
-                    reminderMinutes:
-                      reminderMinutes === "off" ? null : Number(reminderMinutes),
                   })
                 }
                 disabled={saveSettings.isPending}

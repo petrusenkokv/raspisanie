@@ -4,7 +4,6 @@ import { createApp } from "./app";
 const appPromise = createApp({
   serveClient: false,
   websocket: false,
-  reminders: false,
 }).then(({ app }) => app);
 
 export default async function handler(

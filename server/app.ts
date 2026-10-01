@@ -1,7 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { startReminderScheduler } from "./reminders";
 import { moscowDateString } from "./moscow-date";
 import { setupSession } from "./auth";
 import { ensureStorageReady } from "./storage-instance";
@@ -9,7 +8,6 @@ import { ensureStorageReady } from "./storage-instance";
 type AppOptions = {
   serveClient?: boolean;
   websocket?: boolean;
-  reminders?: boolean;
 };
 
 export async function createApp(options: AppOptions = {}) {
@@ -93,10 +91,6 @@ export async function createApp(options: AppOptions = {}) {
     } else {
       serveStatic(app);
     }
-  }
-
-  if (options.reminders && process.env.NODE_ENV === "production") {
-    startReminderScheduler();
   }
 
   return { app, server };

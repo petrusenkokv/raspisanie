@@ -8,7 +8,6 @@ loadDevEnv();
   const { server } = await createApp({
     serveClient: true,
     websocket: true,
-    reminders: true,
   });
 
   const port = parseInt(process.env.PORT || "5000", 10);

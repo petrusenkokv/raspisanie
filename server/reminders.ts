@@ -388,100 +388,14 @@ async function cleanupOldNotifications() {
   }
 }
 
+// Напоминания для тренера и учеников УДАЛЕНЫ (по требованию).
+// Система будет переделана позже. Пока tick() ничего не делает:
+// ни уведомлений в БД, ни push-рассылок, ни чистки старых напоминаний.
+// Вспомогательные функции выше (checkCvExpiry, checkTrainerSubscriptions,
+// checkStudentBirthdays, notifyTrainerUpcomingSlots, createTrainingReminder)
+// сохранены как заготовка для будущей реализации.
 async function tick() {
-  // Prevent concurrent ticks
-  if (isTickRunning) {
-    console.log("[reminders] tick skipped — already running");
-    return;
-  }
-  isTickRunning = true;
-  try {
-    const bookings = await storage.listActiveBookings();
-    const now = Date.now();
-    const settings = await storage.getTrainerSettings();
-    const reminderMinutes = settings.reminderMinutes;
-
-    // Clean up old notifications every 6 hours (on every tick, 6am/12pm/6pm/12am Moscow)
-    const moscowNow = new Date(now);
-    const moscowHour = moscowNow.getUTCHours() + 3;
-    if (moscowHour % 6 === 0) {
-      await cleanupOldNotifications();
-    }
-
-    await notifyTrainerUpcomingSlots(bookings, now, reminderMinutes);
-
-    for (const booking of bookings) {
-      const slot = await storage.getTimeSlotById(booking.timeSlotId);
-      if (!slot) continue;
-      const start = slotStartTime(slot.date, slot.time);
-      if (!start) continue;
-
-      const minutesUntil = Math.round((start.getTime() - now) / 60_000);
-      if (minutesUntil <= 0) continue;
-
-      const when = formatHuman(slot.date, slot.time.slice(0, 5));
-      const prefix = dayPrefix(slot.date, new Date(now));
-      const timeOnly = slot.time.slice(0, 5);
-
-      if (minutesUntil > 60 && minutesUntil <= 1440) {
-        const message =
-          prefix === "today"
-            ? `Сегодня у вас тренировка в ${timeOnly}`
-            : prefix === "tomorrow"
-            ? `Завтра у вас тренировка в ${timeOnly}`
-            : `Скоро тренировка: ${when}`;
-        await createTrainingReminder({
-          userId: booking.studentId,
-          type: "training_reminder",
-          title: "Напоминание о тренировке",
-          message,
-          relatedBookingId: booking.id,
-          window: "day",
-        });
-      }
-
-      // Если общая настройка тренера = 60 минут, стандартное напоминание «за час»
-      // дублирует пользовательское — пропускаем его.
-      if (reminderMinutes !== 60 && minutesUntil > 0 && minutesUntil <= 60) {
-        await createTrainingReminder({
-          userId: booking.studentId,
-          type: "training_reminder",
-          title: "Тренировка через час",
-          message: `Через час у вас тренировка: ${when}`,
-          relatedBookingId: booking.id,
-          window: "hour",
-        });
-      }
-
-      // Дополнительное напоминание (общая настройка тренера для всех учеников).
-      const m = reminderMinutes;
-      if (m && m > 0) {
-        // Срабатываем когда minutesUntil попадает в [m-1, m] — небольшой допуск под тик в 60с.
-        if (minutesUntil <= m && minutesUntil >= m - 1) {
-          const minutesText =
-            m % 60 === 0
-              ? `${m / 60} ${m / 60 === 1 ? "час" : "ч."}`
-              : `${m} минут`;
-          await createTrainingReminder({
-            userId: booking.studentId,
-            type: "training_reminder",
-            title: `Тренировка через ${minutesText}`,
-            message: `Через ${minutesText} у вас тренировка: ${when}`,
-            relatedBookingId: booking.id,
-            window: "custom",
-          });
-        }
-      }
-    }
-
-    await checkCvExpiry(new Date(now));
-    await checkTrainerSubscriptions();
-    await checkStudentBirthdays(new Date(now));
-  } catch (err) {
-    console.error("[reminders] tick failed:", err);
-  } finally {
-    isTickRunning = false;
-  }
+  return;
 }
 
 export async function runRemindersTick(): Promise<void> {
