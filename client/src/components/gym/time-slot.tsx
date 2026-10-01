@@ -425,9 +425,6 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
           {isTrainer() ? (
             // Trainer view — show each student with cancel button
             <div className="space-y-1 sm:space-y-2">
-              {allActiveBookings.length === 0 && (
-                <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Нет записей</p>
-              )}
               {allActiveBookings.map((booking) => {
                 const att = (booking as any).attendanceStatus as AttendanceStatus | null | undefined;
                 const showAttendance = slotStarted && booking.status === "confirmed";

@@ -739,6 +739,15 @@ export async function registerRoutes(
 
   app.post("/api/auth/logout", async (req, res) => {
     try {
+      // При выходе отключаем push-уведомления пользователя,
+      // чтобы напоминания не приходили после выхода из системы.
+      const userId = sessionUserId(req);
+      if (userId) {
+        const subs = await storage.getPushSubscriptionsByUser(userId);
+        for (const sub of subs) {
+          await storage.deletePushSubscription(sub.endpoint);
+        }
+      }
       await destroySession(req);
       res.json({ success: true });
     } catch {

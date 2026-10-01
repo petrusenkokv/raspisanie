@@ -100,6 +100,25 @@ export async function validateStoredUser(): Promise<void> {
 }
 
 export async function logoutFromServer(): Promise<void> {
+  // Отключаем push-подписку текущего браузера перед выходом,
+  // чтобы push-уведомления не приходили после «Вы успешно вышли из системы».
+  try {
+    if ("serviceWorker" in navigator && "PushManager" in window) {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch("/api/push/unsubscribe", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        }).catch(() => {});
+        await sub.unsubscribe();
+      }
+    }
+  } catch {
+    /* ignore */
+  }
   try {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
   } catch {
