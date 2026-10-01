@@ -443,9 +443,6 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-sm min-w-0 flex-wrap">
-                        {booking.status === "pending" && (
-                          <Clock className="h-3 w-3 text-yellow-600 shrink-0" />
-                        )}
                         <span className="text-gray-900 dark:text-white truncate">
                           {formatStudentShortName(booking.student)}
                         </span>
@@ -485,13 +482,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                             disabled={attendanceMutation.isPending}
                             testId={`button-attend-${booking.id}`}
                           />
-                        ) : booking.status === "confirmed" ? (
-                          <ConfirmedBookingHint iconClassName="h-3 w-3" />
-                        ) : (
+                        ) : booking.status === "pending" ? (
                           <Badge variant="secondary" className="text-xs shrink-0">
                             Заявка
                           </Badge>
-                        )}
+                        ) : null}
                         {booking.bookingSource && (
                           <BookingSourceBadge source={booking.bookingSource} />
                         )}
