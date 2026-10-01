@@ -80,6 +80,16 @@ const TYPE_DOT: Record<string, string> = {
   recurring_conflict: "bg-red-500",
 };
 
+// Типы напоминаний, которые удалены (тренеру и ученикам).
+// Старые записи таких типов прячем из списка и не показываем по ним алерты.
+const REMINDER_TYPES = new Set([
+  "training_reminder",
+  "trainer_training_reminder",
+  "cv_expiry_reminder",
+  "trainer_subscription_reminder",
+  "birthday_reminder",
+]);
+
 function formatTime(value: Date | string | null): string {
   if (!value) return "";
   const d = value instanceof Date ? value : new Date(value);
@@ -147,12 +157,18 @@ export function NotificationsPopover({
 
   const [popoverOpen, setPopoverOpen] = useState(false);
 
-  const { data: notifications = [] } = useQuery<Notification[]>({
+  const { data: rawNotifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications", userId],
     enabled: !!userId,
     staleTime: 0,
     refetchInterval: isRealtimeDisabled() ? (isTrainer ? 10_000 : 15_000) : false,
   });
+
+  // Напоминания удалены — фильтруем их из всего, что видит пользователь.
+  const notifications = useMemo(
+    () => rawNotifications.filter((n) => !REMINDER_TYPES.has(n.type)),
+    [rawNotifications],
+  );
 
   const { data: students = [] } = useQuery<User[]>({
     queryKey: ["/api/trainer/students"],
@@ -186,8 +202,8 @@ export function NotificationsPopover({
 
     const seen = seenIdsRef.current;
     const alertTypes = isTrainer
-      ? new Set(["booking_request", "booking_cancelled", "birthday_reminder", "consent_revoked", "trainer_training_reminder", "recurring_conflict"])
-      : new Set(["training_reminder", "booking_confirmed", "booking_cancelled", "broadcast"]);
+      ? new Set(["booking_request", "booking_cancelled", "consent_revoked", "recurring_conflict"])
+      : new Set(["booking_confirmed", "booking_cancelled", "broadcast"]);
 
     const fresh = notifications.filter(
       (n) => !seen.has(n.id) && alertTypes.has(n.type) && !n.isRead
