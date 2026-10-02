@@ -1,6 +1,0 @@
-{
-  "$schema": "https://layero.ru/schema/layero-v2.json",
-  "runtime": "node_web",
-  "port": 5000,
-  "preload": true
-}
