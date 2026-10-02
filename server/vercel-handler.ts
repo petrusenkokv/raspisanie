@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import { createApp } from "./app";
 
 const appPromise = createApp({
-  serveClient: false,
+  serveClient: true,
   websocket: false,
 }).then(({ app }) => app);
 
