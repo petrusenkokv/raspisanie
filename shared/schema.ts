@@ -571,6 +571,8 @@ export type StudentAccountSummary = {
   trainerPaymentRemaining: number | null;
   trainerPaymentTotal: number | null;
   exemptTrainerPayment: boolean;
+  /** Тренер снял требование членского взноса (ЧВ/БВ). */
+  exemptMembership: boolean;
   /** Ученик выбрал индивидуальные тренировки. */
   wantsIndividualTraining: boolean;
 };

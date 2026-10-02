@@ -44,6 +44,7 @@ type AccountSummaryResponse = {
   trainerPaymentRemaining: number | null;
   trainerPaymentTotal: number | null;
   exemptTrainerPayment?: boolean;
+  exemptMembership?: boolean;
   wantsIndividualTraining?: boolean;
   documents: DocWithAccepted[];
 };
@@ -171,6 +172,8 @@ export function StudentAccountSection({
       <PaymentInfoCard
         wantsIndividualTraining={data.wantsIndividualTraining === true}
         pendingApproval={pendingApproval}
+        exemptMembership={data.exemptMembership === true}
+        exemptTrainerPayment={data.exemptTrainerPayment === true}
       />
 
       {data.trainerPaymentTotal != null && (

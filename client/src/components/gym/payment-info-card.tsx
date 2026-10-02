@@ -41,6 +41,10 @@ type Props = {
   wantsIndividualTraining?: boolean;
   /** Регистрация ещё не одобрена тренером (пробная тренировка): показываем только разовый QR зала. */
   pendingApproval?: boolean;
+  /** Тренер снял требование членского взноса (ЧВ/БВ) — секция зала не показывается. */
+  exemptMembership?: boolean;
+  /** Тренер снял требование оплаты тренеру — секция тренера не показывается. */
+  exemptTrainerPayment?: boolean;
 };
 
 /** Привести путь к QR к веб-виду: client\public\qr.png → /qr.png */
@@ -69,6 +73,8 @@ function pickTrialQrs(
 export function PaymentInfoCard({
   wantsIndividualTraining = false,
   pendingApproval = false,
+  exemptMembership = false,
+  exemptTrainerPayment = false,
 }: Props) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
@@ -151,6 +157,12 @@ export function PaymentInfoCard({
     }
   };
 
+  // Каждую секцию «Оплаты» показываем только если соответствующее требование не снято тренером.
+  const showHall = !exemptMembership;
+  const showTrainer = !exemptTrainerPayment && !pendingApproval;
+
+  if (!showHall && !showTrainer) return null;
+
   return (
     <div className="rounded-lg border p-3 space-y-3 bg-emerald-50/70 dark:bg-emerald-950/20 min-w-0">
       <p className="text-sm font-semibold flex items-center gap-2">
@@ -159,6 +171,7 @@ export function PaymentInfoCard({
       </p>
 
       {/* ── Тренажёрный зал ── */}
+      {showHall && (
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           Тренажёрный зал (посещение)
@@ -240,6 +253,7 @@ export function PaymentInfoCard({
           </div>
         )}
       </div>
+      )}
 
       {pendingApproval && (
         <p className="text-[11px] text-gray-500">
@@ -249,7 +263,7 @@ export function PaymentInfoCard({
       )}
 
       {/* ── Тренер ── */}
-      {!pendingApproval && (
+      {showTrainer && (
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           Тренер (за работу)

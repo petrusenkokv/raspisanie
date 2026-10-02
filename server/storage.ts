@@ -902,6 +902,7 @@ export class MemStorage implements IStorage {
       trainerPaymentRemaining,
       trainerPaymentTotal,
       exemptTrainerPayment: refreshed.exemptTrainerPayment === true,
+      exemptMembership: refreshed.exemptMembership === true,
       wantsIndividualTraining: refreshed.wantsIndividualTraining === true,
     };
   }
