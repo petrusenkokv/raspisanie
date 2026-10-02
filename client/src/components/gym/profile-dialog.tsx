@@ -50,7 +50,7 @@ function RepresentativeEditBlock({
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wide">{title}</p>
-      <div className="grid grid-cols-2 gap-2 overflow-x-hidden">
+      <div className="grid grid-cols-2 gap-2 overflow-x-hidden [&>*]:min-w-0">
         <FormField control={form.control} name={nameField as string} render={({ field }) => (
           <FormItem>
             <FormLabel className="text-xs">ФИО</FormLabel>
@@ -214,7 +214,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[98vw] max-w-[95vw] mx-[1vw] sm:mx-0 sm:max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden pb-4 sm:pb-6">
+      <DialogContent className="w-[calc(100%-1rem)] max-w-[calc(100vw-1rem)] sm:w-full sm:max-w-md max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 pb-4 sm:pb-6 [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserCircle2 className="h-5 w-5 text-blue-600" />
@@ -371,8 +371,8 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             {/* ── EDIT MODE ── */}
             {editing && (
               <Form {...form}>
-                <form className="grid gap-3" onSubmit={form.handleSubmit(handleSubmit)}>
-                  <div className="grid grid-cols-2 gap-3 overflow-x-hidden">
+                <form className="grid gap-3 [&>*]:min-w-0" onSubmit={form.handleSubmit(handleSubmit)}>
+                  <div className="grid grid-cols-2 gap-3 overflow-x-hidden [&>*]:min-w-0">
                     <FormField control={form.control} name="firstName" render={({ field }) => (
                       <FormItem><FormLabel>Имя *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                     )} />

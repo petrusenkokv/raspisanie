@@ -139,7 +139,7 @@ export function StudentAccountSection({
     : "";
 
   return (
-    <div className="rounded-lg border p-3 space-y-3 bg-slate-50/80 dark:bg-slate-900/40 min-w-0">
+    <div className="rounded-lg border p-3 space-y-3 bg-slate-50/80 dark:bg-slate-900/40 min-w-0 w-full">
       <p className="text-sm font-semibold flex items-center gap-2">
         <Banknote className="h-4 w-4 text-blue-600" />
         {heading}

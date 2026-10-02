@@ -170,7 +170,7 @@ export function PaymentInfoCard({
               className="rounded-md border bg-white dark:bg-gray-900 px-3 py-2 space-y-1.5"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium truncate">{qr.name}</span>
+                <span className="text-sm font-medium truncate min-w-0 flex-1">{qr.name}</span>
                 <Button
                   variant="outline"
                   size="sm"
