@@ -214,7 +214,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-[95vw] sm:max-w-md mx-0 sm:mx-4 max-h-[90vh] overflow-y-auto overflow-x-hidden pb-4 sm:pb-6">
+      <DialogContent className="w-[98vw] max-w-[95vw] mx-[1vw] sm:mx-0 sm:max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden pb-4 sm:pb-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserCircle2 className="h-5 w-5 text-blue-600" />
