@@ -58,7 +58,7 @@ export async function apiRequest(
       headers: data ? { "Content-Type": "application/json" } : {},
       body: data ? JSON.stringify(data) : undefined,
       credentials: "include",
-      cache: "no-store",
+      cache: method === "GET" ? "default" : "no-store",
       signal: controller.signal,
     });
   } catch (err) {
@@ -82,7 +82,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
-      cache: "no-store",
+      cache: "default",
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

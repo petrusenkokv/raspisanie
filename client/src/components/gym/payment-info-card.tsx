@@ -152,7 +152,7 @@ export function PaymentInfoCard({
   };
 
   return (
-    <div className="rounded-lg border p-3 space-y-3 bg-emerald-50/70 dark:bg-emerald-950/20">
+    <div className="rounded-lg border p-3 space-y-3 bg-emerald-50/70 dark:bg-emerald-950/20 min-w-0">
       <p className="text-sm font-semibold flex items-center gap-2">
         <Banknote className="h-4 w-4 text-emerald-600" />
         Оплата
@@ -363,7 +363,7 @@ export function PaymentInfoCard({
       )}
 
       <Dialog open={!!qrDialog} onOpenChange={(open) => !open && setQrDialog(null)}>
-        <DialogContent className="w-[calc(100vw-2rem)] max-w-sm">
+        <DialogContent className="w-full max-w-sm mx-4 overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>{qrDialog?.name || "QR-код для оплаты"}</DialogTitle>
             <DialogDescription>Открой приложение банка, а потом сканируй.</DialogDescription>

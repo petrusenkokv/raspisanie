@@ -759,7 +759,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
 
       {/* Add student dialog */}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-md sm:w-full max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+        <DialogContent className="w-full max-w-md mx-4 max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Новый ученик</DialogTitle>
             <DialogDescription>Добавление нового ученика в список.</DialogDescription>
@@ -1207,7 +1207,7 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-lg sm:w-full max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+      <DialogContent className="w-full max-w-lg mx-4 max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
         <DialogHeader className="pr-8 text-left">
           <DialogTitle className="text-base sm:text-lg leading-snug">Карточка ученика</DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">Просмотр и редактирование данных ученика.</DialogDescription>

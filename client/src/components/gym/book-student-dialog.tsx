@@ -255,7 +255,7 @@ export function BookStudentDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           {isSelfTrainingMode ? (
             <DialogTitle className="flex items-center gap-2">

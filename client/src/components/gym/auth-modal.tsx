@@ -300,7 +300,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   return (
     <>
       <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); onOpenChange(o); }}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="text-center">
               {mode === "register" ? "Регистрация" : "Вход в систему"}

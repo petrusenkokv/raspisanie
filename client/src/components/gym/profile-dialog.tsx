@@ -50,7 +50,7 @@ function RepresentativeEditBlock({
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wide">{title}</p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 overflow-x-hidden">
         <FormField control={form.control} name={nameField as string} render={({ field }) => (
           <FormItem>
             <FormLabel className="text-xs">ФИО</FormLabel>
@@ -214,7 +214,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-full max-w-[95vw] sm:max-w-md mx-0 sm:mx-4 max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserCircle2 className="h-5 w-5 text-blue-600" />
@@ -230,13 +230,13 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         ) : (
           <>
             {/* Avatar + name */}
-            <div className="flex items-center gap-4 rounded-xl border bg-muted/40 p-4 min-w-0">
-              <Avatar className="h-14 w-14 text-lg flex-shrink-0">
+            <div className="flex items-center gap-3 sm:gap-4 rounded-xl border bg-muted/40 p-3 sm:p-4 min-w-0">
+              <Avatar className="h-12 w-12 sm:h-14 sm:w-14 text-base sm:text-lg flex-shrink-0">
                 <AvatarFallback className="bg-blue-100 text-blue-700 font-semibold">{initials}</AvatarFallback>
               </Avatar>
-              <div className="min-w-0">
-                <div className="font-semibold text-base leading-tight truncate">{fullName || user?.firstName}</div>
-                <div className="text-sm text-muted-foreground truncate">{user?.phone}</div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-sm sm:text-base leading-tight truncate">{fullName || user?.firstName}</div>
+                <div className="text-xs sm:text-sm text-muted-foreground truncate">{user?.phone}</div>
                 {viewAge !== null && (
                   <div className="text-xs text-muted-foreground mt-0.5">{viewAge} лет</div>
                 )}
@@ -247,8 +247,8 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             {!editing && (
               <div className="space-y-1">
                 {currentUser.role === "student" && (
-                  <div className="rounded-lg border p-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                  <div className="rounded-lg border p-3 flex items-start justify-between gap-2 sm:gap-3">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">Я родитель</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         Включите, чтобы добавить детей и записывать их через раздел «Мои дети».
@@ -278,7 +278,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                 {viewShowRepresentative && (
                   <>
                     <Separator />
-                    <div className="rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3 space-y-1">
+                    <div className="rounded-lg border bg-amber-50 dark:bg-amber-950/20 p-3 space-y-1 overflow-x-hidden">
                       <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1.5">
                         <Baby className="h-3.5 w-3.5" />
                         Законные представители
@@ -361,7 +361,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             {editing && (
               <Form {...form}>
                 <form className="grid gap-3" onSubmit={form.handleSubmit(handleSubmit)}>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3 overflow-x-hidden">
                     <FormField control={form.control} name="firstName" render={({ field }) => (
                       <FormItem><FormLabel>Имя *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                     )} />

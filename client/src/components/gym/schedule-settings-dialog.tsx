@@ -467,7 +467,7 @@ export function ScheduleSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-2xl sm:w-full max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+      <DialogContent className="w-full max-w-2xl mx-4 max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
         <DialogHeader className="pr-8 text-left">
           <DialogTitle className="text-base sm:text-lg leading-snug">Настройки расписания</DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">
