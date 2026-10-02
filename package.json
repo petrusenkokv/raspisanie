@@ -6,9 +6,8 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "dev:win": "cross-env NODE_ENV=development tsx server/index.ts",
-    "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist && npm run build:api && npm run copy:frontend",
+    "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist && npm run build:api",
     "build:api": "esbuild server/vercel-handler.ts --platform=node --packages=external --bundle --format=esm --outfile=dist/api.mjs",
-    "copy:frontend": "node scripts/copy-frontend.cjs",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "db:push": "drizzle-kit push",
