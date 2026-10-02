@@ -469,6 +469,7 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
   return <WeekGrid
     dates={getWeekDates(selectedDate)}
     getScheduleForDate={getScheduleForDate}
+    weeklyTemplate={weeklyTemplate}
     onBook={onBook}
     onCancel={onCancel}
     onConfirm={onConfirm}
@@ -497,6 +498,7 @@ const pickSlotForTime = (slots: TimeSlotWithBookings[], time: string): TimeSlotW
 interface WeekGridProps {
   dates: Date[];
   getScheduleForDate: (date: Date) => TimeSlotWithBookings[];
+  weeklyTemplate?: WeeklyTemplate;
   onBook: (id: string) => void;
   onCancel: (id: string, message?: string) => void;
   onConfirm: (id: string) => void;
@@ -505,7 +507,7 @@ interface WeekGridProps {
   familyStudentIds?: string[];
 }
 
-function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: WeekGridProps) {
+function WeekGrid({ dates, getScheduleForDate, weeklyTemplate, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: WeekGridProps) {
   const { currentUser, isTrainer } = useGymStore();
   const weekdayLabels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] as const;
   const weekGridCols = "grid-cols-[2.25rem_repeat(7,minmax(0,1fr))] sm:grid-cols-[3rem_repeat(7,minmax(0,1fr))] md:grid-cols-[3.75rem_repeat(7,minmax(0,1fr))]";
