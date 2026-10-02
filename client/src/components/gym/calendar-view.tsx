@@ -108,7 +108,12 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
 
   // ─── Day view ───────────────────────────────────────────────────────────────
   if (currentView === "day") {
-    const timeSlots = getScheduleForDate(selectedDate);
+    const dateStr = localDateStr(selectedDate);
+    const isWorkday = isWorkingDayByTemplate(dateStr, weeklyTemplate);
+    const rawSlots = getScheduleForDate(selectedDate);
+    const timeSlots = isWorkday
+      ? rawSlots
+      : rawSlots.filter((ts) => isSlotInWorkingHours(ts.time, dateStr, weeklyTemplate));
     const viewerIsTrainer = isTrainer();
     return (
       <div>
@@ -128,7 +133,9 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
             ))
           ) : (
             <Card className="p-4 text-center">
-              <p className="text-gray-500 dark:text-gray-400 text-sm">Расписание на этот день не создано</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">
+                {isWorkday ? "Расписание на этот день не создано" : "Выходной"}
+              </p>
             </Card>
           )}
         </div>
@@ -148,7 +155,9 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
             ))
           ) : (
             <Card className="col-span-full p-6 text-center">
-              <p className="text-gray-500 dark:text-gray-400">Расписание на этот день не создано</p>
+              <p className="text-gray-500 dark:text-gray-400">
+                {isWorkday ? "Расписание на этот день не создано" : "Выходной"}
+              </p>
             </Card>
           )}
         </div>
@@ -557,8 +566,13 @@ function WeekGrid({ dates, getScheduleForDate, onBook, onCancel, onConfirm, onLo
 
               {/* Slot cells */}
               {dates.map((date) => {
+                const dateStr = localDateStr(date);
+                const isWorkday = isWorkingDayByTemplate(dateStr, weeklyTemplate);
                 const slots = getScheduleForDate(date);
-                const ts = pickSlotForTime(slots, time);
+                const filteredSlots = isWorkday
+                  ? slots
+                  : slots.filter((s) => isSlotInWorkingHours(s.time, dateStr, weeklyTemplate));
+                const ts = pickSlotForTime(filteredSlots, time);
                 if (!ts) {
                   return (
                     <div
