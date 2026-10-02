@@ -214,7 +214,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-[95vw] sm:max-w-md mx-0 sm:mx-4 max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="w-full max-w-[95vw] sm:max-w-md mx-0 sm:mx-4 max-h-[90vh] overflow-y-auto overflow-x-hidden pb-4 sm:pb-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserCircle2 className="h-5 w-5 text-blue-600" />
@@ -354,6 +354,17 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                     <Pencil className="h-4 w-4 mr-2" />Редактировать
                   </Button>
                 </div>
+
+                {/* Close button — always visible at bottom for mobile */}
+                <div className="pt-2 pb-1 sm:pb-0">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    <X className="h-4 w-4 mr-2" />Закрыть
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -425,6 +436,18 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                     <Button type="submit" disabled={mutation.isPending}>
                       <Save className="h-4 w-4 mr-2" />
                       {mutation.isPending ? "Сохраняем..." : "Сохранить"}
+                    </Button>
+                  </div>
+
+                  {/* Close button in edit mode */}
+                  <div className="pt-2 pb-1 sm:pb-0">
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => { setEditing(false); form.reset(); }}
+                      disabled={mutation.isPending}
+                    >
+                      <X className="h-4 w-4 mr-2" />Закрыть
                     </Button>
                   </div>
                 </form>
