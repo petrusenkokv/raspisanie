@@ -17,13 +17,11 @@ import { ParentBookDialog } from "@/components/gym/parent-book-dialog";
 import { RecurringBookingsDialog } from "@/components/gym/recurring-bookings-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Loader2, MessageSquare } from "lucide-react";
 import { useGymStore, validateStoredUser, logoutFromServer, getTodayDate } from "@/store/gym-store";
 import { type User } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { Loader2, MessageSquare } from "lucide-react";
-import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { PullToRefresh } from "@/components/gym/pull-to-refresh";
@@ -62,15 +60,6 @@ export function GymSchedulePage() {
     isTrainer,
   } = useGymStore();
 
-  const {
-    status: pushStatus,
-    loading: pushLoading,
-    lastError: pushError,
-    unsupportedReason: pushUnsupportedReason,
-    subscribe: pushSubscribe,
-    unsubscribe: pushUnsubscribe,
-  } = usePushNotifications(currentUser?.id);
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   useWebSocket();
 
@@ -173,8 +162,6 @@ export function GymSchedulePage() {
       setUser(freshUserData.user);
       if (!(freshUserData.user as any).welcomeShown) {
         setWelcomeDialogOpen(true);
-      } else {
-        toast({ title: "Регистрация одобрена", description: "Теперь вы можете записываться на тренировки!" });
       }
     }
   }, [freshUserData]);
@@ -236,12 +223,10 @@ export function GymSchedulePage() {
     onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
       setBlockDayNoteDialogOpen(false);
-      toast({
-        title: vars.blocked ? "День закрыт" : "День открыт",
-        description: vars.blocked && data.cancelledCount > 0 ? `Отменено записей: ${data.cancelledCount}` : undefined,
-      });
     },
-    onError: (e: any) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+    onError: (e: any) => {
+      console.error("block day error", e);
+    }
   });
 
   const {
@@ -286,11 +271,10 @@ export function GymSchedulePage() {
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Заявка отправлена", description: "Ваша заявка на бронирование отправлена тренеру на подтверждение" });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
-    onError: (error: any) => {
-      toast({ variant: "destructive", title: "Ошибка бронирования", description: error.message || "Не удалось создать бронирование" });
+    onError: (e: any) => {
+      console.error("book error", e);
     }
   });
 
@@ -303,11 +287,10 @@ export function GymSchedulePage() {
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Бронирование отменено", description: "Запись успешно отменена" });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
-    onError: (error: any) => {
-      toast({ variant: "destructive", title: "Ошибка отмены", description: error.message || "Не удалось отменить бронирование" });
+    onError: (e: any) => {
+      console.error("cancel error", e);
     }
   });
 
@@ -317,11 +300,10 @@ export function GymSchedulePage() {
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Запись подтверждена", description: "Ученик уведомлён о подтверждении" });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
-    onError: () => {
-      toast({ variant: "destructive", title: "Ошибка", description: "Не удалось подтвердить запись" });
+    onError: (e: any) => {
+      console.error("confirm error", e);
     }
   });
 
@@ -340,11 +322,6 @@ export function GymSchedulePage() {
     if (!currentUser) { setAuthModalOpen(true); return; }
     if (canManageChildren) {
       if (isParentRole && !isAlsoStudent && parentChildren.length === 0) {
-        toast({
-          variant: "destructive",
-          title: "Добавьте ребёнка",
-          description: "Сначала добавьте ребёнка в разделе «Мои дети».",
-        });
         return;
       }
       const slot = schedule
@@ -361,11 +338,6 @@ export function GymSchedulePage() {
       return;
     }
     if (isPendingApproval) {
-      toast({
-        title: "Ожидайте одобрения",
-        description: "Запись станет доступна после того, как тренер одобрит вашу регистрацию.",
-        variant: "destructive",
-      });
       return;
     }
     bookMutation.mutate({ timeSlotId, studentId: currentUser.id });
@@ -378,11 +350,6 @@ export function GymSchedulePage() {
         ? currentUser
         : parentChildren.find((c) => c.id === studentId);
     if ((target as any)?.isPendingApproval) {
-      toast({
-        variant: "destructive",
-        title: "Ожидайте одобрения",
-        description: "Тренер ещё не одобрил карточку этого ученика.",
-      });
       return;
     }
     bookMutation.mutate(
@@ -440,12 +407,6 @@ export function GymSchedulePage() {
         isAuthenticated={isAuthenticated}
         isPendingApproval={isPendingApproval}
         currentUser={currentUser}
-        pushStatus={pushStatus}
-        pushLoading={pushLoading}
-        pushError={pushError}
-        pushUnsupportedReason={pushUnsupportedReason}
-        onPushSubscribe={pushSubscribe}
-        onPushUnsubscribe={pushUnsubscribe}
       />
 
       {/* Main content */}

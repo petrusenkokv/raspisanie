@@ -30,7 +30,6 @@ import {
 import { NotificationsPopover } from "@/components/gym/notifications-popover";
 import { cn } from "@/lib/utils";
 import type { User } from "@shared/schema";
-import type { PushStatus } from "@/hooks/use-push-notifications";
 
 const VIEW_LABELS: Record<ViewType, string> = {
   day: "День",
@@ -79,10 +78,6 @@ type HeaderToolbarProps = {
   isPendingApproval: boolean;
   isParent: boolean;
   currentUser: User | null;
-  pushStatus: PushStatus;
-  pushLoading: boolean;
-  pushError?: string | null;
-  pushUnsupportedReason?: string | null;
   onStudentsOpen: () => void;
   onSettingsOpen: () => void;
   onMyTrainingOpen: () => void;
@@ -93,8 +88,6 @@ type HeaderToolbarProps = {
   onLogin: () => void;
   onRegister: () => void;
   onLogout: () => void;
-  onPushSubscribe: () => void;
-  onPushUnsubscribe: () => void;
 };
 
 function HeaderToolbar({
@@ -103,10 +96,6 @@ function HeaderToolbar({
   isPendingApproval,
   isParent,
   currentUser,
-  pushStatus,
-  pushLoading,
-  pushError,
-  pushUnsupportedReason,
   onStudentsOpen,
   onSettingsOpen,
   onMyTrainingOpen,
@@ -117,8 +106,6 @@ function HeaderToolbar({
   onLogin,
   onRegister,
   onLogout,
-  onPushSubscribe,
-  onPushUnsubscribe,
 }: HeaderToolbarProps) {
   return (
     <>
@@ -170,12 +157,6 @@ function HeaderToolbar({
               <NotificationsPopover
                 userId={currentUser.id}
                 isTrainer={trainer}
-                pushStatus={pushStatus}
-                pushLoading={pushLoading}
-                pushError={pushError}
-                pushUnsupportedReason={pushUnsupportedReason}
-                onPushSubscribe={onPushSubscribe}
-                onPushUnsubscribe={onPushUnsubscribe}
               />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -246,12 +227,6 @@ export interface CalendarHeaderProps {
   isAuthenticated: boolean;
   isPendingApproval: boolean;
   currentUser: User | null;
-  pushStatus: PushStatus;
-  pushLoading: boolean;
-  pushError?: string | null;
-  pushUnsupportedReason?: string | null;
-  onPushSubscribe: () => void;
-  onPushUnsubscribe: () => void;
 }
 
 export function CalendarHeader({
@@ -269,12 +244,6 @@ export function CalendarHeader({
   isAuthenticated,
   isPendingApproval,
   currentUser,
-  pushStatus,
-  pushLoading,
-  pushError,
-  pushUnsupportedReason,
-  onPushSubscribe,
-  onPushUnsubscribe,
 }: CalendarHeaderProps) {
   const {
     currentView,
@@ -358,10 +327,6 @@ export function CalendarHeader({
     isPendingApproval,
     isParent,
     currentUser,
-    pushStatus,
-    pushLoading,
-    pushError,
-    pushUnsupportedReason,
     onStudentsOpen,
     onSettingsOpen,
     onMyTrainingOpen,
@@ -372,8 +337,6 @@ export function CalendarHeader({
     onLogin,
     onRegister,
     onLogout,
-    onPushSubscribe,
-    onPushUnsubscribe,
   };
 
   return (

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BellOff, Check, CheckCheck, Trash2, X, UserCheck, Loader2 } from "lucide-react";
-import type { PushStatus } from "@/hooks/use-push-notifications";
+import { Bell, Check, CheckCheck, Trash2, X, UserCheck, Loader2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,59 +9,12 @@ import {
 } from "@/components/ui/popover";
 import { apiRequest } from "@/lib/queryClient";
 import { isRealtimeDisabled } from "@/hooks/use-websocket";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { Notification, User } from "@shared/schema";
 
 interface Props {
   userId: string;
   isTrainer: boolean;
-  pushStatus?: PushStatus;
-  pushLoading?: boolean;
-  pushError?: string | null;
-  pushUnsupportedReason?: string | null;
-  onPushSubscribe?: () => void;
-  onPushUnsubscribe?: () => void;
-}
-
-function playChime() {
-  try {
-    const Ctx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const now = ctx.currentTime;
-    const tones = [880, 1320];
-    tones.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      const start = now + i * 0.15;
-      const stop = start + 0.18;
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(0.15, start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, stop);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(start);
-      osc.stop(stop + 0.05);
-    });
-    setTimeout(() => ctx.close().catch(() => {}), 800);
-  } catch {
-    /* ignore */
-  }
-}
-
-function showBrowserNotification(title: string, body: string, tag = "gym-app") {
-  try {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (window.Notification.permission !== "granted") return;
-    new window.Notification(title, { body, tag });
-  } catch {
-    /* ignore */
-  }
 }
 
 const TYPE_DOT: Record<string, string> = {
@@ -135,15 +87,8 @@ function groupOf(value: Date | string | null): Group {
 export function NotificationsPopover({
   userId,
   isTrainer,
-  pushStatus,
-  pushLoading,
-  pushError,
-  pushUnsupportedReason,
-  onPushSubscribe,
-  onPushUnsubscribe,
 }: Props) {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
   const seenIdsRef = useRef<Set<string> | null>(null);
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
 
@@ -184,15 +129,7 @@ export function NotificationsPopover({
     return map;
   }, [students]);
 
-  // Ask for browser-notifications permission once (trainer + students)
-  useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (window.Notification.permission === "default") {
-      window.Notification.requestPermission().catch(() => {});
-    }
-  }, []);
-
-  // Detect new alerts when list updates → chime + browser notification + toast
+  // Detect new alerts when list updates → refetch schedule only (no toast/push)
   useEffect(() => {
     // First load: prime the seen set without firing alerts
     if (seenIdsRef.current === null) {
@@ -212,23 +149,10 @@ export function NotificationsPopover({
     notifications.forEach((n) => seen.add(n.id));
 
     if (fresh.length > 0) {
-      playChime();
       void queryClient.refetchQueries({ queryKey: ["schedule"] });
       void queryClient.refetchQueries({ queryKey: ["/api/schedule/day"] });
-      const first = fresh[0];
-      const body =
-        fresh.length === 1
-          ? first.message
-          : `${first.message} (и ещё ${fresh.length - 1})`;
-
-      // One alert channel: toast when tab is open, OS notification when in background
-      if (document.hidden) {
-        showBrowserNotification(first.title, body, `gym-${first.type}`);
-      } else {
-        toast({ title: first.title, description: body });
-      }
     }
-  }, [notifications, isTrainer, toast, queryClient]);
+  }, [notifications, isTrainer, queryClient]);
 
   const sorted = useMemo(
     () =>
@@ -306,15 +230,10 @@ export function NotificationsPopover({
       return data;
     },
     onSuccess: () => {
-      toast({ title: "Запись подтверждена" });
       invalidateAll();
     },
     onError: (e: any) =>
-      toast({
-        title: "Ошибка",
-        description: e?.message,
-        variant: "destructive",
-      }),
+      console.error("confirm booking error", e),
   });
 
   const cancelBookingMutation = useMutation({
@@ -329,15 +248,10 @@ export function NotificationsPopover({
       return data;
     },
     onSuccess: () => {
-      toast({ title: "Запись отменена" });
       invalidateAll();
     },
     onError: (e: any) =>
-      toast({
-        title: "Ошибка",
-        description: e?.message,
-        variant: "destructive",
-      }),
+      console.error("cancel booking error", e),
   });
 
   const approveStudentMutation = useMutation({
@@ -348,12 +262,11 @@ export function NotificationsPopover({
       return data;
     },
     onSuccess: () => {
-      toast({ title: "Ученик одобрен" });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications", userId] });
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/students"] });
     },
     onError: (e: any) =>
-      toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
+      console.error("approve student error", e),
   });
 
   const isActing =
@@ -589,56 +502,6 @@ export function NotificationsPopover({
           </div>
         )}
 
-        {onPushSubscribe && onPushUnsubscribe && (
-          <div className="border-t px-4 py-3 bg-gray-50 dark:bg-gray-900/50">
-            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Push-уведомления
-            </p>
-            {pushStatus === "unsupported" ? (
-              <p className="text-xs text-amber-700 dark:text-amber-400 leading-snug">
-                {pushUnsupportedReason ??
-                  "Push недоступен в этом браузере. На Android — Chrome; на iPhone — только с экрана «Домой»."}
-              </p>
-            ) : (
-              <>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-snug">
-                  Звук при закрытом приложении. Android: разрешите уведомления в Chrome.
-                </p>
-                {pushStatus === "denied" ? (
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    Уведомления запрещены. Включите их в настройках сайта в браузере.
-                  </p>
-                ) : (
-                  <Button
-                    type="button"
-                    variant={pushStatus === "on" ? "secondary" : "outline"}
-                    size="sm"
-                    className={cn(
-                      "w-full h-9 whitespace-normal",
-                      pushStatus === "on" &&
-                        "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950/40 dark:text-green-300",
-                    )}
-                    disabled={pushLoading}
-                    onClick={pushStatus === "on" ? onPushUnsubscribe : onPushSubscribe}
-                    aria-pressed={pushStatus === "on"}
-                  >
-                    {pushLoading ? (
-                      <Loader2 className="h-4 w-4 mr-2 shrink-0 animate-spin" />
-                    ) : pushStatus === "on" ? (
-                      <Bell className="h-4 w-4 mr-2 shrink-0 text-green-600 dark:text-green-400" />
-                    ) : (
-                      <BellOff className="h-4 w-4 mr-2 shrink-0" />
-                    )}
-                    {pushStatus === "on" ? "Push включён — отключить" : "Включить push"}
-                  </Button>
-                )}
-                {pushError && (
-                  <p className="text-xs text-red-600 dark:text-red-400 mt-2 leading-snug">{pushError}</p>
-                )}
-              </>
-            )}
-          </div>
-        )}
       </PopoverContent>
     </Popover>
   );

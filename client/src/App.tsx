@@ -1,6 +1,5 @@
 import { Route, Switch } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { queryClient } from "@/lib/queryClient";
 import { GymSchedulePage } from "@/pages/gym-schedule";
@@ -14,7 +13,6 @@ export default function App() {
           <Route path="/" component={GymSchedulePage} />
           <Route component={NotFound} />
         </Switch>
-        <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
   );
