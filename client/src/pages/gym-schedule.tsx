@@ -112,17 +112,8 @@ export function GymSchedulePage() {
   }, [currentUser?.id, isAuthenticated, queryClient]);
 
   // Sync recurring bookings once per trainer session (not on every schedule read).
-  useEffect(() => {
-    if (!isTrainer || !currentUser?.id) return;
-    const key = `recurring-sync:${currentUser.id}`;
-    if (sessionStorage.getItem(key)) return;
-    sessionStorage.setItem(key, "1");
-    void apiRequest("POST", "/api/trainer/sync-recurring")
-      .then(() => queryClient.invalidateQueries({ queryKey: ["schedule"] }))
-      .catch(() => {
-        sessionStorage.removeItem(key);
-      });
-  }, [isTrainer, currentUser?.id, queryClient]);
+  // Disabled auto-sync on page load to avoid 60s timeout on Layero.
+  // Users can manually trigger sync via settings if needed.
 
   // Refresh approval status when tab regains focus (no background polling).
   const isParentRole = currentUser?.role === "parent";
