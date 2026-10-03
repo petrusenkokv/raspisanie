@@ -94,16 +94,21 @@ export function GymSchedulePage() {
   useEffect(() => {
     const today = getTodayDate();
     setSelectedDate(today);
+    // Invalidate schedule queries so they refetch with the correct date
+    queryClient.invalidateQueries({ queryKey: ["schedule"] });
 
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") return;
       const currentToday = getTodayDate();
       const current = useGymStore.getState().selectedDate;
-      if (currentToday.getTime() > current.getTime()) setSelectedDate(currentToday);
+      if (currentToday.getTime() > current.getTime()) {
+        setSelectedDate(currentToday);
+        queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [setSelectedDate]);
+  }, [setSelectedDate, queryClient]);
 
   // One refresh after login/logout (invalidation refetches active queries once).
   useEffect(() => {
