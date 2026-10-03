@@ -59,6 +59,13 @@ function minutesUntilSlotMoscow(date: string, time: string): number {
   return Math.round((ms - Date.now()) / 60_000);
 }
 
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function monthDayBookingLabel(booked: number, capacity: number): string {
   if (capacity <= 0) return "";
   if (booked === 0) return "нет записей";
@@ -93,14 +100,6 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
   });
   const holidays: Holiday[] = scheduleSettingsData?.holidays ?? [];
   const weeklyTemplate = scheduleSettingsData?.weeklyTemplate;
-
-  // Format date using LOCAL timezone (toISOString gives UTC which can shift the date)
-  const localDateStr = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  };
 
   const getScheduleForDate = (date: Date) => {
     return schedule.find((s) => s.date === localDateStr(date))?.timeSlots || [];
