@@ -92,13 +92,14 @@ export function GymSchedulePage() {
 
   // Always open on today; if PWA stayed open overnight, jump forward from a past day.
   useEffect(() => {
-    setSelectedDate(getTodayDate());
+    const today = getTodayDate();
+    setSelectedDate(today);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") return;
-      const today = getTodayDate();
+      const currentToday = getTodayDate();
       const current = useGymStore.getState().selectedDate;
-      if (current < today) setSelectedDate(today);
+      if (currentToday.getTime() > current.getTime()) setSelectedDate(currentToday);
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -254,7 +255,7 @@ export function GymSchedulePage() {
     retryDelay: (attempt) => Math.min(2_000 * 2 ** attempt, 8_000),
     queryFn: async () => {
       const response = await apiRequest("GET", scheduleRequest.url, undefined, {
-        timeoutMs: 20_000,
+        timeoutMs: 90_000,
       });
       return response.json();
     },

@@ -1293,11 +1293,11 @@ export class DbStorage implements IStorage {
     await db.delete(timeSlots).where(eq(timeSlots.id, dupId));
   }
 
-  private async ensureRecurringSlotsForDate(date: string, settings: TrainerSettings): Promise<void> {
+  private async ensureRecurringSlotsForDate(date: string, settings: TrainerSettings, rules?: RecurringBooking[]): Promise<void> {
     await this.ensureRecurringExceptionsSchema();
     const wd = isoWeekday(new Date(date + "T00:00:00"));
-    const rules = await db.select().from(recurringBookings);
-    for (const rule of rules) {
+    const recurringRules = rules ?? await db.select().from(recurringBookings);
+    for (const rule of recurringRules) {
       if (!rule.weekdays.includes(wd)) continue;
       if (date < rule.startDate) continue;
       if (rule.endDate && date > rule.endDate) continue;
@@ -1928,6 +1928,8 @@ export class DbStorage implements IStorage {
   private async getScheduleForDateRange(startDate: string, endDate: string, summary = false): Promise<DaySchedule[]> {
     const dates = eachDateInRange(startDate, endDate).map(localDateStr);
     const settings = await this.loadSettings();
+    // Load recurring rules once for the entire date range to avoid N queries
+    const allRecurringRules = await db.select().from(recurringBookings);
     const existingDates = await db
       .selectDistinct({ date: timeSlots.date })
       .from(timeSlots)
@@ -1938,7 +1940,7 @@ export class DbStorage implements IStorage {
       ),
     );
     for (const date of dates) {
-      await this.ensureRecurringSlotsForDate(date, settings);
+      await this.ensureRecurringSlotsForDate(date, settings, allRecurringRules);
       if (!existingDateSet.has(date)) {
         await this.generateTimeSlotsForDate(date, settings);
       }
