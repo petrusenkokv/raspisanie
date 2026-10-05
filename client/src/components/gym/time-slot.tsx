@@ -640,10 +640,14 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
               size="sm"
               className="w-full border-dashed text-blue-600 hover:text-blue-700 hover:bg-blue-50"
               onClick={() => {
+                console.log("[TimeSlot] Click on trainer book, timeSlot:", timeSlot.id, "bookings:", timeSlot.bookings?.length);
                 const hasIndividual = hasIndividualTrainingBookings(timeSlot.bookings);
+                console.log("[TimeSlot] hasIndividual:", hasIndividual);
                 if (hasIndividual && onTrainerBookIndividualWarning) {
+                  console.log("[TimeSlot] Opening individual warning");
                   onTrainerBookIndividualWarning(timeSlot.id);
                 } else {
+                  console.log("[TimeSlot] Opening normal book");
                   onTrainerBook?.(timeSlot.id);
                 }
               }}
