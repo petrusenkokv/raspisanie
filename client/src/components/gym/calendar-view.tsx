@@ -932,14 +932,10 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                 size="sm"
                 className="w-full border-dashed text-blue-600"
                 onClick={() => {
-                  console.log("[WeekCell] Click on trainer book, timeSlot:", timeSlot.id, "bookings:", timeSlot.bookings?.length);
                   const hasIndividual = hasIndividualTrainingBookings(timeSlot.bookings);
-                  console.log("[WeekCell] hasIndividual:", hasIndividual);
                   if (hasIndividual && onTrainerBookIndividualWarning) {
-                    console.log("[WeekCell] Opening individual warning");
                     onTrainerBookIndividualWarning(timeSlot.id);
                   } else {
-                    console.log("[WeekCell] Opening normal book");
                     onTrainerBook?.(timeSlot.id);
                   }
                   setOpen(false);

@@ -106,11 +106,6 @@ export function hasIndividualTrainingBookings(
     student?: { wantsIndividualTraining?: boolean | null };
   }>,
 ): boolean {
-  console.log("[hasIndividualTrainingBookings] bookings:", bookings?.map(b => ({
-    id: b.studentId,
-    status: b.status,
-    wantsIndividual: b.student?.wantsIndividualTraining,
-  })) ?? "null");
   return bookings.some(
     (b) =>
       b.status !== "cancelled" &&

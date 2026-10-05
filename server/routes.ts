@@ -1281,17 +1281,6 @@ export async function registerRoutes(
       const { date } = req.params;
       const schedule = await storage.getScheduleForDate(date);
       setScheduleCacheHeaders(req, res);
-      // DEBUG: log individual training flags
-      if (process.env.NODE_ENV !== "production") {
-        const days = Array.isArray(schedule) ? schedule : [schedule];
-        for (const day of days) {
-          for (const ts of day.timeSlots) {
-            if (ts.bookings.length > 0) {
-              console.log("[API /schedule/day] slot", ts.id, "date", ts.date, "time", ts.time, "bookings:", ts.bookings.map((b: any) => ({ studentId: b.studentId, wantsIndividual: b.student?.wantsIndividualTraining })));
-            }
-          }
-        }
-      }
       if (!req.session?.userId) {
         return res.json(sanitizeScheduleForPublic(schedule));
       }
