@@ -1008,6 +1008,7 @@ export class MemStorage implements IStorage {
         exemptMembership: student.exemptMembership ?? false,
         exemptTrainerPayment: student.exemptTrainerPayment ?? false,
         sickUntil: student.sickUntil ?? null,
+        wantsIndividualTraining: student.wantsIndividualTraining ?? false,
       },
       timeSlot
     };
@@ -1066,6 +1067,7 @@ export class MemStorage implements IStorage {
             exemptMembership: student.exemptMembership ?? false,
             exemptTrainerPayment: student.exemptTrainerPayment ?? false,
             sickUntil: student.sickUntil ?? null,
+            wantsIndividualTraining: student.wantsIndividualTraining ?? false,
           },
           timeSlot
         };

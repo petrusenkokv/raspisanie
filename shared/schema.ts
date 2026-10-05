@@ -638,6 +638,7 @@ export type ScheduleBookingStudent = Pick<
   | "exemptMembership"
   | "exemptTrainerPayment"
   | "sickUntil"
+  | "wantsIndividualTraining"
 >;
 
 export type ScheduleBooking = Booking & {

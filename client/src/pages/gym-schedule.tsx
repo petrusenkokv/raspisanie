@@ -15,6 +15,7 @@ import { ProfileDialog } from "@/components/gym/profile-dialog";
 import { ParentChildrenDialog } from "@/components/gym/parent-children-dialog";
 import { ParentBookDialog } from "@/components/gym/parent-book-dialog";
 import { RecurringBookingsDialog } from "@/components/gym/recurring-bookings-dialog";
+import { IndividualTrainingWarningDialog } from "@/components/gym/individual-training-warning-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Loader2, MessageSquare } from "lucide-react";
@@ -47,6 +48,8 @@ export function GymSchedulePage() {
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [parentBookSlotId, setParentBookSlotId] = useState<string | null>(null);
   const [parentBookedStudentIds, setParentBookedStudentIds] = useState<string[]>([]);
+  const [individualWarningOpen, setIndividualWarningOpen] = useState(false);
+  const [individualWarningSlotId, setIndividualWarningSlotId] = useState<string | null>(null);
   const {
     currentUser,
     isAuthenticated,
@@ -431,11 +434,15 @@ export function GymSchedulePage() {
             onCancel={handleCancel}
             onConfirm={(bookingId) => confirmMutation.mutate(bookingId)}
             onLoginRequest={(mode = "login") => { setAuthModalMode(mode); setAuthModalOpen(true); }}
-            onTrainerBook={(timeSlotId) => {
-              setSelectedTimeSlotId(timeSlotId);
-              setTrainerBookSelfMode(false);
-              setTrainerBookDialogOpen(true);
-            }}
+          onTrainerBook={(timeSlotId) => {
+            setSelectedTimeSlotId(timeSlotId);
+            setTrainerBookSelfMode(false);
+            setTrainerBookDialogOpen(true);
+          }}
+          onTrainerBookIndividualWarning={(timeSlotId) => {
+            setIndividualWarningSlotId(timeSlotId);
+            setIndividualWarningOpen(true);
+          }}
             familyStudentIds={familyStudentIds}
           />
         )}
@@ -469,6 +476,18 @@ export function GymSchedulePage() {
         }}
         preselectedTimeSlotId={selectedTimeSlotId}
         forceSelfMode={trainerBookSelfMode}
+      />
+      <IndividualTrainingWarningDialog
+        open={individualWarningOpen}
+        onOpenChange={setIndividualWarningOpen}
+        onConfirm={() => {
+          setIndividualWarningOpen(false);
+          if (individualWarningSlotId) {
+            setSelectedTimeSlotId(individualWarningSlotId);
+            setTrainerBookSelfMode(false);
+            setTrainerBookDialogOpen(true);
+          }
+        }}
       />
       <ChangePasswordDialog
         open={changePasswordOpen || !!(currentUser as any)?.mustChangePassword}

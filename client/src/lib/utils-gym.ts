@@ -97,3 +97,18 @@ export function formatDateDMY(dateStr: string | null | undefined): string {
   if (!year || !month || !day) return dateStr;
   return `${day}.${month}.${year}`;
 }
+
+/** Проверка: есть ли в слоте записи от студентов с индивидуальной тренировкой. */
+export function hasIndividualTrainingBookings(
+  bookings: Array<{
+    studentId: string;
+    status: string;
+    student?: { wantsIndividualTraining?: boolean | null };
+  }>,
+): boolean {
+  return bookings.some(
+    (b) =>
+      b.status !== "cancelled" &&
+      b.student?.wantsIndividualTraining === true,
+  );
+}

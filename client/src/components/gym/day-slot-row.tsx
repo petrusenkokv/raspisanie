@@ -42,6 +42,7 @@ type Props = {
   onConfirm: (bookingId: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (timeSlotId: string) => void;
+  onTrainerBookIndividualWarning?: (timeSlotId: string) => void;
 };
 
 export function DaySlotRow({
@@ -52,6 +53,7 @@ export function DaySlotRow({
   onConfirm,
   onLoginRequest,
   onTrainerBook,
+  onTrainerBookIndividualWarning,
 }: Props) {
   const [open, setOpen] = useState(false);
   const { currentUser, isTrainer } = useGymStore();
@@ -232,6 +234,10 @@ export function DaySlotRow({
             }}
             onTrainerBook={(id) => {
               onTrainerBook?.(id);
+              setOpen(false);
+            }}
+            onTrainerBookIndividualWarning={(id) => {
+              onTrainerBookIndividualWarning?.(id);
               setOpen(false);
             }}
           />

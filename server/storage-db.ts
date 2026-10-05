@@ -111,6 +111,7 @@ function bookingStudentFromUser(u: {
   exemptMembership: boolean | null;
   exemptTrainerPayment: boolean | null;
   sickUntil: string | null;
+  wantsIndividualTraining?: boolean | null;
 }): ScheduleBookingStudent {
   return {
     firstName: u.firstName,
@@ -120,6 +121,7 @@ function bookingStudentFromUser(u: {
     exemptMembership: u.exemptMembership ?? false,
     exemptTrainerPayment: u.exemptTrainerPayment ?? false,
     sickUntil: u.sickUntil ?? null,
+    wantsIndividualTraining: u.wantsIndividualTraining ?? false,
   };
 }
 

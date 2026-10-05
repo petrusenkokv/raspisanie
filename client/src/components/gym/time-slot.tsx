@@ -25,6 +25,7 @@ import {
   formatStudentShortName,
   shouldShowMembershipBadge,
   shouldShowTrainerPaymentBadge,
+  hasIndividualTrainingBookings,
 } from "@/lib/utils-gym";
 import {
   dayCardStudentBookedClasses,
@@ -51,11 +52,12 @@ interface TimeSlotProps {
   onConfirm: (bookingId: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (timeSlotId: string) => void;
+  onTrainerBookIndividualWarning?: (timeSlotId: string) => void;
   familyStudentIds?: string[];
   layout?: "card" | "embedded";
 }
 
-export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [], layout = "card" }: TimeSlotProps) {
+export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, onTrainerBookIndividualWarning, familyStudentIds = [], layout = "card" }: TimeSlotProps) {
   const isEmbedded = layout === "embedded";
   const { currentUser, isTrainer } = useGymStore();
   const { toast } = useToast();
@@ -637,7 +639,14 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
               variant="outline"
               size="sm"
               className="w-full border-dashed text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-              onClick={() => onTrainerBook?.(timeSlot.id)}
+              onClick={() => {
+                const hasIndividual = hasIndividualTrainingBookings(timeSlot.bookings);
+                if (hasIndividual && onTrainerBookIndividualWarning) {
+                  onTrainerBookIndividualWarning(timeSlot.id);
+                } else {
+                  onTrainerBook?.(timeSlot.id);
+                }
+              }}
               data-testid={`button-trainer-add-${timeSlot.id}`}
             >
               <UserPlus className="h-3 w-3 mr-1" />

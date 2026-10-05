@@ -21,6 +21,7 @@ import {
   isWorkingDayByTemplate,
   shouldShowMembershipBadge,
   shouldShowTrainerPaymentBadge,
+  hasIndividualTrainingBookings,
 } from "@/lib/utils-gym";
 import { BookingPaymentBadges, useStudentPaymentStatus } from "./booking-payment-badges";
 import { getMembershipGraceWarning, isMembershipBookingBlocked } from "@shared/membership-grace";
@@ -86,10 +87,11 @@ interface CalendarViewProps {
   onConfirm: (bookingId: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (timeSlotId: string) => void;
+  onTrainerBookIndividualWarning?: (timeSlotId: string) => void;
   familyStudentIds?: string[];
 }
 
-export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: CalendarViewProps) {
+export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, onTrainerBookIndividualWarning, familyStudentIds = [] }: CalendarViewProps) {
   const { currentView, selectedDate, schedule, getWeekDates, getMonthDates, isTrainer, currentUser } = useGymStore();
   const { data: scheduleSettingsData } = useQuery<{
     holidays?: Holiday[];
@@ -503,10 +505,11 @@ interface WeekGridProps {
   onConfirm: (id: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (id: string) => void;
+  onTrainerBookIndividualWarning?: (id: string) => void;
   familyStudentIds?: string[];
 }
 
-function WeekGrid({ dates, getScheduleForDate, weeklyTemplate, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: WeekGridProps) {
+function WeekGrid({ dates, getScheduleForDate, weeklyTemplate, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, onTrainerBookIndividualWarning, familyStudentIds = [] }: WeekGridProps) {
   const { currentUser, isTrainer } = useGymStore();
   const weekdayLabels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] as const;
   const weekGridCols = "grid-cols-[2.25rem_repeat(7,minmax(0,1fr))] sm:grid-cols-[3rem_repeat(7,minmax(0,1fr))] md:grid-cols-[3.75rem_repeat(7,minmax(0,1fr))]";
@@ -593,6 +596,7 @@ function WeekGrid({ dates, getScheduleForDate, weeklyTemplate, onBook, onCancel,
                     onConfirm={onConfirm}
                     onLoginRequest={onLoginRequest}
                     onTrainerBook={onTrainerBook}
+                    onTrainerBookIndividualWarning={onTrainerBookIndividualWarning}
                     familyStudentIds={familyStudentIds}
                   />
                 );
@@ -635,10 +639,11 @@ interface WeekCellProps {
   onConfirm: (id: string) => void;
   onLoginRequest: (mode?: "login" | "register") => void;
   onTrainerBook?: (id: string) => void;
+  onTrainerBookIndividualWarning?: (id: string) => void;
   familyStudentIds?: string[];
 }
 
-function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, familyStudentIds = [] }: WeekCellProps) {
+function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, onTrainerBookIndividualWarning, familyStudentIds = [] }: WeekCellProps) {
   const [open, setOpen] = useState(false);
   const [blockNoteDialogOpen, setBlockNoteDialogOpen] = useState(false);
   const { toast } = useToast();
@@ -926,7 +931,15 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                 variant="outline"
                 size="sm"
                 className="w-full border-dashed text-blue-600"
-                onClick={() => { onTrainerBook?.(timeSlot.id); setOpen(false); }}
+                onClick={() => {
+                  const hasIndividual = hasIndividualTrainingBookings(timeSlot.bookings);
+                  if (hasIndividual && onTrainerBookIndividualWarning) {
+                    onTrainerBookIndividualWarning(timeSlot.id);
+                  } else {
+                    onTrainerBook?.(timeSlot.id);
+                  }
+                  setOpen(false);
+                }}
               >
                 + Записать ученика
               </Button>
