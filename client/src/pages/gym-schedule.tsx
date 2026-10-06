@@ -61,6 +61,8 @@ export function GymSchedulePage() {
     setUser,
     setSelectedDate,
     isTrainer,
+    pendingIntroSlotId,
+    setPendingIntroSlotId,
   } = useGymStore();
 
   const queryClient = useQueryClient();
@@ -449,7 +451,7 @@ export function GymSchedulePage() {
       </div>
       </PullToRefresh>
 
-      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} initialMode={authModalMode} />
+      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} initialMode={authModalMode} pendingIntroSlotId={pendingIntroSlotId} />
 
       {/* Welcome dialog shown when trainer approves student while they wait on page */}
       <WelcomeDialog

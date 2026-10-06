@@ -525,6 +525,12 @@ export class DbStorage implements IStorage {
     } catch (err) {
       console.error("[storage] booking integrity repair:", err);
     }
+    // Ensure time_slots has is_introductory column
+    try {
+      await db.execute(drizzleSql`ALTER TABLE time_slots ADD COLUMN IF NOT EXISTS is_introductory boolean NOT NULL DEFAULT false`);
+    } catch (err) {
+      console.error("[storage] introductory column migration:", err);
+    }
   }
 
   // ======================== USERS ========================
@@ -1907,7 +1913,21 @@ export class DbStorage implements IStorage {
     return rows[0];
   }
 
+  private introductoryColumnReady = false;
+
+  private async ensureIntroductoryColumn(): Promise<void> {
+    if (this.introductoryColumnReady) return;
+    try {
+      await db.execute(drizzleSql`ALTER TABLE time_slots ADD COLUMN IF NOT EXISTS is_introductory boolean NOT NULL DEFAULT false`);
+      console.log("[storage] is_introductory column ensured");
+    } catch (err) {
+      console.error("[storage] ensureIntroductoryColumn error:", err);
+    }
+    this.introductoryColumnReady = true;
+  }
+
   async getScheduleForDate(date: string): Promise<DaySchedule> {
+    await this.ensureIntroductoryColumn();
     const settings = await this.loadSettings();
     await this.ensureRecurringSlotsForDate(date, settings);
     const existing = await db.select().from(timeSlots).where(eq(timeSlots.date, date)).limit(1);

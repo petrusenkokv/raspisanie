@@ -1375,9 +1375,10 @@ export async function registerRoutes(
         });
       }
 
-      // Block booking if student is pending trainer approval
+      // Block booking if student is pending trainer approval (except introductory slots)
       const bookingStudent = await storage.getUser(studentId);
-      if (bookingStudent?.isPendingApproval) {
+      const isIntroductorySlot = targetSlot.is_introductory === true;
+      if (bookingStudent?.isPendingApproval && !isIntroductorySlot) {
         return res.status(403).json({ message: "Ваша регистрация ещё не одобрена тренером. Ожидайте подтверждения." });
       }
 

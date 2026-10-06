@@ -126,7 +126,8 @@ export const timeSlots = pgTable("time_slots", {
   isManualCapacity: boolean("is_manual_capacity").notNull().default(false), // true => capacity manually overridden, ignore template/default
   isBlocked: boolean("is_blocked").notNull().default(false), // trainer can block slots
   blockReason: text("block_reason"), // null | 'manual' | 'template' | 'holiday'
-  blockNote: text("block_note"), // trainer comment visible in schedule (e.g. event name)
+  blockNote: text("block_note"), // null | 'manual' | 'template' | 'holiday'
+  isIntroductory: boolean("is_introductory").notNull().default(false), // true => introductory training (free, no approval needed)
   createdAt: timestamp("created_at").defaultNow(),
 });
 
