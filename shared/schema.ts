@@ -65,7 +65,8 @@ export const users = pgTable("users", {
   // Parent who also trains (books slots for themselves using the same account)
   isAlsoStudent: boolean("is_also_student").notNull().default(false),
   // true = ученик выбрал «Ознакомительная тренировка» при регистрации
-  wantsIntroductoryTraining: boolean("wants_introductory_training").notNull().default(false),
+  // TODO: раскомментировать после применения миграции migrations/add_wants_introductory_training.sql
+  // wantsIntroductoryTraining: boolean("wants_introductory_training").notNull().default(false),
   isVerified: boolean("is_verified").notNull().default(false),
   verificationCode: text("verification_code"),
   password: text("password").notNull().default(""),

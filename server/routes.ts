@@ -419,7 +419,7 @@ export async function registerRoutes(
         parentFullName,
         parentPhone,
         consentDocumentIds,
-        wantsIntroductoryTraining,
+        // wantsIntroductoryTraining,
       } = req.body;
 
       if (!firstName || !lastName) {
@@ -497,7 +497,7 @@ export async function registerRoutes(
         password: await hashPassword(String(password)),
         mustChangePassword: false,
         isPendingApproval: true, // new: all self-registrations need trainer approval
-        wantsIntroductoryTraining: !!wantsIntroductoryTraining,
+        // wantsIntroductoryTraining: !!wantsIntroductoryTraining,
       } as any);
 
       await recordConsents(user.id, Array.from(accepted));
@@ -539,7 +539,7 @@ export async function registerRoutes(
         birthDate,
         password,
         isAlsoStudent,
-        wantsIntroductoryTraining,
+        // wantsIntroductoryTraining,
         legalRepresentativeConfirmed,
         consentDocumentIds,
         children,
@@ -594,7 +594,7 @@ export async function registerRoutes(
         role: "parent",
         isParent: true,
         isAlsoStudent: alsoStudent,
-        wantsIntroductoryTraining: alsoStudent && !!wantsIntroductoryTraining,
+        // wantsIntroductoryTraining: alsoStudent && !!wantsIntroductoryTraining,
         isVerified: true,
         password: await hashPassword(String(password)),
         mustChangePassword: false,
@@ -1377,25 +1377,22 @@ export async function registerRoutes(
         });
       }
 
-      // ── Этап 2: одобрен, но ещё не посещал (только свободные слоты, QR 300₽) ──
-      const hasAttendedIntro = bookingStudent.wantsIntroductoryTraining
-        ? await storage.getBookingsByStudent(studentId).then((bks) =>
-            bks.some(
-              (b) => b.attendanceStatus === "attended" && b.timeSlot.isIntroductory === true,
-            ),
-          )
-        : false;
-
-      if (bookingStudent.wantsIntroductoryTraining && !hasAttendedIntro) {
-        // Проверяем, что слот свободный (нет других записей)
-        const existingBookings = await storage.getBookingsByTimeSlot(timeSlotId);
-        const activeBookings = existingBookings.filter((b) => b.status !== "cancelled");
-        if (activeBookings.length > 0) {
-          return res.status(403).json({
-            message: "Вы можете записаться только на свободное время",
-          });
-        }
-      }
+      // ── Этап 2: ознакомительная тренировка (только свободные слоты) ──
+      // TODO: раскомментировать после применения миграции
+      // const hasAttendedIntro = bookingStudent.wantsIntroductoryTraining
+      //   ? await storage.getBookingsByStudent(studentId).then((bks) =>
+      //       bks.some(
+      //         (b) => b.attendanceStatus === "attended" && b.timeSlot.isIntroductory === true,
+      //       ),
+      //     )
+      //   : false;
+      // if (bookingStudent.wantsIntroductoryTraining && !hasAttendedIntro) {
+      //   const existingBookings = await storage.getBookingsByTimeSlot(timeSlotId);
+      //   const activeBookings = existingBookings.filter((b) => b.status !== "cancelled");
+      //   if (activeBookings.length > 0) {
+      //     return res.status(403).json({ message: "Вы можете записаться только на свободное время" });
+      //   }
+      // }
 
       // Get the target time slot to know its date
       const targetSlot = await storage.getTimeSlotById(timeSlotId);
