@@ -55,9 +55,13 @@ interface TimeSlotProps {
   onTrainerBookIndividualWarning?: (timeSlotId: string) => void;
   familyStudentIds?: string[];
   layout?: "card" | "embedded";
+  /** true = ученик ожидает одобрения тренера */
+  isPendingApproval?: boolean;
+  /** true = ученик выбрал ознакомительную тренировку и ещё не посещал */
+  wantsIntroductoryTraining?: boolean;
 }
 
-export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, onTrainerBookIndividualWarning, familyStudentIds = [], layout = "card" }: TimeSlotProps) {
+export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest, onTrainerBook, onTrainerBookIndividualWarning, familyStudentIds = [], layout = "card", isPendingApproval = false, wantsIntroductoryTraining = false }: TimeSlotProps) {
   const isEmbedded = layout === "embedded";
   const { currentUser, isTrainer } = useGymStore();
   const { toast } = useToast();
@@ -681,6 +685,11 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                 Записать ещё
               </Button>
             ) : null
+          ) : isPendingApproval ? (
+            // Ожидает одобрения тренера — записаться нельзя
+            <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5 text-center">
+              Ожидает одобрения тренера
+            </div>
           ) : (
             !isFull && !individualSlotBusy && (
               <>
@@ -692,22 +701,29 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                     {membershipGraceWarning}
                   </p>
                 )}
-                <MembershipBlockedButton
-                  onClick={() => onBook(timeSlot.id)}
-                  className="h-8 px-4 text-xs sm:text-sm sm:h-9 sm:w-full sm:flex-1 ml-auto sm:ml-0 shrink-0"
-                  size="sm"
-                  membershipBlocked={blockedByMembership}
-                  membershipMessage={MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
-                  disabled={tooLateToBook}
-                  title={
-                    tooLateToBook
-                      ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.`
-                      : undefined
-                  }
-                  data-testid={`button-book-${timeSlot.id}`}
-                >
-                  {tooLateToBook ? "Запись закрыта" : "Записаться"}
-                </MembershipBlockedButton>
+                {/* Ознакомительная тренировка: слот занят → показываем подсказку */}
+                {wantsIntroductoryTraining && timeSlot.bookings.some((b) => b.status !== "cancelled") ? (
+                  <div className="text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded px-2 py-1.5 text-center">
+                    Вы можете записаться только на свободное время
+                  </div>
+                ) : (
+                  <MembershipBlockedButton
+                    onClick={() => onBook(timeSlot.id)}
+                    className="h-8 px-4 text-xs sm:text-sm sm:h-9 sm:w-full sm:flex-1 ml-auto sm:ml-0 shrink-0"
+                    size="sm"
+                    membershipBlocked={blockedByMembership}
+                    membershipMessage={MEMBERSHIP_BOOKING_BLOCK_MESSAGE}
+                    disabled={tooLateToBook}
+                    title={
+                      tooLateToBook
+                        ? `Запись закрыта менее чем за ${bookingDeadlineH} ч.`
+                        : undefined
+                    }
+                    data-testid={`button-book-${timeSlot.id}`}
+                  >
+                    {tooLateToBook ? "Запись закрыта" : "Записаться"}
+                  </MembershipBlockedButton>
+                )}
               </>
             ) ||
               (individualSlotBusy && (

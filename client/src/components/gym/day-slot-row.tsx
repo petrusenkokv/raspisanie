@@ -240,6 +240,8 @@ export function DaySlotRow({
               onTrainerBookIndividualWarning?.(id);
               setOpen(false);
             }}
+            isPendingApproval={!!currentUser?.isPendingApproval}
+            wantsIntroductoryTraining={!!(currentUser as any)?.wantsIntroductoryTraining}
           />
         </SheetContent>
       </Sheet>

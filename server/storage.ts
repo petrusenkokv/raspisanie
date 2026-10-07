@@ -562,6 +562,7 @@ export class MemStorage implements IStorage {
       role: insertUser.role || "student",
       isParent: (insertUser as any).isParent ?? false,
       isAlsoStudent: (insertUser as any).isAlsoStudent ?? false,
+      wantsIntroductoryTraining: (insertUser as any).wantsIntroductoryTraining ?? false,
       wantsIndividualTraining: (insertUser as any).wantsIndividualTraining ?? false,
       isVerified: insertUser.isVerified ?? false,
       verificationCode: null,

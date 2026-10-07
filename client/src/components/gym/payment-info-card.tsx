@@ -43,6 +43,8 @@ type Props = {
   exemptMembership?: boolean;
   /** Тренер снял требование оплаты тренеру — секция тренера не показывается. */
   exemptTrainerPayment?: boolean;
+  /** true = ученик в фазе ознакомительной тренировки (только QR 300₽, без телефона). */
+  introTrainingOnly?: boolean;
 };
 
 /** Привести путь к QR к веб-виду: client\public\qr.png → /qr.png */
@@ -62,6 +64,7 @@ export function PaymentInfoCard({
   wantsIndividualTraining = false,
   exemptMembership = false,
   exemptTrainerPayment = false,
+  introTrainingOnly = false,
 }: Props) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
@@ -247,7 +250,8 @@ export function PaymentInfoCard({
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           Тренер (за работу)
         </p>
-        {phone && (
+        {/* Скрыть номер телефона, если ученик в фазе ознакомительной тренировки */}
+        {!introTrainingOnly && phone && (
           <div className="flex items-center gap-2 flex-wrap rounded-md border bg-white dark:bg-gray-900 px-3 py-2 min-w-0">
             <Phone className="h-4 w-4 shrink-0 text-emerald-600" />
             <span className="text-sm font-medium truncate flex-1" data-testid="payment-phone">
@@ -266,6 +270,8 @@ export function PaymentInfoCard({
           </div>
         )}
 
+          {/* Скрыть конструктор абонемента, если ученик в фазе ознакомительной тренировки */}
+          {!introTrainingOnly && (
           <div className="rounded-md border bg-white dark:bg-gray-900 px-3 py-2 space-y-2">
             <div className="flex items-center gap-2">
               <Dumbbell className="h-4 w-4 shrink-0 text-emerald-600" />
@@ -352,6 +358,7 @@ export function PaymentInfoCard({
               </p>
             )}
           </div>
+          )}
         </div>
       )}
 

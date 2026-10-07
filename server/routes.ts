@@ -419,6 +419,7 @@ export async function registerRoutes(
         parentFullName,
         parentPhone,
         consentDocumentIds,
+        wantsIntroductoryTraining,
       } = req.body;
 
       if (!firstName || !lastName) {
@@ -495,7 +496,8 @@ export async function registerRoutes(
         isVerified: true,
         password: await hashPassword(String(password)),
         mustChangePassword: false,
-        isPendingApproval: false,
+        isPendingApproval: true, // new: all self-registrations need trainer approval
+        wantsIntroductoryTraining: !!wantsIntroductoryTraining,
       } as any);
 
       await recordConsents(user.id, Array.from(accepted));
@@ -537,6 +539,7 @@ export async function registerRoutes(
         birthDate,
         password,
         isAlsoStudent,
+        wantsIntroductoryTraining,
         legalRepresentativeConfirmed,
         consentDocumentIds,
         children,
@@ -591,6 +594,7 @@ export async function registerRoutes(
         role: "parent",
         isParent: true,
         isAlsoStudent: alsoStudent,
+        wantsIntroductoryTraining: alsoStudent && !!wantsIntroductoryTraining,
         isVerified: true,
         password: await hashPassword(String(password)),
         mustChangePassword: false,
@@ -1089,6 +1093,14 @@ export async function registerRoutes(
   app.patch("/api/users/me", requireAuth, async (req, res) => {
     try {
       const userId = sessionUserId(req);
+      const me = await storage.getUser(userId);
+      if (!me) return res.status(404).json({ message: "Пользователь не найден" });
+      // Блокируем редактирование профиля, пока ученик ожидает одобрения
+      if (me.isPendingApproval) {
+        return res.status(403).json({
+          message: "Редактирование профиля доступно после одобрения тренером",
+        });
+      }
       const { userId: _ignored, ...payload } = req.body ?? {};
       const parsed = updateStudentProfileSchema.safeParse(payload);
       if (!parsed.success) {
@@ -1352,6 +1364,39 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Не указан ученик" });
       }
 
+      // Получаем данные ученика для проверки прав
+      const bookingStudent = await storage.getUser(studentId);
+      if (!bookingStudent) {
+        return res.status(404).json({ message: "Ученик не найден" });
+      }
+
+      // ── Этап 1: ожидает одобрения тренера ──
+      if (bookingStudent.isPendingApproval) {
+        return res.status(403).json({
+          message: "Вы зарегистрированы, ждите одобрения тренера. После одобрения сможете записаться на ознакомительную тренировку и оплатить посещение зала. Тренеру оплаты нет — бесплатно.",
+        });
+      }
+
+      // ── Этап 2: одобрен, но ещё не посещал (только свободные слоты, QR 300₽) ──
+      const hasAttendedIntro = bookingStudent.wantsIntroductoryTraining
+        ? await storage.getBookingsByStudent(studentId).then((bks) =>
+            bks.some(
+              (b) => b.attendanceStatus === "attended" && b.timeSlot.isIntroductory === true,
+            ),
+          )
+        : false;
+
+      if (bookingStudent.wantsIntroductoryTraining && !hasAttendedIntro) {
+        // Проверяем, что слот свободный (нет других записей)
+        const existingBookings = await storage.getBookingsByTimeSlot(timeSlotId);
+        const activeBookings = existingBookings.filter((b) => b.status !== "cancelled");
+        if (activeBookings.length > 0) {
+          return res.status(403).json({
+            message: "Вы можете записаться только на свободное время",
+          });
+        }
+      }
+
       // Get the target time slot to know its date
       const targetSlot = await storage.getTimeSlotById(timeSlotId);
       if (!targetSlot) {
@@ -1371,7 +1416,6 @@ export async function registerRoutes(
       }
 
       // Block booking while student is on sick leave
-      const bookingStudent = await storage.getUser(studentId);
       if (bookingStudent?.sickUntil && targetSlot.date <= bookingStudent.sickUntil) {
         return res.status(403).json({
           message: `Вы на больничном до ${bookingStudent.sickUntil}. Запись будет доступна после выздоровления.`,
@@ -1394,16 +1438,16 @@ export async function registerRoutes(
 
       // Check if time slot is available (вместимость из слота; больной ученик считается,
       // поэтому его место может занять только тренер — см. /api/trainer/book-student)
-      const existingBookings = await storage.getBookingsByTimeSlot(timeSlotId);
+      // existingBookings already loaded above for intro-training check
       const confirmedBookings = existingBookings.filter(b => b.status === "confirmed");
-      
+
       if (confirmedBookings.length >= targetSlot.maxCapacity) {
         return res.status(400).json({ message: "Все места в этом слоте заняты" });
       }
 
       // Индивидуальная тренировка — запись только в свободный слот (без других записей)
       if (
-        bookingStudent?.wantsIndividualTraining &&
+        bookingStudent.wantsIndividualTraining &&
         existingBookings.some((b) => b.status !== "cancelled")
       ) {
         return res.status(400).json({

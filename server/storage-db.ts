@@ -724,6 +724,7 @@ export class DbStorage implements IStorage {
       role: insertUser.role || "student",
       isParent: (insertUser as any).isParent ?? false,
       isAlsoStudent: (insertUser as any).isAlsoStudent ?? false,
+      wantsIntroductoryTraining: (insertUser as any).wantsIntroductoryTraining ?? false,
       isVerified: insertUser.isVerified ?? false,
       verificationCode: null,
       password: insertUser.password ?? "",

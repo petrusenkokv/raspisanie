@@ -52,11 +52,14 @@ type AccountSummaryResponse = {
 interface Props {
   userId: string;
   heading?: string;
+  /** true = ученик в фазе ознакомительной тренировки (только QR 300₽). */
+  introTrainingOnly?: boolean;
 }
 
 export function StudentAccountSection({
   userId,
   heading = "Стоимость и согласия",
+  introTrainingOnly = false,
 }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -170,6 +173,7 @@ export function StudentAccountSection({
         wantsIndividualTraining={data.wantsIndividualTraining === true}
         exemptMembership={data.exemptMembership === true}
         exemptTrainerPayment={data.exemptTrainerPayment === true}
+        introTrainingOnly={introTrainingOnly}
       />
 
       {data.trainerPaymentTotal != null && (

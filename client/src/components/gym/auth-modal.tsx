@@ -42,6 +42,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   // Register state
   const [registerSelf, setRegisterSelf] = useState(true);
   const [registerChild, setRegisterChild] = useState(false);
+  const [wantsIntroductoryTraining, setWantsIntroductoryTraining] = useState(false);
   const [parentFirstName, setParentFirstName] = useState("");
   const [parentLastName, setParentLastName] = useState("");
   const [parentMiddleName, setParentMiddleName] = useState("");
@@ -89,6 +90,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
     setPassword("");
     setRegisterSelf(true);
     setRegisterChild(false);
+    setWantsIntroductoryTraining(false);
     setParentFirstName("");
     setParentLastName("");
     setParentMiddleName("");
@@ -217,6 +219,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
           parentFullName: null,
           parentPhone: null,
           consentDocumentIds: consentIds,
+          wantsIntroductoryTraining: registerSelf && wantsIntroductoryTraining,
         });
         const data = await parseJsonResponse<{ user: unknown }>(response);
         setUser(data.user as any);
@@ -263,6 +266,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
           middleName: parentMiddleName || null,
           birthDate: registerSelf ? selfBirthDate : null,
           isAlsoStudent: registerSelf,
+          wantsIntroductoryTraining: registerSelf && wantsIntroductoryTraining,
           legalRepresentativeConfirmed,
           password,
           consentDocumentIds: consentIds,
@@ -311,7 +315,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
           </DialogHeader>
 
           <div className="space-y-4 mt-2">
-            {/* ── WELCOME (after self-registration) ── */}
+            {/* ── WELCOME (after self-registration / parent registration) ── */}
             {mode === "welcome" && (
               <div className="space-y-4">
                 <div className="flex flex-col items-center text-center gap-2 py-2">
@@ -320,7 +324,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                   </div>
                   <h3 className="font-bold text-lg text-gray-900 dark:text-white">Регистрация завершена!</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Ваша заявка отправлена тренеру. Как только он одобрит вашу регистрацию — вы сможете записываться на тренировки.
+                    Вы зарегистрированы, ждите одобрения тренера. После одобрения сможете записаться на ознакомительную тренировку и оплатить посещение зала. Тренеру оплаты нет — бесплатно.
                   </p>
                 </div>
                 <Button className="w-full" onClick={() => { onOpenChange(false); resetForm(); }}>
@@ -479,6 +483,23 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                     <p className="text-xs text-amber-700 dark:text-amber-400">
                       До 14 лет — только через «Записать ребёнка».
                     </p>
+                  )}
+                  {/* Ознакомительная тренировка — только если выбрана хотя бы одна основная галочка */}
+                  {(registerSelf || registerChild) && (
+                    <label className="flex items-start gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={wantsIntroductoryTraining}
+                        onCheckedChange={(v) => setWantsIntroductoryTraining(!!v)}
+                        disabled={loading}
+                        data-testid="checkbox-introductory-training"
+                      />
+                      <span>
+                        Ознакомительная тренировка
+                        <span className="block text-xs text-muted-foreground mt-0.5">
+                          Автоматическая запись на свободный слот тренировки
+                        </span>
+                      </span>
+                    </label>
                   )}
                 </div>
 

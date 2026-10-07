@@ -319,6 +319,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                           ? "Мои тренировки: цена и согласия"
                           : "Стоимость и согласия"
                       }
+                      introTrainingOnly={!!(user as any)?.wantsIntroductoryTraining && !user.isPendingApproval}
                     />
                   </>
                 )}

@@ -152,6 +152,8 @@ export function CalendarView({ onBook, onCancel, onConfirm, onLoginRequest, onTr
                 onConfirm={onConfirm}
                 onLoginRequest={onLoginRequest}
                 onTrainerBook={onTrainerBook}
+                isPendingApproval={!!currentUser?.isPendingApproval}
+                wantsIntroductoryTraining={!!(currentUser as any)?.wantsIntroductoryTraining}
               />
             ))
           ) : (
