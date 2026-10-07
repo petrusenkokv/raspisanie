@@ -379,7 +379,6 @@ export function GymSchedulePage() {
         onRegister={() => { setAuthModalMode("register"); setAuthModalOpen(true); }}
         onLogout={handleLogout}
         isAuthenticated={isAuthenticated}
-        isPendingApproval={isPendingApproval}
         currentUser={currentUser}
       />
 

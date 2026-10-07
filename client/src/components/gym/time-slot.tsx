@@ -720,13 +720,6 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
         </div>
       )}
 
-      {!isBlocked && currentUser && !isTrainer() && (currentUser as any).isPendingApproval && (
-        <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1 sm:px-2 sm:py-1.5" onClick={(e) => e.stopPropagation()}>
-          <Clock className="h-3.5 w-3.5 flex-shrink-0" />
-          Ожидает одобрения тренера
-        </div>
-      )}
-
       {isBlocked && isTrainer() && (
         <Button
           variant="outline"
