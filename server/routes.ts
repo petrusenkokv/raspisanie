@@ -1371,6 +1371,7 @@ export async function registerRoutes(
       }
 
       // Block booking while student is on sick leave
+      const bookingStudent = await storage.getUser(studentId);
       if (bookingStudent?.sickUntil && targetSlot.date <= bookingStudent.sickUntil) {
         return res.status(403).json({
           message: `Вы на больничном до ${bookingStudent.sickUntil}. Запись будет доступна после выздоровления.`,
