@@ -8,7 +8,7 @@ const LEGEND_ITEMS = [
     bgClass: "bg-green-50 ring-1 ring-green-200 dark:bg-green-900/30 dark:ring-green-800",
   },
   {
-    label: "Мало мест",
+    label: "Есть места",
     icon: Users,
     iconClass: "text-amber-700 dark:text-amber-400",
     bgClass: "bg-amber-50 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:ring-amber-700",

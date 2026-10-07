@@ -780,7 +780,7 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
         : hintLevel === "guest-empty" || hintLevel === "empty"
           ? "Записаться"
           : hintLevel === "partial"
-            ? "Мало мест"
+            ? "Есть места"
             : "Занято";
 
   const cellContent = (

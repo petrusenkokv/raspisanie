@@ -183,7 +183,7 @@ export function monthDayStudentHint(
       };
     case "partial":
       return {
-        shortLabel: individualMode ? "Есть места" : "Мало мест",
+        shortLabel: "Есть места",
         labelClass: "text-amber-800 dark:text-amber-300",
         timeClass: "text-amber-900 dark:text-amber-200",
       };
