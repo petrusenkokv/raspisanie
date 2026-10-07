@@ -326,8 +326,8 @@ async function createChildUserForParent(
       legalRepresentativeConfirmed,
       // If old card was archived, bring it back to active list.
       isActive: true,
-      // New (or repeated) child registration always requires trainer approval.
-      isPendingApproval: true,
+      // New (or repeated) child registration.
+      isPendingApproval: false,
     } as any);
     await storage.addParentChild({ parentId: parent.id, childId: existing.id });
     storage.getTrainer().then(async (trainer) => {
@@ -361,7 +361,7 @@ async function createChildUserForParent(
     isVerified: true,
     password: await hashPassword(randomUUID()),
     mustChangePassword: false,
-    isPendingApproval: true,
+    isPendingApproval: false,
     isAlsoStudent: false,
   } as any);
   await storage.addParentChild({ parentId: parent.id, childId: childUser.id });
@@ -495,7 +495,7 @@ export async function registerRoutes(
         isVerified: true,
         password: await hashPassword(String(password)),
         mustChangePassword: false,
-        isPendingApproval: true,
+        isPendingApproval: false,
       } as any);
 
       await recordConsents(user.id, Array.from(accepted));
@@ -1090,11 +1090,6 @@ export async function registerRoutes(
     try {
       const userId = sessionUserId(req);
       const { userId: _ignored, ...payload } = req.body ?? {};
-      // Block profile editing for pending students
-      const currentUserRecord = await storage.getUser(userId);
-      if (currentUserRecord?.isPendingApproval) {
-        return res.status(403).json({ message: "Редактирование профиля доступно только после одобрения тренером." });
-      }
       const parsed = updateStudentProfileSchema.safeParse(payload);
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.issues[0]?.message || "Некорректные данные" });
@@ -1373,13 +1368,6 @@ export async function registerRoutes(
         return res.status(400).json({
           message: `Вы уже записаны на ${alreadyBooked.timeSlot.time}. На один день можно записаться только один раз.`
         });
-      }
-
-      // Block booking if student is pending trainer approval (except introductory slots)
-      const bookingStudent = await storage.getUser(studentId);
-      const isIntroductorySlot = targetSlot.is_introductory === true;
-      if (bookingStudent?.isPendingApproval && !isIntroductorySlot) {
-        return res.status(403).json({ message: "Ваша регистрация ещё не одобрена тренером. Ожидайте подтверждения." });
       }
 
       // Block booking while student is on sick leave
@@ -1837,8 +1825,6 @@ export async function registerRoutes(
       const trainerId = sessionUserId(req);
       await storage.markNewStudentNotificationsAsRead(trainerId, id);
       if (wasPending) {
-        // Одобрение регистрации = подтверждение оплаты пробного занятия (отметка «Я оплатил зал»).
-        await storage.confirmPaymentReports(id, "hall");
         await storage.createNotification({
           userId: user.id,
           type: "registration_approved",

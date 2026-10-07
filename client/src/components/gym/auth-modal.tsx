@@ -22,14 +22,13 @@ import { BirthDateFields } from "./birth-date-fields";
 interface AuthModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialMode?: "login" | "register";
-  pendingIntroSlotId?: string | null;
+  initialMode?: "login" | "register" | "welcome";
 }
 
-export function AuthModal({ open, onOpenChange, initialMode = "login", pendingIntroSlotId }: AuthModalProps) {
+export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { setUser, setCurrentView, setSelectedDate, setPendingIntroSlotId } = useGymStore();
+  const { setUser, setCurrentView, setSelectedDate } = useGymStore();
 
   const resetCalendarToToday = () => {
     setCurrentView("day");
@@ -174,31 +173,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login", pendingIn
     }
   };
 
-  /** Автоматическая запись на ознакомительную тренировку после регистрации */
-  const _bookIntroSlot = async (slotId: string, user: any) => {
-    try {
-      const response = await apiRequest("POST", "/api/bookings", {
-        timeSlotId: slotId,
-        notes: "Ознакомительная тренировка",
-      });
-      if (response.ok) {
-        toast({
-          title: "Вы записаны на ознакомительную тренировку",
-          description: "Тренер подтвердит вашу запись. Ожидайте.",
-        });
-        await queryClient.invalidateQueries({ queryKey: ["/api/bookings/my"] });
-        return;
-      }
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Ошибка записи",
-        description: error?.message || "Не удалось записаться на тренировку",
-      });
-    }
-    setMode("welcome");
-  };
-
   const handleRegister = async () => {
     if (!registerSelf && !registerChild) {
       toast({ variant: "destructive", title: "Выберите вариант регистрации" });
@@ -246,13 +220,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login", pendingIn
         });
         const data = await parseJsonResponse<{ user: unknown }>(response);
         setUser(data.user as any);
-        // Автоматическая запись на ознакомительную тренировку
-        if (pendingIntroSlotId) {
-          await _bookIntroSlot(pendingIntroSlotId, data.user as any);
-          setPendingIntroSlotId(null);
-        } else {
-          setMode("welcome");
-        }
+        setMode("welcome");
         return;
       }
 
@@ -307,20 +275,12 @@ export function AuthModal({ open, onOpenChange, initialMode = "login", pendingIn
         });
         const data = await parseJsonResponse<{ user: any }>(response);
         setUser(data.user);
-        // Автоматическая запись на ознакомительную тренировку
-        if (pendingIntroSlotId && registerSelf) {
-          await _bookIntroSlot(pendingIntroSlotId, data.user);
-          setPendingIntroSlotId(null);
-        } else if (registerSelf && data.user?.isPendingApproval) {
-          setMode("welcome");
-        } else {
-          toast({
-            title: "Регистрация завершена",
-            description: "Дети добавлены. После одобрения тренером можно записывать на тренировки.",
-          });
-          onOpenChange(false);
-          resetForm();
-        }
+        toast({
+          title: "Регистрация завершена",
+          description: "Теперь вы можете записываться на тренировки.",
+        });
+        onOpenChange(false);
+        resetForm();
       }
     } catch (error: any) {
       toast({

@@ -121,14 +121,6 @@ export function NotificationsPopover({
     staleTime: 30_000,
   });
 
-  const pendingByStudentId = useMemo(() => {
-    const map = new Map<string, boolean>();
-    for (const student of students) {
-      map.set(student.id, student.isPendingApproval === true);
-    }
-    return map;
-  }, [students]);
-
   // Detect new alerts when list updates → refetch schedule only (no toast/push)
   useEffect(() => {
     // First load: prime the seen set without firing alerts
@@ -358,20 +350,8 @@ export function NotificationsPopover({
                       !n.isRead &&
                       !processedIds.has(n.id);
 
-                    const studentPendingKnown =
-                      !!n.relatedUserId &&
-                      students.length > 0 &&
-                      pendingByStudentId.has(n.relatedUserId);
-
-                    const studentStillPending =
-                      studentPendingKnown && pendingByStudentId.get(n.relatedUserId!) === true;
-
-                    const showApprove =
-                      showNewStudentNotice &&
-                      (!studentPendingKnown || studentStillPending);
-
-                    const showAlreadyApproved =
-                      showNewStudentNotice && studentPendingKnown && !studentStillPending;
+                    const showApprove = false;
+                    const showAlreadyApproved = showNewStudentNotice;
                     return (
                       <li
                         key={n.id}

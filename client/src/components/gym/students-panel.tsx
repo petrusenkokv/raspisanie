@@ -551,7 +551,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
 
   const getStudentFlags = (student: User & { pendingDocumentCount?: number }) => {
     const isInactive = (student as any).isActive === false;
-    const isPending = (student as any).isPendingApproval === true;
     const hasMembership = (student as any).hasMembership as boolean | undefined;
     const hasTrainerPayment = (student as any).hasTrainerPayment as boolean | undefined;
     const exemptMembership = (student as any).exemptMembership === true;
@@ -560,7 +559,6 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
     const needsTrainer = !exemptTrainerPayment && hasTrainerPayment === false;
     const hasDebt =
       !isInactive &&
-      !isPending &&
       hasMembership !== undefined &&
       (needsCv || needsTrainer);
     const debtKind: StudentRowFlags["debtKind"] = !hasDebt
@@ -570,7 +568,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
         : needsCv
           ? "cv"
           : "trainer";
-    return { isInactive, isPending, hasDebt, needsCv, needsTrainer, debtKind };
+    return { isInactive, hasDebt, needsCv, needsTrainer, debtKind };
   };
 
   const visibleStudents = useMemo(() => {
@@ -1194,8 +1192,6 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
     }
   };
 
-  const isPendingApproval = student?.isPendingApproval === true;
-
   const age = calculateAge(editing ? (form.birthDate || null) : (student?.birthDate ?? null));
   const linkedParents = student?.linkedParents ?? [];
   const linkedPhones = new Set(linkedParents.map((p) => p.phone.replace(/\D/g, "")));
@@ -1218,34 +1214,6 @@ function StudentCardDialog({ studentId, open, onOpenChange }: StudentCardDialogP
           </div>
         ) : !editing ? (
           <div className="space-y-3 text-sm min-w-0">
-            {isPendingApproval ? (
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/30 space-y-2">
-                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                  Регистрация не одобрена
-                </p>
-                <p className="text-xs text-blue-800 dark:text-blue-200">
-                  Ученик зарегистрировался сам. Отметка согласий с документами — отдельный шаг и не заменяет одобрение.
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 bg-blue-600 hover:bg-blue-700 text-white"
-                  onClick={() => approveMutation.mutate()}
-                  disabled={approveMutation.isPending}
-                >
-                  {approveMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                  )}
-                  Одобрить регистрацию
-                </Button>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200">
-                Регистрация одобрена — ученик может записываться на тренировки.
-              </div>
-            )}
             <Field label="ФИО" value={`${student.lastName || ""} ${student.firstName} ${student.middleName || ""}`.trim()} />
             <Field label="Телефон" value={student.phone} />
             <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40 space-y-2">

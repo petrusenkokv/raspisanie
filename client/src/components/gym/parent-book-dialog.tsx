@@ -99,7 +99,6 @@ export function ParentBookDialog({
                 {availableChildren.map((child) => (
                   <SelectItem key={child.id} value={child.id}>
                     {child.lastName} {child.firstName}
-                    {(child as any).isPendingApproval ? " (ожидает одобрения)" : ""}
                   </SelectItem>
                 ))}
               </SelectContent>

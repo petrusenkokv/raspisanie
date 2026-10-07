@@ -75,7 +75,6 @@ function ToolButton({
 type HeaderToolbarProps = {
   trainer: boolean;
   isAuthenticated: boolean;
-  isPendingApproval: boolean;
   isParent: boolean;
   currentUser: User | null;
   onStudentsOpen: () => void;
@@ -93,7 +92,6 @@ type HeaderToolbarProps = {
 function HeaderToolbar({
   trainer,
   isAuthenticated,
-  isPendingApproval,
   isParent,
   currentUser,
   onStudentsOpen,
@@ -109,13 +107,6 @@ function HeaderToolbar({
 }: HeaderToolbarProps) {
   return (
     <>
-      {isPendingApproval && (
-        <span className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1 w-full sm:w-auto justify-center sm:justify-start lg:w-auto">
-          <Clock className="h-3.5 w-3.5 flex-shrink-0" />
-          Ожидает одобрения
-        </span>
-      )}
-
       {!isAuthenticated ? (
         <>
           <ToolButton onClick={onLogin} testId="button-login">
@@ -225,7 +216,6 @@ export interface CalendarHeaderProps {
   onRegister: () => void;
   onLogout: () => void;
   isAuthenticated: boolean;
-  isPendingApproval: boolean;
   currentUser: User | null;
 }
 
@@ -242,7 +232,6 @@ export function CalendarHeader({
   onRegister,
   onLogout,
   isAuthenticated,
-  isPendingApproval,
   currentUser,
 }: CalendarHeaderProps) {
   const {
@@ -324,7 +313,6 @@ export function CalendarHeader({
   const toolbarProps: HeaderToolbarProps = {
     trainer,
     isAuthenticated,
-    isPendingApproval,
     isParent,
     currentUser,
     onStudentsOpen,
@@ -351,12 +339,6 @@ export function CalendarHeader({
             </h1>
             {trainer && (
               <Badge variant="secondary" className="text-xs flex-shrink-0">Тренер</Badge>
-            )}
-            {isPendingApproval && (
-              <Badge variant="outline" className="text-xs border-amber-300 text-amber-800 bg-amber-50 flex-shrink-0">
-                <Clock className="h-3 w-3 mr-1 inline" />
-                Ожидание
-              </Badge>
             )}
           </div>
 

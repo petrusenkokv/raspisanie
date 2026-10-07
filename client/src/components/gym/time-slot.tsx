@@ -1,16 +1,9 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Clock, Users, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, ArrowLeftRight, Repeat, QrCode } from "lucide-react";
+import { Clock, Users, LogIn, UserPlus, X, Check, Lock, Unlock, Pencil, RotateCcw, ArrowLeftRight, Repeat } from "lucide-react";
 import { RescheduleDialog } from "./reschedule-dialog";
 import { Input } from "@/components/ui/input";
 import { type TimeSlotWithBookings, type AttendanceStatus } from "@shared/schema";
@@ -77,25 +70,9 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const { requestCancel: requestStudentCancel, dialog: studentCancelDialog } =
     useStudentBookingCancel(onCancel);
 
-  // QR-код для ознакомительной тренировки (для гостей)
-  const [qrDialog, setQrDialog] = useState<{ name: string; url: string } | null>(null);
-
-  /** Привести путь к QR к веб-виду */
-  const normalizeQrUrl = (raw: string): string => {
-    let v = String(raw || "").trim();
-    if (!v) return "";
-    if (/^data:image\//i.test(v)) return v;
-    v = v.replace(/^client[\\/]+public[\\/]+/i, "");
-    v = v.replace(/\\/g, "/");
-    if (!/^https?:\/\//i.test(v) && !v.startsWith("/")) v = "/" + v;
-    return v;
-  };
-
   const { data: scheduleSettings } = useQuery<{
     bookingDeadlineHours?: number;
     cancelDeadlineHours?: number;
-    paymentPhone?: string | null;
-    paymentQrs?: { id: string; name: string; url: string }[];
   }>({
     queryKey: ["/api/schedule/settings"],
     staleTime: 60_000,
@@ -108,18 +85,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
   const tooLateToCancel =
     !isTrainer() && cancelDeadlineH > 0 && minutesUntil <= cancelDeadlineH * 60;
 
-  const showFamilyRowActions =
-    !!currentUser && !isTrainer() && !(currentUser as any).isPendingApproval;
-
-  // Для гостей — показать QR-код на 300 ₽ (ознакомительная тренировка)
-  const guestQr = useMemo(() => {
-    const qrs = (Array.isArray(scheduleSettings?.paymentQrs) ? scheduleSettings.paymentQrs : []).map((q) => ({
-      ...q,
-      url: normalizeQrUrl(q.url),
-    }));
-    const trial = qrs.find((q) => /300/i.test(q.name)) ?? qrs[0];
-    return trial ? { name: trial.name, url: trial.url } : null;
-  }, [scheduleSettings?.paymentQrs, normalizeQrUrl]);
+  const showFamilyRowActions = !!currentUser && !isTrainer();
 
   const [blockNoteDialogOpen, setBlockNoteDialogOpen] = useState(false);
 
@@ -701,14 +667,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
       )}
 
       {/* Student: own booking actions */}
-      {!isBlocked && currentUser && !isTrainer() && (currentUser as any).isPendingApproval && (
-        <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1 sm:px-2 sm:py-1.5" onClick={(e) => e.stopPropagation()}>
-          <Clock className="h-3.5 w-3.5 flex-shrink-0" />
-          Ожидает одобрения тренера
-        </div>
-      )}
-
-      {!isBlocked && currentUser && !isTrainer() && !(currentUser as any).isPendingApproval && (
+      {!isBlocked && currentUser && !isTrainer() && (
         <div className="space-y-1 sm:space-y-2" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-col sm:items-stretch">
           {userBooking ? (
@@ -761,6 +720,13 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
         </div>
       )}
 
+      {!isBlocked && currentUser && !isTrainer() && (currentUser as any).isPendingApproval && (
+        <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1 sm:px-2 sm:py-1.5" onClick={(e) => e.stopPropagation()}>
+          <Clock className="h-3.5 w-3.5 flex-shrink-0" />
+          Ожидает одобрения тренера
+        </div>
+      )}
+
       {isBlocked && isTrainer() && (
         <Button
           variant="outline"
@@ -777,77 +743,37 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
     </Card>
   );
 
-  // Wrap with Popover only for guest users on available slots (card layout)
+  // Wrap with Popover for guest users on available slots (card layout)
   if (!isEmbedded && !currentUser && !isBlocked && !isFull) {
     return (
-      <>
-        <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-          <PopoverTrigger asChild>
-            {cardContent}
-          </PopoverTrigger>
-          <PopoverContent className="w-72 p-4" side="top">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <LogIn className="h-5 w-5 text-blue-600" />
-                <p className="font-semibold text-gray-900 dark:text-white">
-                  Ознакомительная тренировка
-                </p>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Чтобы записаться на <strong>{timeSlot.time}</strong>, войдите или зарегистрируйтесь.
+      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+        <PopoverTrigger asChild>
+          {cardContent}
+        </PopoverTrigger>
+        <PopoverContent className="w-72 p-4" side="top">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <LogIn className="h-5 w-5 text-blue-600" />
+              <p className="font-semibold text-gray-900 dark:text-white">
+                Вход или регистрация
               </p>
-              {guestQr && (
-                <div className="rounded-md border bg-white dark:bg-gray-900 px-3 py-2 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium truncate min-w-0 flex-1">{guestQr.name}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs shrink-0"
-                      onClick={() => setQrDialog({ name: guestQr.name, url: guestQr.url })}
-                    >
-                      <QrCode className="h-3.5 w-3.5 mr-1" />
-                      Показать QR
-                    </Button>
-                  </div>
-                </div>
-              )}
-              <div className="flex flex-col gap-2">
-                <Button onClick={() => handleLoginClick("login")} className="w-full" size="sm">
-                  <LogIn className="mr-2 h-4 w-4" />
-                  Войти
-                </Button>
-                <Button onClick={() => handleLoginClick("register")} variant="outline" className="w-full" size="sm">
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Зарегистрироваться
-                </Button>
-              </div>
             </div>
-          </PopoverContent>
-        </Popover>
-        {/* QR Dialog for guests */}
-        <Dialog open={!!qrDialog} onOpenChange={(open) => !open && setQrDialog(null)}>
-          <DialogContent className="w-full max-w-sm mx-4 overflow-x-hidden">
-            <DialogHeader>
-              <DialogTitle>{qrDialog?.name || "QR-код для оплаты"}</DialogTitle>
-              <DialogDescription>Открой приложение банка, а потом сканируй.</DialogDescription>
-            </DialogHeader>
-            {qrDialog && (
-              <div className="flex justify-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={qrDialog.url}
-                  alt={qrDialog.name}
-                  className="max-h-[60vh] w-auto rounded-lg border"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-      </>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Чтобы записаться на <strong>{timeSlot.time}</strong>, войдите или зарегистрируйтесь.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button onClick={() => handleLoginClick("login")} className="w-full" size="sm">
+                <LogIn className="mr-2 h-4 w-4" />
+                Войти
+              </Button>
+              <Button onClick={() => handleLoginClick("register")} variant="outline" className="w-full" size="sm">
+                <UserPlus className="mr-2 h-4 w-4" />
+                Зарегистрироваться
+              </Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
     );
   }
 

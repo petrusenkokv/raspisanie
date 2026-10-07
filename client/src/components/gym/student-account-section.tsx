@@ -52,14 +52,11 @@ type AccountSummaryResponse = {
 interface Props {
   userId: string;
   heading?: string;
-  /** Регистрация ещё не одобрена тренером (пробная тренировка): показываем только разовый QR зала. */
-  pendingApproval?: boolean;
 }
 
 export function StudentAccountSection({
   userId,
   heading = "Стоимость и согласия",
-  pendingApproval = false,
 }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -146,7 +143,7 @@ export function StudentAccountSection({
         {heading}
       </p>
 
-      {!hideSessionPrice && !pendingApproval && (
+      {!hideSessionPrice && (
         <div className="rounded-md border bg-white dark:bg-gray-900 p-3 space-y-1">
           <p className="text-xs text-muted-foreground">Цена за одну тренировку</p>
           <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
@@ -171,7 +168,6 @@ export function StudentAccountSection({
 
       <PaymentInfoCard
         wantsIndividualTraining={data.wantsIndividualTraining === true}
-        pendingApproval={pendingApproval}
         exemptMembership={data.exemptMembership === true}
         exemptTrainerPayment={data.exemptTrainerPayment === true}
       />

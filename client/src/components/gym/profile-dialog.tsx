@@ -307,13 +307,11 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
                 {showSelfAccount && user?.id && (
                   <>
-                    {(user as any)?.isPendingApproval !== true && (
-                      <IndividualTrainingToggle
-                        userId={user.id}
-                        enabled={(user as any)?.wantsIndividualTraining === true}
-                        hint="Включите, если занимаетесь индивидуально (цена за занятие задаётся тренером). Запись возможна только в свободный слот."
-                      />
-                    )}
+                    <IndividualTrainingToggle
+                      userId={user.id}
+                      enabled={(user as any)?.wantsIndividualTraining === true}
+                      hint="Включите, если занимаетесь индивидуально (цена за занятие задаётся тренером). Запись возможна только в свободный слот."
+                    />
                     <StudentAccountSection
                       userId={user.id}
                       heading={
@@ -321,7 +319,6 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                           ? "Мои тренировки: цена и согласия"
                           : "Стоимость и согласия"
                       }
-                      pendingApproval={(user as any)?.isPendingApproval === true}
                     />
                   </>
                 )}
@@ -337,7 +334,6 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                         key={child.id}
                         userId={child.id}
                         heading={`${child.firstName} ${child.lastName ?? ""}`}
-                        pendingApproval={(child as any)?.isPendingApproval === true}
                       />
                     ))}
                   </div>

@@ -39,8 +39,6 @@ type SettingsResponse = {
 type Props = {
   /** Ученик выбрал индивидуальные тренировки. */
   wantsIndividualTraining?: boolean;
-  /** Регистрация ещё не одобрена тренером (пробная тренировка): показываем только разовый QR зала. */
-  pendingApproval?: boolean;
   /** Тренер снял требование членского взноса (ЧВ/БВ) — секция зала не показывается. */
   exemptMembership?: boolean;
   /** Тренер снял требование оплаты тренеру — секция тренера не показывается. */
@@ -58,21 +56,10 @@ function normalizeQrUrl(raw: string): string {
   return v;
 }
 
-/**
- * QR-код для пробной тренировки (пока регистрация не одобрена тренером):
- * приоритет — код с «300» в названии (разовое посещение), иначе первый из списка.
- */
-function pickTrialQrs(
-  qrs: { id: string; name: string; url: string }[],
-): { id: string; name: string; url: string }[] {
-  if (qrs.length === 0) return [];
-  const trial = qrs.find((q) => /300/i.test(q.name)) ?? qrs[0];
-  return [trial];
-}
+
 
 export function PaymentInfoCard({
   wantsIndividualTraining = false,
-  pendingApproval = false,
   exemptMembership = false,
   exemptTrainerPayment = false,
 }: Props) {
@@ -105,8 +92,7 @@ export function PaymentInfoCard({
     ...q,
     url: normalizeQrUrl(q.url),
   }));
-  // До одобрения тренером ученик видит только QR разового посещения (пробная тренировка).
-  const visibleQrs = pendingApproval ? pickTrialQrs(qrs) : qrs;
+  const visibleQrs = qrs;
   const tiers =
     Array.isArray(data?.pricingTiers) && data.pricingTiers.length > 0
       ? data.pricingTiers
@@ -159,7 +145,7 @@ export function PaymentInfoCard({
 
   // Каждую секцию «Оплаты» показываем только если соответствующее требование не снято тренером.
   const showHall = !exemptMembership;
-  const showTrainer = !exemptTrainerPayment && !pendingApproval;
+  const showTrainer = !exemptTrainerPayment;
 
   if (!showHall && !showTrainer) return null;
 
@@ -253,13 +239,6 @@ export function PaymentInfoCard({
           </div>
         )}
       </div>
-      )}
-
-      {pendingApproval && (
-        <p className="text-[11px] text-gray-500">
-          Это пробная тренировка — тренер проведёт тесты физической подготовленности.
-          Другие способы оплаты и QR-коды появятся после одобрения регистрации.
-        </p>
       )}
 
       {/* ── Тренер ── */}

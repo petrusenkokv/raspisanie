@@ -30,9 +30,6 @@ interface GymStore {
   // Students list (for trainer)
   students: User[];
   
-  // Introductory slot (for guests who clicked "Записаться" before registering)
-  pendingIntroSlotId: string | null;
-  
   // Actions
   setUser: (user: User | null) => void;
   setCurrentView: (view: ViewType) => void;
@@ -42,7 +39,6 @@ interface GymStore {
   setUserBookings: (bookings: BookingWithDetails[]) => void;
   setNotifications: (notifications: Notification[]) => void;
   setStudents: (students: User[]) => void;
-  setPendingIntroSlotId: (slotId: string | null) => void;
   
   // Helper functions
   getWeekDates: (date: Date) => Date[];
@@ -143,7 +139,6 @@ export const useGymStore = create<GymStore>((set, get) => ({
   notifications: [],
   unreadCount: 0,
   students: [],
-  pendingIntroSlotId: null,
   
   // Actions
   setUser: (user) => {
@@ -178,8 +173,6 @@ export const useGymStore = create<GymStore>((set, get) => ({
   },
   
   setStudents: (students) => set({ students }),
-  
-  setPendingIntroSlotId: (slotId) => set({ pendingIntroSlotId: slotId }),
   
   // Helper functions
   getWeekDates: (date) => {
@@ -225,7 +218,6 @@ export const useGymStore = create<GymStore>((set, get) => ({
       userBookings: [],
       notifications: [],
       unreadCount: 0,
-      pendingIntroSlotId: null
     });
   }
 }));

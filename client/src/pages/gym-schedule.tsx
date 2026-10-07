@@ -61,8 +61,6 @@ export function GymSchedulePage() {
     setUser,
     setSelectedDate,
     isTrainer,
-    pendingIntroSlotId,
-    setPendingIntroSlotId,
   } = useGymStore();
 
   const queryClient = useQueryClient();
@@ -120,12 +118,8 @@ export function GymSchedulePage() {
   const isParentMode = !!(currentUser as any)?.isParent;
   const canManageChildren = !!currentUser && (isParentRole || isParentMode);
   const isAlsoStudent = !!(currentUser as any)?.isAlsoStudent;
-  const isPendingApproval =
-    currentUser?.role === "student"
-      ? !!(currentUser as any)?.isPendingApproval
-      : isParentRole && isAlsoStudent && !!(currentUser as any)?.isPendingApproval;
 
-  const { data: parentChildren = [] } = useQuery<User[]>({
+  const { data: parentChildren = [] } = useQuery({
     queryKey: ["/api/parent/children"],
     queryFn: async () => {
       const r = await apiRequest("GET", "/api/parent/children");
@@ -155,21 +149,6 @@ export function GymSchedulePage() {
       .find((s) => s.id === parentBookSlotId);
     return slot?.date;
   }, [parentBookSlotId, schedule]);
-  const { data: freshUserData } = useQuery<{ user: User }>({
-    queryKey: [`/api/users/${currentUser?.id}`],
-    enabled: !!currentUser?.id && isPendingApproval,
-    staleTime: 60_000,
-  });
-
-  // When polling detects approval — update store and show welcome dialog
-  useEffect(() => {
-    if (freshUserData?.user && !(freshUserData.user as any).isPendingApproval && isPendingApproval) {
-      setUser(freshUserData.user);
-      if (!(freshUserData.user as any).welcomeShown) {
-        setWelcomeDialogOpen(true);
-      }
-    }
-  }, [freshUserData]);
 
   const localDate = (d: Date) => {
     const y = d.getFullYear();
@@ -342,21 +321,11 @@ export function GymSchedulePage() {
       setParentBookOpen(true);
       return;
     }
-    if (isPendingApproval) {
-      return;
-    }
     bookMutation.mutate({ timeSlotId, studentId: currentUser.id });
   };
 
   const handleParentBookConfirm = (studentId: string) => {
     if (!parentBookSlotId) return;
-    const target =
-      studentId === currentUser?.id
-        ? currentUser
-        : parentChildren.find((c) => c.id === studentId);
-    if ((target as any)?.isPendingApproval) {
-      return;
-    }
     bookMutation.mutate(
       { timeSlotId: parentBookSlotId, studentId },
       {
@@ -451,7 +420,7 @@ export function GymSchedulePage() {
       </div>
       </PullToRefresh>
 
-      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} initialMode={authModalMode} pendingIntroSlotId={pendingIntroSlotId} />
+      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} initialMode={authModalMode} />
 
       {/* Welcome dialog shown when trainer approves student while they wait on page */}
       <WelcomeDialog
