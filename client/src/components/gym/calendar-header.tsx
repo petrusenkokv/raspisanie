@@ -190,7 +190,7 @@ function HeaderToolbar({
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={onLogout} className="text-red-600 dark:text-red-400">
+                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); onLogout(); }} className="text-red-600 dark:text-red-400">
                     <LogOut className="h-4 w-4 mr-2" />Выйти
                   </DropdownMenuItem>
                 </DropdownMenuContent>
