@@ -44,6 +44,12 @@ export async function setupVite(app: Express, server: Server) {
   });
 
   app.use(vite.middlewares);
+
+  // No-cache for sw.js in dev mode too
+  app.use("/sw.js", (_req, res, next) => {
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    next();
+  });
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
 
@@ -62,7 +68,7 @@ export async function setupVite(app: Express, server: Server) {
         `src="/src/main.tsx?v=${nanoid()}"`,
       );
       const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
+      res.status(200).set({ "Content-Type": "text/html", "Cache-Control": "no-cache, no-store, must-revalidate" }).end(page);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
       next(e);
@@ -79,7 +85,23 @@ export function serveStatic(app: Express) {
     );
   }
 
+  // Serve static files with no-cache for sw.js
+  app.use("/sw.js", (_req, res, next) => {
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+    next();
+  });
+
   app.use(express.static(distPath));
+
+  // Serve index.html with no-cache to prevent stale HTML on mobile/PWA
+  app.use("/index.html", (_req, res, next) => {
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+    res.sendFile(path.resolve(distPath, "index.html"));
+  });
 
   // fall through to index.html if the file doesn't exist
   app.use("*", (_req, res) => {

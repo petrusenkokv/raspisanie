@@ -1,7 +1,7 @@
 /* Web Push + precaching for offline access. */
 
 // Precached assets (versioned by build hash)
-const PRECACHE_CACHE = "app-precache-v1";
+const PRECACHE_CACHE = "app-precache-v2";
 const PRECACHE_URLS = [
   "/",
   "/index.html",
@@ -61,18 +61,23 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets & HTML — cache-first
+  // Static assets & HTML — network-first for HTML, cache-first for assets
   event.respondWith(
     (async () => {
+      // HTML — always fetch from network (no caching)
+      if (request.headers.get("accept")?.includes("text/html")) {
+        try {
+          return await fetch(request);
+        } catch {
+          return caches.match("/index.html");
+        }
+      }
+      // Static assets — cache-first
       const cached = await caches.match(request);
       if (cached) return cached;
       try {
         return await fetch(request);
       } catch {
-        // For HTML, return index.html for SPA routing
-        if (request.headers.get("accept")?.includes("text/html")) {
-          return caches.match("/index.html");
-        }
         return new Response("Offline", { status: 503 });
       }
     })(),
