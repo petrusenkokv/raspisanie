@@ -159,7 +159,7 @@ export function RescheduleDialog({
           </div>
 
           <div>
-            <Label>Доступные слоты</Label>
+            <Label>Доступное время</Label>
             {isFetching ? (
               <div className="flex justify-center py-4">
                 <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
