@@ -216,7 +216,7 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
               onChange={(e) => setHour(Number(e.target.value))}
               data-testid="select-recurring-hour"
             >
-              {Array.from({ length: 12 }).map((_, i) => {
+              {Array.from({ length: 14 }).map((_, i) => {
                 const h = 8 + i;
                 return (
                   <option key={h} value={h}>

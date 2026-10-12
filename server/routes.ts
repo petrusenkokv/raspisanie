@@ -507,7 +507,7 @@ export async function registerRoutes(
       storage.getTrainer().then(async (trainer) => {
         if (!trainer) return;
         const fullName = [user.lastName, user.firstName].filter(Boolean).join(" ");
-        const msg = `Новый ученик зарегистрировался: ${fullName} (${user.phone})`;
+        const msg = `${fullName} (${user.phone})`;
         await storage.createNotification({
           userId: trainer.id,
           type: "new_student",
@@ -1373,7 +1373,7 @@ export async function registerRoutes(
       // ── Этап 1: ожидает одобрения тренера ──
       if (bookingStudent.isPendingApproval) {
         return res.status(403).json({
-          message: "Вы зарегистрированы, ждите одобрения тренера. После одобрения сможете записаться на ознакомительную тренировку и оплатить посещение зала. Тренеру оплаты нет — бесплатно.",
+          message: "Вы зарегистрированы, ждите одобрения тренера. После одобрения сможете работать с расписанием.",
         });
       }
 
@@ -2914,8 +2914,8 @@ export async function registerRoutes(
       const wd = weekdays.map((n: any) => Number(n)).filter((n: number) => n >= 1 && n <= 7);
       if (wd.length === 0) return res.status(400).json({ message: "Некорректные дни недели" });
       const h = Number(hour);
-      if (!Number.isInteger(h) || h < 8 || h > 19) {
-        return res.status(400).json({ message: "Время должно быть от 08:00 до 19:00" });
+      if (!Number.isInteger(h) || h < 8 || h > 21) {
+        return res.status(400).json({ message: "Время должно быть от 08:00 до 21:00" });
       }
       if (!startDate) return res.status(400).json({ message: "Укажите дату начала" });
       if (endDate && String(endDate) < String(startDate)) {
@@ -2961,6 +2961,10 @@ export async function registerRoutes(
       const horizonStr = horizon.toISOString().split("T")[0];
       const result = await storage.materializeRecurringBookings(horizonStr);
       await notifyRecurringIndividualConflicts(result.conflicts);
+
+      // Broadcast schedule update to all connected clients (including mobile)
+      broadcast({ type: "schedule_update" });
+      broadcast({ type: "notification_update" });
 
       // Notify student (not for trainer's own recurring rule)
       if (target.role === "student" || (target.role === "parent" && target.isAlsoStudent)) {
