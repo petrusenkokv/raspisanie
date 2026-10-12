@@ -21,5 +21,12 @@ prepareClient().then(() => {
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
+    // Check for SW updates every page load (fixes stale SW on mobile)
+    setInterval(async () => {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration("/sw.js");
+        if (reg) await reg.update();
+      } catch {}
+    }, 60 * 60 * 1000); // check every hour
   });
 }

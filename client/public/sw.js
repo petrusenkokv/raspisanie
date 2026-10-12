@@ -42,26 +42,14 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // API calls — network-first, fallback to cache
+  // API calls — network-only (no caching), fallback to offline message
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(
       (async () => {
         try {
           const networkResponse = await fetch(request);
-          // Clone and cache successful GET responses
-          if (
-            request.method === "GET" &&
-            networkResponse.ok &&
-            networkResponse.headers.get("content-type")?.includes("application/json")
-          ) {
-            const cache = await caches.open("api-cache");
-            await cache.put(request, networkResponse.clone());
-          }
           return networkResponse;
         } catch {
-          // Fallback to cache
-          const cached = await caches.match(request);
-          if (cached) return cached;
           // Return 504 if nothing cached
           return new Response(
             JSON.stringify({ message: "Нет подключения к интернету" }),

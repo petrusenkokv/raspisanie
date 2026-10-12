@@ -27,7 +27,6 @@ import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { PullToRefresh } from "@/components/gym/pull-to-refresh";
 import { useStuckLoadRecovery } from "@/hooks/use-stuck-load-recovery";
-import { PendingApprovalBanner, type StudentAccessStage } from "@/components/gym/pending-approval-banner";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -96,8 +95,12 @@ export function GymSchedulePage() {
       const current = useGymStore.getState().selectedDate;
       if (currentToday.getTime() > current.getTime()) {
         setSelectedDate(currentToday);
-        queryClient.invalidateQueries({ queryKey: ["schedule"] });
       }
+      // Always refetch schedule when tab becomes visible (fixes mobile/PWA stale data)
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/day"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/month"] });
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -123,32 +126,6 @@ export function GymSchedulePage() {
   // Вычисляем этап доступа ученика
   const isStudent = currentUser?.role === "student" || (!!currentUser && !currentUser.isParent && currentUser.role !== "trainer");
   const isPendingApproval = !!currentUser?.isPendingApproval;
-  const wantsIntro = !!(currentUser as any)?.wantsIntroductoryTraining;
-
-  /** Проверяет, посещал ли ученик ознакомительную тренировку */
-  const { data: userBookings = [] } = useQuery({
-    queryKey: ["/api/bookings/student", currentUser?.id],
-    queryFn: async () => {
-      if (!currentUser?.id) return [];
-      const r = await apiRequest("GET", `/api/bookings/student/${currentUser.id}`);
-      return r.json();
-    },
-    enabled: isStudent && wantsIntro && !isPendingApproval,
-    staleTime: 10_000,
-  });
-
-  const hasAttendedIntro = useMemo(() => {
-    if (!wantsIntro) return false;
-    return userBookings.some(
-      (b: any) => b.attendanceStatus === "attended" && b.timeSlot?.isIntroductory === true,
-    );
-  }, [wantsIntro, userBookings]);
-
-  const accessStage: StudentAccessStage = isPendingApproval
-    ? "pendingApproval"
-    : wantsIntro && !hasAttendedIntro
-      ? "approvedNotAttended"
-      : "attended";
 
   const { data: parentChildren = [] } = useQuery({
     queryKey: ["/api/parent/children"],
@@ -431,13 +408,6 @@ export function GymSchedulePage() {
           </div>
         ) : (
           <>
-            {/* Баннер статуса одобрения (только для учеников) */}
-            {isStudent && !isTrainer() && (
-              <PendingApprovalBanner
-                stage={accessStage}
-                wantsIntroductoryTraining={wantsIntro}
-              />
-            )}
             <CalendarView
             onBook={handleBook}
             onCancel={handleCancel}

@@ -35,6 +35,14 @@ export async function createApp(options: AppOptions = {}) {
     });
   });
 
+  // Prevent all caching of API responses (fixes stale data on mobile/PWA)
+  app.use("/api", (_req, res, next) => {
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+    next();
+  });
+
   app.use((req, res, next) => {
     const start = Date.now();
     const path = req.path;

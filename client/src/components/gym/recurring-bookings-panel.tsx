@@ -43,6 +43,9 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/recurring", studentId] });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/day"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/month"] });
       toast({ title: "Повторяющаяся запись создана" });
       setWeekdays([]);
       setEndDate("");
@@ -59,6 +62,9 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/recurring", studentId] });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/day"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/month"] });
       toast({ title: "Правило удалено", description: "Все будущие записи по правилу отменены" });
     },
     onError: (e: Error) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
@@ -72,6 +78,9 @@ export function RecurringBookingsPanel({ studentId }: { studentId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trainer/recurring", studentId] });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/day"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/month"] });
       toast({ title: "Дата восстановлена", description: "Занятие снова будет создаваться по правилу" });
     },
     onError: (e: Error) => toast({ title: "Ошибка", description: e?.message, variant: "destructive" }),
