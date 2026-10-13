@@ -54,16 +54,11 @@ export async function createApp(options: AppOptions = {}) {
       // Test direct PostgreSQL connection
       let pgTest: any = { error: "not tested" };
       try {
-        const pgModule = await import("pg");
-        const pool = new pgModule.Pool({
-          connectionString: process.env.DATABASE_URL || process.env.LAYERO_DATABASE_URL,
-          connectionTimeoutMillis: 3000,
-        });
-        const r = await pool.query("SELECT 1 as test");
-        pgTest = { ok: true, result: r.rows };
-        await pool.end();
+        const { db } = await import("./db");
+        const r = await db.execute(db.sql`SELECT 1 as test`);
+        pgTest = { ok: true, result: r };
       } catch (e: any) {
-        pgTest = { error: e.message, code: e.code };
+        pgTest = { error: e.message, code: (e as any)?.code };
       }
         
         res.json({

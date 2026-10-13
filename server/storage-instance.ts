@@ -45,62 +45,37 @@ async function initStorage() {
     return;
   }
   console.log("[storage] DATABASE_URL is set — attempting to use PostgreSQL...");
-  console.log("[storage] DATABASE_URL starts with:", dbUrl.slice(0, 30) + "...");
   try {
-    console.log("[storage] Step 1: importing pg module...");
-    const pgModule = await import("pg");
-    console.log("[storage] Step 1: pg module imported");
+    // Test db proxy — this will trigger lazy initialization
+    console.log("[storage] Testing db proxy...");
+    const { db } = await import("./db");
+    console.log("[storage] db imported, type:", typeof db);
     
-    console.log("[storage] Step 2: creating pg.Pool...");
-    const pool = new pgModule.Pool({
-      connectionString: dbUrl,
-      connectionTimeoutMillis: 5000,
-    });
-    console.log("[storage] Step 2: pg.Pool created");
+    await db.execute(db.sql`SELECT 1 as test`);
+    console.log("[storage] PostgreSQL query passed");
     
-    console.log("[storage] Step 3: testing query...");
-    const res = await pool.query("SELECT 1 as test");
-    console.log("[storage] Step 3: query passed:", res.rows);
-    
-    console.log("[storage] Step 4: importing drizzle...");
-    const { drizzle } = await import("drizzle-orm/node-postgres");
-    const { db: dbInst } = await import("./db");
-    console.log("[storage] Step 4: drizzle imported, dbInst type:", typeof dbInst);
-    
-    if (!dbInst) {
-      throw new Error("db instance is null");
-    }
-    
-    console.log("[storage] Step 5: testing db query...");
-    await dbInst.execute(dbInst.sql`SELECT 1 as test`);
-    console.log("[storage] Step 5: db query passed");
-    
-    console.log("[storage] Step 6: creating DbStorage...");
+    // Now create DbStorage
     const { DbStorage } = await import("./storage-db");
     storage = new DbStorage();
-    console.log("[storage] Step 6: DbStorage created");
+    console.log("[storage] DbStorage created successfully");
     
     // Test DbStorage
-    console.log("[storage] Step 7: testing DbStorage.getUser...");
     await storage.getUser("test-id-000");
-    console.log("[storage] Step 7: DbStorage getUser passed");
+    console.log("[storage] DbStorage getUser passed");
     
     console.log("[storage] PostgreSQL connected successfully");
   } catch (err: any) {
-    console.error("[storage] PostgreSQL connection failed at step:", {
-      error: err?.message,
+    console.error("[storage] PostgreSQL connection failed:", {
+      message: err?.message,
       code: err?.code,
       stack: err?.stack?.split('\n').slice(0, 5).join(' | '),
     });
     storage = new MemStorage();
   }
 
-  // Безопасные миграции колонок тарифов запускаются и на Vercel,
-  // где полный seed пропускается (NODE_ENV=production).
-  // НЕ блокируем холодный старт лямбды дольше 3 секунд: если БД
-  // медленная или недоступна, запросы начнут обрабатываться сразу,
-  // а сами миграции (идемпотентные) продолжат выполняться в фоне.
-  const pricingMigration = dbStorage.ensurePricingSchema?.().catch((err) => {
+  // Safe migrations
+  const { db } = await import("./db");
+  const pricingMigration = (storage as any).ensurePricingSchema?.().catch((err: any) => {
     console.error("[storage] Pricing schema ensure failed:", err);
   });
   const startupDeadline = new Promise<void>((resolve) =>
@@ -108,10 +83,10 @@ async function initStorage() {
   );
   await Promise.race([pricingMigration ?? Promise.resolve(), startupDeadline]);
 
-  if (hasSeed(dbStorage) && shouldSeedOnStartup()) {
-    await seedWithRetry(dbStorage);
-  } else if (hasSeed(dbStorage)) {
-    console.log("[storage] Startup seed skipped. Set SEED_DATABASE_ON_STARTUP=true to run it.");
+  if (hasSeed(storage) && shouldSeedOnStartup()) {
+    await seedWithRetry(storage);
+  } else if (hasSeed(storage)) {
+    console.log("[storage] Startup seed skipped.");
   }
 }
 
