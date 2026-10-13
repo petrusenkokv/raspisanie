@@ -8,6 +8,7 @@ if (!getDatabaseUrl()) {
 }
 
 const pool = getPgPool();
+console.log("[db] PostgreSQL pool created successfully");
 
 // Apply schema migrations automatically
 async function applyMigrations() {

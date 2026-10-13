@@ -39,12 +39,22 @@ function hasSeed(target: IStorage): target is IStorage & { seed(): Promise<void>
 }
 
 async function initStorage() {
-  if (!getDatabaseUrl()) {
+  const dbUrl = getDatabaseUrl();
+  if (!dbUrl) {
+    console.log("[storage] DATABASE_URL not set — using in-memory storage");
     return;
   }
-  const { DbStorage } = await import("./storage-db");
-  const dbStorage = new DbStorage();
-  storage = dbStorage;
+  console.log("[storage] Initializing database storage...");
+  try {
+    const { DbStorage } = await import("./storage-db");
+    const dbStorage = new DbStorage();
+    storage = dbStorage;
+    console.log("[storage] Database storage initialized successfully");
+  } catch (err: any) {
+    console.error("[storage] Failed to initialize database storage, fallback to in-memory:", err?.message || err);
+    storage = new MemStorage();
+    return;
+  }
 
   // Безопасные миграции колонок тарифов запускаются и на Vercel,
   // где полный seed пропускается (NODE_ENV=production).
