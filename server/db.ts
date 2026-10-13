@@ -6,7 +6,7 @@ let pool: any = null;
 let dbInstance: any = null;
 
 /** Lazily create the DB pool and drizzle instance. */
-export function getDbInstance() {
+export async function getDbInstance() {
   if (dbInstance) return dbInstance;
   
   const databaseUrl = getDatabaseUrl();
@@ -17,7 +17,7 @@ export function getDbInstance() {
   
   if (!pool) {
     try {
-      const { getPgPool } = require("./pg-pool");
+      const { getPgPool } = await import("./pg-pool");
       pool = getPgPool();
       console.log("[db] PostgreSQL pool created successfully");
     } catch (err: any) {
@@ -50,15 +50,15 @@ export function getDbInstance() {
 
 // Lazy proxy — creates the instance on first access
 export const db = new Proxy({} as any, {
-  get(_target, prop) {
-    const instance = getDbInstance();
+  async get(_target, prop) {
+    const instance = await getDbInstance();
     if (!instance) {
       throw new Error("Database not initialized — DATABASE_URL is not set or connection failed");
     }
     return instance[prop];
   },
   set(_target, prop, value) {
-    const instance = getDbInstance();
+    const instance = dbInstance;
     if (!instance) {
       throw new Error("Database not initialized — DATABASE_URL is not set or connection failed");
     }

@@ -38,42 +38,41 @@ export async function createApp(options: AppOptions = {}) {
   });
 
   // Diagnostic route
-  app.get("/api/_debug", async (_req, res) => {
-    try {
-      const hasDbUrl = !!process.env.DATABASE_URL || !!process.env.LAYERO_DATABASE_URL;
-      const storageType = storage.constructor.name;
-      let dbTest: any = { error: "not tested yet" };
+  app.get("/api/_debug", (_req, res) => {
+    (async () => {
       try {
-        const user = await storage.getUser("nonexistent");
-        dbTest = { ok: true, result: user };
-      } catch (e: any) {
-        dbTest = { error: e.message };
-      }
-      
-      // Test direct PostgreSQL connection
-      let pgTest: any = { error: "not tested" };
-      try {
-        const { Pool } = require("pg");
-        const pool = new Pool({
-          connectionString: process.env.DATABASE_URL || process.env.LAYERO_DATABASE_URL,
-          connectionTimeoutMillis: 3000,
+        const hasDbUrl = !!process.env.DATABASE_URL || !!process.env.LAYERO_DATABASE_URL;
+        const storageType = storage.constructor.name;
+        let dbTest: any = { error: "not tested yet" };
+        try {
+          const user = await storage.getUser("nonexistent");
+          dbTest = { ok: true, result: user };
+        } catch (e: any) {
+          dbTest = { error: e.message };
+        }
+        
+        // Test direct PostgreSQL connection
+        let pgTest: any = { error: "not tested" };
+        try {
+          const { getDbInstance } = await import("./db");
+          const dbInst = await getDbInstance();
+          if (!dbInst) throw new Error("db not initialized");
+          const r = await dbInst.execute(dbInst.sql`SELECT 1 as test`);
+          pgTest = { ok: true, result: r };
+        } catch (e: any) {
+          pgTest = { error: e.message };
+        }
+        
+        res.json({
+          hasDbUrl,
+          storageType,
+          dbTest,
+          pgTest,
         });
-        const r = await pool.query("SELECT 1 as test");
-        pgTest = { ok: true, result: r.rows };
-        await pool.end();
       } catch (e: any) {
-        pgTest = { error: e.message, code: e.code };
+        res.status(500).json({ error: e.message });
       }
-      
-      res.json({
-        hasDbUrl,
-        storageType,
-        dbTest,
-        pgTest,
-      });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
+    })();
   });
 
   // Prevent all caching of API responses (fixes stale data on mobile/PWA)
