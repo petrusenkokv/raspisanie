@@ -1433,9 +1433,11 @@ export async function registerRoutes(
         }
       }
 
+      // Загружаем записи слота для проверки вместимости
+      const existingBookings = await storage.getBookingsByTimeSlot(timeSlotId);
+
       // Check if time slot is available (вместимость из слота; больной ученик считается,
       // поэтому его место может занять только тренер — см. /api/trainer/book-student)
-      // existingBookings already loaded above for intro-training check
       const confirmedBookings = existingBookings.filter(b => b.status === "confirmed");
 
       if (confirmedBookings.length >= targetSlot.maxCapacity) {
@@ -1501,7 +1503,14 @@ export async function registerRoutes(
       broadcast({ type: "schedule_update" });
       broadcast({ type: "notification_update" });
       res.status(201).json(bookingWithDetails);
-    } catch (error) {
+    } catch (error: any) {
+      console.error("❌ POST /api/bookings ERROR:", {
+        message: error?.message,
+        stack: error?.stack,
+        studentId: studentId,
+        timeSlotId,
+        bookedBy,
+      });
       const conflict = individualConflictResponse(error, isSessionTrainer(req));
       if (conflict) {
         return res.status(conflict.status).json({ message: conflict.message });
