@@ -46,20 +46,25 @@ async function initStorage() {
   }
   console.log("[storage] DATABASE_URL is set — attempting to use PostgreSQL...");
   try {
-    // Test db proxy — this will trigger lazy initialization
-    console.log("[storage] Testing db proxy...");
-    const { db } = await import("./db");
-    console.log("[storage] db imported, type:", typeof db);
+    // Test pg connection directly
+    console.log("[storage] Testing pg connection...");
+    const pgModule = await import("pg");
+    const pool = new pgModule.Pool({
+      connectionString: dbUrl,
+      connectionTimeoutMillis: 5000,
+    });
+    const res = await pool.query("SELECT 1 as test");
+    console.log("[storage] pg connection passed:", res.rows);
+    await pool.end();
     
-    await db.execute(db.sql`SELECT 1 as test`);
-    console.log("[storage] PostgreSQL query passed");
-    
-    // Now create DbStorage
+    // Create DbStorage — it will create its own pool internally
+    console.log("[storage] Creating DbStorage...");
     const { DbStorage } = await import("./storage-db");
     storage = new DbStorage();
-    console.log("[storage] DbStorage created successfully");
+    console.log("[storage] DbStorage created");
     
     // Test DbStorage
+    console.log("[storage] Testing DbStorage.getUser...");
     await storage.getUser("test-id-000");
     console.log("[storage] DbStorage getUser passed");
     
@@ -74,7 +79,6 @@ async function initStorage() {
   }
 
   // Safe migrations
-  const { db } = await import("./db");
   const pricingMigration = (storage as any).ensurePricingSchema?.().catch((err: any) => {
     console.error("[storage] Pricing schema ensure failed:", err);
   });

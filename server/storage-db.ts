@@ -1,7 +1,32 @@
-import { db } from "./db";
 import { eq, and, or, ne, asc, desc, inArray, gte, lte, lt, sql as drizzleSql } from "drizzle-orm";
+import { getDatabaseUrl } from "./db-url";
 
-console.log("[storage-db] Module loaded, db instance:", typeof db);
+// Create DB pool and drizzle instance at module load time
+let pool: any = null;
+let dbInstance: any = null;
+
+const databaseUrl = getDatabaseUrl();
+if (!databaseUrl) {
+  console.log("[storage-db] DATABASE_URL not set");
+} else {
+  try {
+    const pgModule = await import("pg");
+    pool = new pgModule.Pool({
+      connectionString: databaseUrl,
+      connectionTimeoutMillis: 5000,
+    });
+    console.log("[storage-db] PostgreSQL pool created");
+    
+    const { drizzle } = await import("drizzle-orm/node-postgres");
+    const { schema } = await import("@shared/schema");
+    dbInstance = drizzle(pool, { schema });
+    console.log("[storage-db] Drizzle instance created");
+  } catch (err: any) {
+    console.error("[storage-db] Failed to create PostgreSQL:", err?.message || err);
+  }
+}
+
+console.log("[storage-db] Module loaded, dbInstance:", typeof dbInstance);
 import { pgTable, varchar, text, timestamp } from "drizzle-orm/pg-core";
 import {
   users, documents, userConsents, trainerServices, parentChildren, timeSlots, trainerSettings,
