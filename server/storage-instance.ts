@@ -44,16 +44,22 @@ async function initStorage() {
     console.log("[storage] DATABASE_URL not set — using in-memory storage");
     return;
   }
-  console.log("[storage] Initializing database storage...");
+  console.log("[storage] DATABASE_URL is set — attempting to use PostgreSQL...");
   try {
+    // Test connection with a simple SQL query
+    const { db } = await import("./db");
+    if (!db) {
+      throw new Error("Drizzle db instance not created");
+    }
+    await db.execute(db.sql`SELECT 1`);
+    console.log("[storage] PostgreSQL connection test passed");
+    
     const { DbStorage } = await import("./storage-db");
-    const dbStorage = new DbStorage();
-    storage = dbStorage;
-    console.log("[storage] Database storage initialized successfully");
+    storage = new DbStorage();
+    console.log("[storage] PostgreSQL connected successfully");
   } catch (err: any) {
-    console.error("[storage] Failed to initialize database storage, fallback to in-memory:", err?.message || err);
+    console.error("[storage] PostgreSQL connection failed, fallback to in-memory:", err?.message || err);
     storage = new MemStorage();
-    return;
   }
 
   // Безопасные миграции колонок тарифов запускаются и на Vercel,
