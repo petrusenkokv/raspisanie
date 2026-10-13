@@ -47,25 +47,50 @@ async function initStorage() {
   console.log("[storage] DATABASE_URL is set — attempting to use PostgreSQL...");
   console.log("[storage] DATABASE_URL starts with:", dbUrl.slice(0, 30) + "...");
   try {
-    // Import db module — it creates the pool synchronously
+    console.log("[storage] Step 1: importing pg module...");
+    const pgModule = await import("pg");
+    console.log("[storage] Step 1: pg module imported");
+    
+    console.log("[storage] Step 2: creating pg.Pool...");
+    const pool = new pgModule.Pool({
+      connectionString: dbUrl,
+      connectionTimeoutMillis: 5000,
+    });
+    console.log("[storage] Step 2: pg.Pool created");
+    
+    console.log("[storage] Step 3: testing query...");
+    const res = await pool.query("SELECT 1 as test");
+    console.log("[storage] Step 3: query passed:", res.rows);
+    
+    console.log("[storage] Step 4: importing drizzle...");
+    const { drizzle } = await import("drizzle-orm/node-postgres");
     const { db: dbInst } = await import("./db");
+    console.log("[storage] Step 4: drizzle imported, dbInst type:", typeof dbInst);
+    
     if (!dbInst) {
       throw new Error("db instance is null");
     }
-    console.log("[storage] db instance created, testing query...");
     
-    // Test connection
+    console.log("[storage] Step 5: testing db query...");
     await dbInst.execute(dbInst.sql`SELECT 1 as test`);
-    console.log("[storage] PostgreSQL query test passed");
+    console.log("[storage] Step 5: db query passed");
     
-    // Now create DbStorage
+    console.log("[storage] Step 6: creating DbStorage...");
     const { DbStorage } = await import("./storage-db");
     storage = new DbStorage();
+    console.log("[storage] Step 6: DbStorage created");
+    
+    // Test DbStorage
+    console.log("[storage] Step 7: testing DbStorage.getUser...");
+    await storage.getUser("test-id-000");
+    console.log("[storage] Step 7: DbStorage getUser passed");
+    
     console.log("[storage] PostgreSQL connected successfully");
   } catch (err: any) {
-    console.error("[storage] PostgreSQL connection failed, fallback to in-memory:", {
-      message: err?.message,
+    console.error("[storage] PostgreSQL connection failed at step:", {
+      error: err?.message,
       code: err?.code,
+      stack: err?.stack?.split('\n').slice(0, 5).join(' | '),
     });
     storage = new MemStorage();
   }
