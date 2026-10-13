@@ -51,17 +51,20 @@ export async function createApp(options: AppOptions = {}) {
           dbTest = { error: e.message };
         }
         
-        // Test direct PostgreSQL connection
-        let pgTest: any = { error: "not tested" };
-        try {
-          const { getDbInstance } = await import("./db");
-          const dbInst = await getDbInstance();
-          if (!dbInst) throw new Error("db not initialized");
-          const r = await dbInst.execute(dbInst.sql`SELECT 1 as test`);
-          pgTest = { ok: true, result: r };
-        } catch (e: any) {
-          pgTest = { error: e.message };
-        }
+      // Test direct PostgreSQL connection
+      let pgTest: any = { error: "not tested" };
+      try {
+        const pgModule = await import("pg");
+        const pool = new pgModule.Pool({
+          connectionString: process.env.DATABASE_URL || process.env.LAYERO_DATABASE_URL,
+          connectionTimeoutMillis: 3000,
+        });
+        const r = await pool.query("SELECT 1 as test");
+        pgTest = { ok: true, result: r.rows };
+        await pool.end();
+      } catch (e: any) {
+        pgTest = { error: e.message, code: e.code };
+      }
         
         res.json({
           hasDbUrl,
