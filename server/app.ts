@@ -49,10 +49,27 @@ export async function createApp(options: AppOptions = {}) {
       } catch (e: any) {
         dbTest = { error: e.message };
       }
+      
+      // Test direct PostgreSQL connection
+      let pgTest: any = { error: "not tested" };
+      try {
+        const { Pool } = require("pg");
+        const pool = new Pool({
+          connectionString: process.env.DATABASE_URL || process.env.LAYERO_DATABASE_URL,
+          connectionTimeoutMillis: 3000,
+        });
+        const r = await pool.query("SELECT 1 as test");
+        pgTest = { ok: true, result: r.rows };
+        await pool.end();
+      } catch (e: any) {
+        pgTest = { error: e.message, code: e.code };
+      }
+      
       res.json({
         hasDbUrl,
         storageType,
         dbTest,
+        pgTest,
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

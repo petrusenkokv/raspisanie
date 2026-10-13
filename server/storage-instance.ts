@@ -45,20 +45,29 @@ async function initStorage() {
     return;
   }
   console.log("[storage] DATABASE_URL is set — attempting to use PostgreSQL...");
+  console.log("[storage] DATABASE_URL starts with:", dbUrl.slice(0, 30) + "...");
   try {
-    // Test connection with a simple SQL query
-    const { db } = await import("./db");
-    if (!db) {
-      throw new Error("Drizzle db instance not created");
-    }
-    await db.execute(db.sql`SELECT 1`);
-    console.log("[storage] PostgreSQL connection test passed");
+    // Test connection directly with pg pool
+    const { Pool } = await import("pg");
+    const pool = new Pool({
+      connectionString: dbUrl,
+      connectionTimeoutMillis: 5000,
+    });
+    console.log("[storage] PostgreSQL pool created");
+    
+    const res = await pool.query("SELECT 1 as test");
+    console.log("[storage] PostgreSQL connection test passed:", res.rows);
+    await pool.end();
     
     const { DbStorage } = await import("./storage-db");
     storage = new DbStorage();
     console.log("[storage] PostgreSQL connected successfully");
   } catch (err: any) {
-    console.error("[storage] PostgreSQL connection failed, fallback to in-memory:", err?.message || err);
+    console.error("[storage] PostgreSQL connection failed, fallback to in-memory:", {
+      message: err?.message,
+      code: err?.code,
+      detail: err?.detail,
+    });
     storage = new MemStorage();
   }
 
