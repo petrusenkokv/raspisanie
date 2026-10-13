@@ -3,7 +3,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { moscowDateString } from "./moscow-date";
 import { setupSession } from "./auth";
-import { ensureStorageReady } from "./storage-instance";
+import { ensureStorageReady, storage } from "./storage-instance";
 
 type AppOptions = {
   serveClient?: boolean;
@@ -35,6 +35,28 @@ export async function createApp(options: AppOptions = {}) {
       commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
       moscowToday: moscowDateString(),
     });
+  });
+
+  // Diagnostic route
+  app.get("/api/_debug", async (_req, res) => {
+    try {
+      const hasDbUrl = !!process.env.DATABASE_URL || !!process.env.LAYERO_DATABASE_URL;
+      const storageType = storage.constructor.name;
+      let dbTest: any = { error: "not tested yet" };
+      try {
+        const user = await storage.getUser("nonexistent");
+        dbTest = { ok: true, result: user };
+      } catch (e: any) {
+        dbTest = { error: e.message };
+      }
+      res.json({
+        hasDbUrl,
+        storageType,
+        dbTest,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // Prevent all caching of API responses (fixes stale data on mobile/PWA)
