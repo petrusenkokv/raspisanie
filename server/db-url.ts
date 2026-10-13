@@ -7,5 +7,6 @@
  *   когда управляемая база подключена к проекту (см. docs.layero.ru/database).
  */
 export function getDatabaseUrl(): string | undefined {
-  return process.env.DATABASE_URL || process.env.LAYERO_DATABASE_URL;
+  // DATABASE_URL_UNPOOLED работает стабильнее (без pgbouncer и channel_binding)
+  return process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL || process.env.LAYERO_DATABASE_URL;
 }
