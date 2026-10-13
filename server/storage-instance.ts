@@ -47,17 +47,16 @@ async function initStorage() {
   console.log("[storage] DATABASE_URL is set — attempting to use PostgreSQL...");
   console.log("[storage] DATABASE_URL starts with:", dbUrl.slice(0, 30) + "...");
   try {
-    // Test DB connection with pg directly
-    const pgModule = await import("pg");
-    const pool = new pgModule.Pool({
-      connectionString: dbUrl,
-      connectionTimeoutMillis: 5000,
-    });
-    console.log("[storage] PostgreSQL pool created");
+    // Import db module — it creates the pool synchronously
+    const { db: dbInst } = await import("./db");
+    if (!dbInst) {
+      throw new Error("db instance is null");
+    }
+    console.log("[storage] db instance created, testing query...");
     
-    const res = await pool.query("SELECT 1 as test");
-    console.log("[storage] PostgreSQL query test passed:", res.rows);
-    await pool.end();
+    // Test connection
+    await dbInst.execute(dbInst.sql`SELECT 1 as test`);
+    console.log("[storage] PostgreSQL query test passed");
     
     // Now create DbStorage
     const { DbStorage } = await import("./storage-db");
@@ -67,8 +66,6 @@ async function initStorage() {
     console.error("[storage] PostgreSQL connection failed, fallback to in-memory:", {
       message: err?.message,
       code: err?.code,
-      severity: err?.severity,
-      detail: err?.detail,
     });
     storage = new MemStorage();
   }
