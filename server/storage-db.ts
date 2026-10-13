@@ -1,5 +1,7 @@
 import { db } from "./db";
 import { eq, and, or, ne, asc, desc, inArray, gte, lte, lt, sql as drizzleSql } from "drizzle-orm";
+
+console.log("[storage-db] Module loaded, db instance:", typeof db);
 import { pgTable, varchar, text, timestamp } from "drizzle-orm/pg-core";
 import {
   users, documents, userConsents, trainerServices, parentChildren, timeSlots, trainerSettings,

@@ -11,7 +11,9 @@ type AppOptions = {
 };
 
 export async function createApp(options: AppOptions = {}) {
+  console.log("[app] createApp started");
   await ensureStorageReady();
+  console.log("[app] ensureStorageReady completed");
 
   const app = express();
   // Лимит увеличен: тренер загружает фото QR-кода (base64) в настройки оплаты.

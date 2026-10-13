@@ -388,6 +388,7 @@ export async function registerRoutes(
   app: Express,
   options: { websocket?: boolean } = {},
 ): Promise<Server> {
+  console.log("[routes] registerRoutes called");
   
   // Auth routes
   app.post("/api/auth/send-verification", async (req, res) => {
