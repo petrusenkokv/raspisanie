@@ -27,6 +27,7 @@ import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { PullToRefresh } from "@/components/gym/pull-to-refresh";
 import { useStuckLoadRecovery } from "@/hooks/use-stuck-load-recovery";
+import { useToast } from "@/hooks/use-toast";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -253,6 +254,8 @@ export function GymSchedulePage() {
     onRetry: handleScheduleRetry,
   });
 
+  const { toast } = useToast();
+
   const bookMutation = useMutation({
     mutationFn: async ({ timeSlotId, studentId }: { timeSlotId: string; studentId: string }) => {
       const response = await apiRequest("POST", "/api/bookings", {
@@ -264,9 +267,18 @@ export function GymSchedulePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      toast({
+        title: "Заявка отправлена",
+        description: "Тренер получит вашу заявку и подтвердит запись.",
+      });
     },
     onError: (e: any) => {
       console.error("book error", e);
+      toast({
+        title: "Ошибка записи",
+        description: e?.message || "Не удалось записаться. Попробуйте позже.",
+        variant: "destructive",
+      });
     }
   });
 
