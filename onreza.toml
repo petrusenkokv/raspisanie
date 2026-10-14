@@ -1,5 +1,7 @@
 [build]
-builder = "heroku/buildpacks:nodejs"
+builder = "heroku/nodejs-jammy"
 
 [deploy]
-command = "node dist/index.js"
+runtime = "node"
+entrypoint = ["node"]
+args = ["dist/index.js"]
