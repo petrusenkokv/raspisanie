@@ -1,0 +1,2 @@
+[deploy]
+command = "tsx server/index.ts"
