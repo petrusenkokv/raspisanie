@@ -1,5 +1,5 @@
 [build]
-command = "npm run build"
+builder = "heroku/buildpacks:nodejs"
 
 [deploy]
 command = "node dist/index.js"
