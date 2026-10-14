@@ -1,7 +1,5 @@
 [build]
-builder = "heroku/nodejs-jammy"
+command = "npm run build"
 
 [deploy]
-runtime = "node"
-entrypoint = ["node"]
-args = ["dist/index.js"]
+command = "npx tsx server/index.ts"
