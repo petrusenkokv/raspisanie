@@ -9,7 +9,7 @@
     "build": "vite build && node build-server.js",
     "build:api": "node build-server.js",
     "start": "node dist/index.js",
-    "postinstall": "node build-server.js",
+    "postinstall": "vite build && node build-server.js",
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "db:push:parent": "tsx scripts/apply-parent-schema.ts"
