@@ -701,13 +701,7 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                     {membershipGraceWarning}
                   </p>
                 )}
-                {/* Ознакомительная тренировка: слот занят → показываем подсказку */}
-                {wantsIntroductoryTraining && timeSlot.bookings.some((b) => b.status !== "cancelled") ? (
-                  <div className="text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded px-2 py-1.5 text-center">
-                    Вы можете записаться только на свободное время
-                  </div>
-                ) : (
-                  <MembershipBlockedButton
+                <MembershipBlockedButton
                     onClick={() => onBook(timeSlot.id)}
                     className="h-8 px-4 text-xs sm:text-sm sm:h-9 sm:w-full sm:flex-1 ml-auto sm:ml-0 shrink-0"
                     size="sm"
@@ -723,7 +717,6 @@ export function TimeSlot({ timeSlot, onBook, onCancel, onConfirm, onLoginRequest
                   >
                     {tooLateToBook ? "Запись закрыта" : "Записаться"}
                   </MembershipBlockedButton>
-                )}
               </>
             ) ||
               (individualSlotBusy && (

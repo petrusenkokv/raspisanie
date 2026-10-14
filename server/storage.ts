@@ -495,6 +495,7 @@ export class MemStorage implements IStorage {
         isBlocked: blockReason !== null,
         blockReason,
         blockNote: null,
+        isIntroductory: false,
         createdAt: new Date(),
       };
       this.timeSlots.set(timeSlotId, timeSlot);
@@ -970,6 +971,7 @@ export class MemStorage implements IStorage {
       isBlocked: insertTimeSlot.isBlocked || false,
       blockReason: insertTimeSlot.blockReason ?? null,
       blockNote: insertTimeSlot.blockNote ?? null,
+      isIntroductory: insertTimeSlot.isIntroductory ?? false,
       createdAt: new Date()
     };
     this.timeSlots.set(id, timeSlot);
@@ -2233,6 +2235,7 @@ export class MemStorage implements IStorage {
         isBlocked: blockReason !== null,
         blockReason,
         blockNote: null,
+        isIntroductory: false,
         createdAt: new Date(),
       };
       this.timeSlots.set(id, slot);

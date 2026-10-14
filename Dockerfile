@@ -1,32 +1,12 @@
-FROM node:20-bookworm-slim AS build
+FROM node:20-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --only=production
 
-COPY . .
-RUN npm run build
-RUN npm prune --omit=dev
+COPY dist/ ./dist/
 
-FROM node:20-bookworm-slim
+EXPOSE 3000
 
-WORKDIR /app
-
-ENV NODE_ENV=production
-ENV PORT=5000
-
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl \
-  && rm -rf /var/lib/apt/lists/*
-
-COPY --from=build /app/package*.json ./
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-
-EXPOSE 5000
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD node -e "require('http').get('http://127.0.0.1:'+(process.env.PORT||5000)+'/healthz', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
-
-CMD ["npm", "run", "start"]
+CMD ["node", "dist/index.js"]

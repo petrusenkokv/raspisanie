@@ -90,7 +90,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
     setPassword("");
     setRegisterSelf(true);
     setRegisterChild(false);
-    setWantsIntroductoryTraining(false);
     setParentFirstName("");
     setParentLastName("");
     setParentMiddleName("");
@@ -266,7 +265,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
           middleName: parentMiddleName || null,
           birthDate: registerSelf ? selfBirthDate : null,
           isAlsoStudent: registerSelf,
-          wantsIntroductoryTraining: registerSelf && wantsIntroductoryTraining,
           legalRepresentativeConfirmed,
           password,
           consentDocumentIds: consentIds,
