@@ -1,0 +1,10 @@
+[build]
+command = "npm run build"
+
+[deploy]
+runtime = "node:20"
+entrypoint = "node"
+args = ["dist/index.js"]
+
+[env]
+NODE_ENV = "production"
