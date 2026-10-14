@@ -1,15 +1,16 @@
-import { createApp } from "./server/app.js";
+// ONREZA entry point - uses tsx to run TypeScript
+import { spawn } from "node:child_process";
 
-const { server } = await createApp({
-  serveClient: true,
-  websocket: true,
+const tsx = spawn("npx", ["tsx", "server/index.ts"], {
+  stdio: "inherit",
+  env: {
+    ...process.env,
+    NODE_ENV: "production",
+  },
 });
 
-const port = parseInt(process.env.PORT || "5000", 10);
-const host = process.env.HOST || "0.0.0.0";
-server.listen(port, host, () => {
-  console.log(`serving on http://localhost:${port}`);
-  if (host === "0.0.0.0") {
-    console.log("also reachable on your LAN IP, e.g. http://192.168.x.x:" + port);
-  }
+tsx.on("close", (code) => process.exit(code));
+tsx.on("error", (err) => {
+  console.error("Failed to start tsx:", err);
+  process.exit(1);
 });
