@@ -1,2 +1,0 @@
-[start]
-command = "tsx server/index.ts"
