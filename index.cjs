@@ -1,7 +1,11 @@
 // ONREZA entry point - uses tsx to run TypeScript
-import { spawn } from "node:child_process";
+const { spawn } = require("child_process");
+const path = require("path");
+const { fileURLToPath } = require("url");
 
-const tsx = spawn("npx", ["tsx", "server/index.ts"], {
+const tsxPath = path.join(__dirname, "node_modules", "tsx", "dist", "cli.mjs");
+
+const tsx = spawn("node", [tsxPath, "server/index.ts"], {
   stdio: "inherit",
   env: {
     ...process.env,
