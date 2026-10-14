@@ -1,6 +1,2 @@
-[build]
-builder = "nixpacks"
-
-[deploy]
+[start]
 command = "node dist/index.js"
-env = { NODE_ENV = "production" }
