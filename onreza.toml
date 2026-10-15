@@ -1,0 +1,17 @@
+#:schema https://docs.onreza.ru/schemas/onreza-project-v1.schema.json
+
+[project]
+id = "01a1399b-147a-744f-89d8-60cd459c5da3"
+name = "raspisanie"
+workspace = "petrusenkokv"
+
+framework = "express"
+
+[build]
+install_command = "npm ci"
+command = "npm run build"
+output_directory = "dist"
+
+[deploy]
+compute = "process"
+entry = "index.js"
