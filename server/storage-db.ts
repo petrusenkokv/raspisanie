@@ -1,9 +1,10 @@
 import { eq, and, or, ne, asc, desc, inArray, gte, lte, lt, sql as drizzleSql } from "drizzle-orm";
 import { getDatabaseUrl } from "./db-url";
 
-// Create DB pool and drizzle instance at module load time
+// Create DB pool and drizzle instance at module load time.
+// Имя переменной — именно `db`: все методы DbStorage обращаются к ней напрямую.
 let pool: any = null;
-let dbInstance: any = null;
+let db: any = null;
 
 const databaseUrl = getDatabaseUrl();
 if (!databaseUrl) {
@@ -13,20 +14,21 @@ if (!databaseUrl) {
     const pgModule = await import("pg");
     pool = new pgModule.Pool({
       connectionString: databaseUrl,
-      connectionTimeoutMillis: 5000,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 15000,
     });
     console.log("[storage-db] PostgreSQL pool created");
-    
+
     const { drizzle } = await import("drizzle-orm/node-postgres");
     const { schema } = await import("@shared/schema");
-    dbInstance = drizzle(pool, { schema });
+    db = drizzle(pool, { schema });
     console.log("[storage-db] Drizzle instance created");
   } catch (err: any) {
     console.error("[storage-db] Failed to create PostgreSQL:", err?.message || err);
   }
 }
 
-console.log("[storage-db] Module loaded, dbInstance:", typeof dbInstance);
+console.log("[storage-db] Module loaded, db:", typeof db);
 import { pgTable, varchar, text, timestamp } from "drizzle-orm/pg-core";
 import {
   users, documents, userConsents, trainerServices, parentChildren, timeSlots, trainerSettings,

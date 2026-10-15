@@ -51,7 +51,8 @@ async function initStorage() {
     const pgModule = await import("pg");
     const pool = new pgModule.Pool({
       connectionString: dbUrl,
-      connectionTimeoutMillis: 5000,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 15000,
     });
     const res = await pool.query("SELECT 1 as test");
     console.log("[storage] pg connection passed:", res.rows);
