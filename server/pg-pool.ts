@@ -17,6 +17,9 @@ export function getPgPool(): Pool {
       idleTimeoutMillis: isDev ? 30_000 : 10_000,
       connectionTimeoutMillis: isDev ? 30_000 : 10_000,
     });
+    pool.on("error", (err) => {
+      console.error("[pg-pool] idle client error:", err.message);
+    });
   }
   return pool;
 }

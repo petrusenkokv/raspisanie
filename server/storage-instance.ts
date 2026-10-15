@@ -54,6 +54,9 @@ async function initStorage() {
       ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 15000,
     });
+    pool.on("error", (err) => {
+      console.error("[storage] test pool error:", err?.message || err);
+    });
     const res = await pool.query("SELECT 1 as test");
     console.log("[storage] pg connection passed:", res.rows);
     await pool.end();

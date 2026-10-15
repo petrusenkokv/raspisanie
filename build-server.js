@@ -15,7 +15,10 @@ await esbuild.build({
   outfile: "dist/index.js",
   external: ["vite", "@replit/vite-plugin-cartographer", "@replit/vite-plugin-runtime-error-modal"],
   banner: {
-    js: '"use strict";',
+    // ESM-бандл не имеет require(), а CommonJS-зависимости (express, pg, ...)
+    // вызывают его внутри себя. Без этого шейпа Node падает на старте с
+    // «Dynamic require of "path" is not supported».
+    js: 'import{createRequire as __createRequire}from"node:module";const require=__createRequire(import.meta.url);',
   },
   target: "node20",
   resolveExtensions: [".ts", ".js", ".json"],

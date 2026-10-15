@@ -4,6 +4,14 @@ import { log } from "./vite";
 
 loadDevEnv();
 
+// Prevent process crash on idle pg pool errors
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
+
 (async () => {
   const { server } = await createApp({
     serveClient: true,

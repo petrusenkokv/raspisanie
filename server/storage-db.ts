@@ -17,6 +17,9 @@ if (!databaseUrl) {
       ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 15000,
     });
+    pool.on("error", (err) => {
+      console.error("[storage-db] pg pool idle client error:", err.message);
+    });
     console.log("[storage-db] PostgreSQL pool created");
 
     const { drizzle } = await import("drizzle-orm/node-postgres");
