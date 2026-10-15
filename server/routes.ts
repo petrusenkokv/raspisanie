@@ -1333,10 +1333,13 @@ export async function registerRoutes(
   app.use("/api/bookings", requireAuth);
 
   app.post("/api/bookings", async (req, res) => {
+    // Объявлены до try, чтобы блок catch мог залогировать контекст ошибки.
+    let timeSlotId = "";
+    let studentId: string | undefined;
+    let bookedBy = "";
     try {
-      const { timeSlotId, notes } = req.body;
-      let studentId: string | undefined;
-      let bookedBy: string;
+      const { notes } = req.body;
+      timeSlotId = req.body?.timeSlotId;
 
       if (isSessionTrainer(req)) {
         studentId = req.body?.studentId;
