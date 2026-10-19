@@ -28,6 +28,7 @@ interface ScheduleSettingsDialogProps {
   onOpenChange: (open: boolean) => void;
   onOpenBlockPeriod?: () => void;
   onOpenBroadcast?: () => void;
+  onOpenAuthModal?: (open: boolean, mode?: "login" | "register" | "welcome") => void;
   dayBlockedState?: { allBlocked: boolean; dateStr: string } | null;
   blockDayPending?: boolean;
   onToggleBlockDay?: () => void;
@@ -236,6 +237,7 @@ export function ScheduleSettingsDialog({
   onOpenChange,
   onOpenBlockPeriod,
   onOpenBroadcast,
+  onOpenAuthModal,
   dayBlockedState,
   blockDayPending,
   onToggleBlockDay,

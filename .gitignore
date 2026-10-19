@@ -16,3 +16,22 @@ nul
 .env*
 .vercel
 .onreza/
+
+# Logs
+*.log
+nrz-*.log
+prod-test.log
+dev-server.log
+onreza.toml.bak
+
+# Local temp
+_isotest/
+screen_*.png
+onreza.toml.bak
+.dburl
+
+# Deploy pkg (managed separately)
+deploy-pkg/
+
+# Scripts (not part of build)
+scripts/

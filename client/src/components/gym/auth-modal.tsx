@@ -16,7 +16,7 @@ import {
   calculateAgeYears,
   todayLocalStr,
 } from "@shared/birth-date";
-import { filterRequiredDocuments, isPricingDocument } from "@shared/consents-pricing";
+import { filterRequiredDocuments, isPricingDocument, isRequiredDocument } from "@shared/consents-pricing";
 import { BirthDateFields } from "./birth-date-fields";
 
 interface AuthModalProps {
@@ -59,7 +59,9 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   const [loginConsentAccepted, setLoginConsentAccepted] = useState<Record<string, boolean>>({});
   const [pendingShowWelcome, setPendingShowWelcome] = useState(false);
 
-  const { data: documents = [] } = useQuery<Document[]>({
+  // isPending нужен, чтобы не дать отправить регистрацию до загрузки списка
+  // документов: иначе на сервер уйдёт пустой список согласий и он отклонит запрос.
+  const { data: documents = [], isPending: docsLoading } = useQuery<Document[]>({
     queryKey: ["/api/documents"],
     queryFn: async () => {
       const r = await apiRequest("GET", "/api/documents");
@@ -67,6 +69,23 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
     },
     enabled: open && mode === "register",
   });
+
+  // При загрузке документов автоматически отмечаем обязательные.
+  // Это нужно, чтобы клиент не отправлял пустой список согласий на сервер,
+  // если пользователь просто пропустил шаг с галочками.
+  useEffect(() => {
+    if (documents.length > 0) {
+      setAcceptedDocs((prev) => {
+        const next: Record<string, boolean> = { ...prev };
+        for (const doc of documents) {
+          if (!next[doc.id] && isRequiredDocument(doc)) {
+            next[doc.id] = true;
+          }
+        }
+        return next;
+      });
+    }
+  }, [documents]);
 
   const { data: trainerSettings } = useQuery<{ welcomeMessage: string | null }>({
     queryKey: ["/api/schedule/settings"],
@@ -671,8 +690,8 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                   <Button variant="outline" onClick={() => setMode("login")} disabled={loading} className="flex-1">
                     Назад
                   </Button>
-                  <Button onClick={handleRegister} disabled={loading} className="flex-1" data-testid="button-register-submit">
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Button onClick={handleRegister} disabled={loading || docsLoading} className="flex-1" data-testid="button-register-submit">
+                    {(loading || docsLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     <UserPlus className="mr-2 h-4 w-4" />
                     Зарегистрироваться
                   </Button>

@@ -31,7 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export function GymSchedulePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authModalMode, setAuthModalMode] = useState<"login" | "register">("login");
+  const [authModalMode, setAuthModalMode] = useState<"login" | "register" | "welcome">("login");
   const [studentsPanelOpen, setStudentsPanelOpen] = useState(false);
   const [trainerBookDialogOpen, setTrainerBookDialogOpen] = useState(false);
   const [trainerBookSelfMode, setTrainerBookSelfMode] = useState(false);
@@ -522,6 +522,10 @@ export function GymSchedulePage() {
         }}
         onOpenBlockPeriod={() => setBlockPeriodOpen(true)}
         onOpenBroadcast={() => setBroadcastOpen(true)}
+        onOpenAuthModal={(open, mode) => {
+          setAuthModalOpen(open);
+          if (mode) setAuthModalMode(mode);
+        }}
       />
       <BroadcastDialog open={broadcastOpen} onOpenChange={setBroadcastOpen} />
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />

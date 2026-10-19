@@ -100,10 +100,22 @@ export async function validateStoredUser(): Promise<void> {
 }
 
 export async function logoutFromServer(): Promise<void> {
-  // Сначала мгновенно очищаем store — UI обновится сразу
+  // Сначала дождаемся выхода на сервере: иначе cookie сессии переживает
+  // перезагрузку страницы и /api/auth/me сразу возвращает прежнего пользователя.
+  // keepalive нужен, чтобы запрос не отменился при быстром refresh/закрытии вкладки.
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+    });
+  } catch {
+    /* сеть недоступна — всё равно чистим локальное состояние */
+  }
+
   useGymStore.getState().logout();
 
-  // Потом "fire and forget" отправляем запросы на сервер
+  // Push-подписку снимаем уже после выхода, он не влияет на сессию.
   try {
     if ("serviceWorker" in navigator && "PushManager" in window) {
       const reg = await navigator.serviceWorker.ready;
@@ -121,7 +133,6 @@ export async function logoutFromServer(): Promise<void> {
   } catch {
     /* ignore */
   }
-  fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
 }
 
 export const useGymStore = create<GymStore>((set, get) => ({

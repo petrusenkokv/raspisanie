@@ -2,22 +2,28 @@ import fs from "fs";
 import path from "path";
 
 /**
- * Load .env.local / .env in development.
+ * Load .env.local / .env in development and production.
  *
- * DATABASE_URL, DATABASE_URL_UNPOOLED и SESSION_SECRET загружаются из .env.local
- * **всегда** — они должны побеждать системные переменные окружения (на машине
- * разработчика может остаться DATABASE_URL от другого проекта/провайдера).
- * Все остальные переменные подставляются только если ещё не заданы.
+ * В development: DATABASE_URL, DATABASE_URL_UNPOOLED и SESSION_SECRET
+ * загружаются **всегда** из .env.local — они должны побеждать системные
+ * переменные окружения (на машине разработчика может остаться DATABASE_URL
+ * от другого проекта/провайдера).
+ *
+ * В production (onreza.app): загружаются только как fallback, если
+ * переменные ещё не заданы на платформе.
  */
 
-// Ключи, которые всегда перезаписываются из .env.local
+// Ключи, которые в development всегда перезаписываются из .env.local
 const OVERRIDE_KEYS = new Set(["DATABASE_URL", "DATABASE_URL_UNPOOLED", "SESSION_SECRET"]);
+const IN_PRODUCTION = process.env.NODE_ENV === "production";
 
 let loaded = false;
 
 export const loadDevEnv = () => {
   if (loaded) return;
-  if (process.env.NODE_ENV !== "development") return;
+  // Загружаем .env.local в development и в production (как fallback,
+  // если DATABASE_URL / SESSION_SECRET не заданы на платформе).
+  if (process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "production") return;
   loaded = true;
 
   const root = path.resolve(import.meta.dirname, "..");
@@ -41,7 +47,11 @@ export const loadDevEnv = () => {
         value = value.slice(1, -1);
       }
 
-      if (OVERRIDE_KEYS.has(key) || !process.env[key]) {
+      // В production — только fallback (если переменная ещё не задана на платформе)
+      const shouldOverwrite = IN_PRODUCTION
+        ? !process.env[key]
+        : OVERRIDE_KEYS.has(key) || !process.env[key];
+      if (shouldOverwrite) {
         process.env[key] = value;
       }
     }
