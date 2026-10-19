@@ -508,7 +508,7 @@ export async function registerRoutes(
       storage.getTrainer().then(async (trainer) => {
         if (!trainer) return;
         const fullName = [user.lastName, user.firstName].filter(Boolean).join(" ");
-        const msg = `${fullName} (${user.phone})`;
+        const msg = fullName;
         await storage.createNotification({
           userId: trainer.id,
           type: "new_student",

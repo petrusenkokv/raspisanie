@@ -16,7 +16,7 @@ import {
   calculateAgeYears,
   todayLocalStr,
 } from "@shared/birth-date";
-import { filterRequiredDocuments, isPricingDocument, isRequiredDocument } from "@shared/consents-pricing";
+import { filterRequiredDocuments, isPricingDocument } from "@shared/consents-pricing";
 import { BirthDateFields } from "./birth-date-fields";
 
 interface AuthModalProps {
@@ -40,9 +40,8 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   const [password, setPassword] = useState("");
 
   // Register state
-  const [registerSelf, setRegisterSelf] = useState(true);
+  const [registerSelf, setRegisterSelf] = useState(false);
   const [registerChild, setRegisterChild] = useState(false);
-  const [wantsIntroductoryTraining, setWantsIntroductoryTraining] = useState(false);
   const [parentFirstName, setParentFirstName] = useState("");
   const [parentLastName, setParentLastName] = useState("");
   const [parentMiddleName, setParentMiddleName] = useState("");
@@ -59,8 +58,9 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   const [loginConsentAccepted, setLoginConsentAccepted] = useState<Record<string, boolean>>({});
   const [pendingShowWelcome, setPendingShowWelcome] = useState(false);
 
-  // isPending нужен, чтобы не дать отправить регистрацию до загрузки списка
-  // документов: иначе на сервер уйдёт пустой список согласий и он отклонит запрос.
+  // Пользователь сам отмечает документы — автоотметка обязательных убрана,
+  // чтобы пользователь явно соглашался с каждым документом.
+  // isPending нужен только чтобы не дать отправить регистрацию до загрузки списка документов.
   const { data: documents = [], isPending: docsLoading } = useQuery<Document[]>({
     queryKey: ["/api/documents"],
     queryFn: async () => {
@@ -69,23 +69,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
     },
     enabled: open && mode === "register",
   });
-
-  // При загрузке документов автоматически отмечаем обязательные.
-  // Это нужно, чтобы клиент не отправлял пустой список согласий на сервер,
-  // если пользователь просто пропустил шаг с галочками.
-  useEffect(() => {
-    if (documents.length > 0) {
-      setAcceptedDocs((prev) => {
-        const next: Record<string, boolean> = { ...prev };
-        for (const doc of documents) {
-          if (!next[doc.id] && isRequiredDocument(doc)) {
-            next[doc.id] = true;
-          }
-        }
-        return next;
-      });
-    }
-  }, [documents]);
 
   const { data: trainerSettings } = useQuery<{ welcomeMessage: string | null }>({
     queryKey: ["/api/schedule/settings"],
@@ -107,7 +90,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
   const resetForm = () => {
     setPhone("");
     setPassword("");
-    setRegisterSelf(true);
+    setRegisterSelf(false);
     setRegisterChild(false);
     setParentFirstName("");
     setParentLastName("");
@@ -237,7 +220,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
           parentFullName: null,
           parentPhone: null,
           consentDocumentIds: consentIds,
-          wantsIntroductoryTraining: registerSelf && wantsIntroductoryTraining,
         });
         const data = await parseJsonResponse<{ user: unknown }>(response);
         setUser(data.user as any);
@@ -341,7 +323,7 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                   </div>
                   <h3 className="font-bold text-lg text-gray-900 dark:text-white">Регистрация завершена!</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Вы зарегистрированы, ждите одобрения тренера. После одобрения сможете записаться на ознакомительную тренировку и оплатить посещение зала. Тренеру оплаты нет — бесплатно.
+                    Вы зарегистрированы, ждите одобрения тренера. После одобрения Вы сможете оплатить посещение тренажерного зала и занятия с тренером.
                   </p>
                 </div>
                 <Button className="w-full" onClick={() => { onOpenChange(false); resetForm(); }}>
@@ -500,23 +482,6 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
                     <p className="text-xs text-amber-700 dark:text-amber-400">
                       До 14 лет — только через «Записать ребёнка».
                     </p>
-                  )}
-                  {/* Ознакомительная тренировка — только если выбрана хотя бы одна основная галочка */}
-                  {(registerSelf || registerChild) && (
-                    <label className="flex items-start gap-2 text-sm cursor-pointer">
-                      <Checkbox
-                        checked={wantsIntroductoryTraining}
-                        onCheckedChange={(v) => setWantsIntroductoryTraining(!!v)}
-                        disabled={loading}
-                        data-testid="checkbox-introductory-training"
-                      />
-                      <span>
-                        Ознакомительная тренировка
-                        <span className="block text-xs text-muted-foreground mt-0.5">
-                          Автоматическая запись на свободный слот тренировки
-                        </span>
-                      </span>
-                    </label>
                   )}
                 </div>
 

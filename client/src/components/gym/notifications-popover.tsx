@@ -350,8 +350,14 @@ export function NotificationsPopover({
                       !n.isRead &&
                       !processedIds.has(n.id);
 
-                    const showApprove = false;
-                    const showAlreadyApproved = showNewStudentNotice;
+                    // Кнопку «Одобрить» показываем, пока ученик не одобрен.
+                    const relatedStudent = n.relatedUserId
+                      ? students.find((s) => s.id === n.relatedUserId)
+                      : undefined;
+                    const showApprove =
+                      showNewStudentNotice &&
+                      (relatedStudent as any)?.isPendingApproval !== false;
+                    const showAlreadyApproved = false;
                     return (
                       <li
                         key={n.id}
