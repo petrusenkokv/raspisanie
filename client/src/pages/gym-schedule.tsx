@@ -128,7 +128,7 @@ export function GymSchedulePage() {
   const isStudent = currentUser?.role === "student" || (!!currentUser && !currentUser.isParent && currentUser.role !== "trainer");
   const isPendingApproval = !!currentUser?.isPendingApproval;
 
-  const { data: parentChildren = [] } = useQuery({
+  const { data: parentChildren = [] } = useQuery<User[]>({
     queryKey: ["/api/parent/children"],
     queryFn: async () => {
       const r = await apiRequest("GET", "/api/parent/children");

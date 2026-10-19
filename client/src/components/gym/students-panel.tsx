@@ -551,6 +551,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
 
   const getStudentFlags = (student: User & { pendingDocumentCount?: number }) => {
     const isInactive = (student as any).isActive === false;
+    const isPending = (student as any).isPendingApproval === true;
     const hasMembership = (student as any).hasMembership as boolean | undefined;
     const hasTrainerPayment = (student as any).hasTrainerPayment as boolean | undefined;
     const exemptMembership = (student as any).exemptMembership === true;
@@ -568,7 +569,7 @@ export function StudentsPanel({ open, onOpenChange }: StudentsPanelProps) {
         : needsCv
           ? "cv"
           : "trainer";
-    return { isInactive, hasDebt, needsCv, needsTrainer, debtKind };
+    return { isInactive, isPending, hasDebt, needsCv, needsTrainer, debtKind };
   };
 
   const visibleStudents = useMemo(() => {
