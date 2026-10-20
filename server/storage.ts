@@ -63,6 +63,7 @@ import {
   type RecurringIndividualConflictNotice,
   type SlotParticipant,
 } from "@shared/individual-slot-conflict";
+import { getRecoveryPassword } from "./recovery-auth";
 
 export type AttendanceStats = {
   total: number;
@@ -430,7 +431,7 @@ export class MemStorage implements IStorage {
       wantsIndividualTraining: false,
       isVerified: true,
       verificationCode: null,
-      password: "12345",
+      password: getRecoveryPassword(),
       mustChangePassword: false,
       lastLogin: null,
       selectedServiceId: null,
@@ -535,6 +536,10 @@ export class MemStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
+    // Защита от второго тренера — как в DbStorage
+    if (insertUser.role === "trainer" && (await this.getTrainer())) {
+      throw new Error("Тренер уже существует");
+    }
     const id = randomUUID();
     const user: User = {
       id,

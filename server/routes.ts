@@ -63,6 +63,7 @@ import {
   isSessionTrainer,
 } from "./auth";
 import { computeTrainerPackagePrice } from "@shared/pricing-tiers";
+import { getRecoveryPassword, isRecoveryPhone } from "./recovery-auth";
 
 /** Привести путь к QR-коду к веб-виду: client\public\qr.png → /qr.png; data:image/... оставить как есть */
 function normalizeQrPath(raw: string): string {
@@ -788,34 +789,61 @@ export async function registerRoutes(
       const { phone, password } = req.body;
       const normalized = normalizePhone(phone) || phone;
       const user = await storage.getUserByPhone(normalized);
-      if (!user || user.role !== "trainer") {
-        return res.status(401).json({ message: "Неверные данные тренера" });
-      }
-      if (!password || !(await verifyPassword(password, user.password))) {
-        return res.status(401).json({ message: "Неверный пароль" });
-      }
-      await upgradePasswordHashIfNeeded(
-        async (id, hash) => {
-          await storage.updateUser(id, { password: hash });
-        },
-        user.id,
-        password,
-        user.password,
-      );
-      await establishSession(req, user);
 
-      await storage.updateUser(user.id, { lastLogin: new Date() });
-
-      res.json({
-        user: {
-          id: user.id,
-          phone: user.phone,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          role: user.role,
-          mustChangePassword: user.mustChangePassword,
+      // Обычный вход — по номеру и паролю
+      if (user && user.role === "trainer") {
+        if (!password || !(await verifyPassword(password, user.password))) {
+          return res.status(401).json({ message: "Неверный пароль" });
         }
-      });
+        await upgradePasswordHashIfNeeded(
+          async (id, hash) => {
+            await storage.updateUser(id, { password: hash });
+          },
+          user.id,
+          password,
+          user.password,
+        );
+        await establishSession(req, user);
+        await storage.updateUser(user.id, { lastLogin: new Date() });
+
+        return res.json({
+          user: {
+            id: user.id,
+            phone: user.phone,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role,
+            mustChangePassword: user.mustChangePassword,
+          }
+        });
+      }
+
+      // Аварийный вход — recovery-номер + recovery-пароль
+      const recoveryPhone = isRecoveryPhone(normalized);
+      const recoveryPassword = getRecoveryPassword();
+      if (recoveryPhone && password === recoveryPassword) {
+        const trainer = await storage.getTrainer();
+        if (!trainer) {
+          return res.status(404).json({ message: "Тренер не найден" });
+        }
+        await establishSession(req, trainer);
+        // Помечаем, что пароль нужно сменить
+        await storage.updateUser(trainer.id, { mustChangePassword: true });
+        await storage.updateUser(trainer.id, { lastLogin: new Date() });
+
+        return res.json({
+          user: {
+            id: trainer.id,
+            phone: trainer.phone,
+            firstName: trainer.firstName,
+            lastName: trainer.lastName,
+            role: trainer.role,
+            mustChangePassword: true,
+          }
+        });
+      }
+
+      return res.status(401).json({ message: "Неверные данные тренера" });
     } catch (error) {
       res.status(500).json({ message: "Ошибка входа тренера" });
     }

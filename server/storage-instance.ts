@@ -91,6 +91,19 @@ async function initStorage() {
   );
   await Promise.race([pricingMigration ?? Promise.resolve(), startupDeadline]);
 
+  // Единственный тренер + уникальный индекс. Выполняется всегда (и в production,
+  // где seed пропускается), иначе «лишние админы» переживают деплой.
+  // Не блокируем запуск надолго: при недоступной БД разберётся seed/следующий старт.
+  const trainerGuard = (storage as any).ensureTrainerConstraints?.();
+  if (trainerGuard) {
+    await Promise.race([
+      trainerGuard.catch((err: any) =>
+        console.error("[storage] ensureTrainerConstraints failed:", err),
+      ),
+      new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+    ]);
+  }
+
   if (hasSeed(storage) && shouldSeedOnStartup()) {
     await seedWithRetry(storage);
   } else if (hasSeed(storage)) {

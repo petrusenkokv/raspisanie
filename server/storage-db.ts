@@ -60,6 +60,8 @@ import {
   type PaymentReport,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { hashPassword } from "./auth";
+import { getRecoveryPassword } from "./recovery-auth";
 import type { IStorage, AttendanceStats, BlockedPeriod } from "./storage";
 import type { PushSubscriptionData } from "./push";
 import {
@@ -442,10 +444,69 @@ export class DbStorage implements IStorage {
     } catch { /* ignore */ }
   }
 
+  /**
+   * В БД должен быть ровно один тренер. Вызывается при каждом старте сервера
+   * (в том числе в production, где seed() пропускается), поэтому случайные
+   * дубликаты-«админы» не переживают деплой.
+   */
+  async ensureTrainerConstraints(): Promise<void> {
+    try {
+      const trainers = await db
+        .select()
+        .from(users)
+        .where(eq(users.role, "trainer"))
+        .orderBy(asc(users.createdAt));
+
+      if (trainers.length > 1) {
+        for (const duplicate of trainers.slice(1)) {
+          try {
+            await db.delete(users).where(eq(users.id, duplicate.id));
+            console.log(`[storage] удалён дубликат тренера ${duplicate.phone}`);
+          } catch {
+            // У дубликата есть связанные записи (записи в расписание, платежи,
+            // уведомления) — удаление разобьётся о внешние ключи. Тогда просто
+            // снимаем роль тренера и архивируем аккаунт.
+            await db
+              .update(users)
+              .set({ role: "student", isActive: false })
+              .where(eq(users.id, duplicate.id));
+            console.log(`[storage] дубликат тренера ${duplicate.phone} понижен до ученика`);
+          }
+        }
+      }
+
+      if (trainers.length === 0) {
+        await db.insert(users).values({
+          phone: "79991234567",
+          firstName: "Константин",
+          lastName: "Владимирович",
+          role: "trainer",
+          isVerified: true,
+          password: await hashPassword(getRecoveryPassword()),
+          mustChangePassword: true,
+          isActive: true,
+          exemptMembership: true,
+          exemptTrainerPayment: true,
+        });
+        console.log("[storage] создан единственный тренер (нужна смена пароля)");
+      }
+
+      // Страховка на уровне БД: второй тренер не появится даже прямым SQL.
+      await db.execute(drizzleSql`
+        CREATE UNIQUE INDEX IF NOT EXISTS users_only_one_trainer
+        ON users (role) WHERE role = 'trainer'
+      `);
+    } catch (err) {
+      console.error("[storage] ensureTrainerConstraints error:", err);
+    }
+  }
+
   async seed(): Promise<void> {
     await this.ensureServicesAndDocsSchema();
     await this.ensurePricingSchema();
     await this.ensurePaymentReportsSchema();
+    await this.ensureTrainerConstraints();
+
     // Ensure DB columns exist (safe migrations)
     try {
       await db.execute(drizzleSql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_pending_approval boolean NOT NULL DEFAULT false`);
@@ -489,28 +550,6 @@ export class DbStorage implements IStorage {
       `);
     } catch { /* ignore */ }
 
-    // Ensure trainer exists
-    const trainer = await this.getTrainer();
-    if (!trainer) {
-      await db.insert(users).values({
-        phone: "79991234567",
-        firstName: "Константин",
-        lastName: "Владимирович",
-        role: "trainer",
-        isVerified: true,
-        password: "12345",
-        mustChangePassword: false,
-        isActive: true,
-        exemptMembership: true,
-        exemptTrainerPayment: true,
-      });
-    } else if (trainer.role === "trainer" && (!trainer.exemptMembership || !trainer.exemptTrainerPayment)) {
-      await db.update(users).set({
-        exemptMembership: true,
-        exemptTrainerPayment: true,
-      }).where(eq(users.id, trainer.id));
-    }
-    // NB: дефолтная услуга больше не создаётся — цена ученика берётся из «Тарифов абонементов».
     // Ensure default documents exist
     const docs = await db.select().from(documents);
     if (docs.length === 0) {
@@ -730,6 +769,13 @@ export class DbStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
+    // Защита от второго тренера
+    if (insertUser.role === "trainer") {
+      const existing = await this.getTrainer();
+      if (existing) {
+        throw new Error("Тренер уже существует");
+      }
+    }
     const rows = await db.insert(users).values({
       phone: insertUser.phone,
       firstName: insertUser.firstName,
