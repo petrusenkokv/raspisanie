@@ -1,5 +1,6 @@
 import { loadDevEnv } from "./load-dev-env";
 import { createApp } from "./app";
+import { ensureStorageReady } from "./storage-instance";
 import { log } from "./vite";
 
 loadDevEnv();
@@ -29,4 +30,11 @@ process.on("uncaughtException", (err) => {
       log("push: VAPID keys not set — add VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY to .env.local for local push");
     }
   });
+
+  // Инициализация БД (проверка соединения, миграции, сид) идёт в фоне:
+  // onreza даёт на запуск 30 секунд и снимает деплой, если сервер не начал
+  // слушать вовремя. Первый /api-запрос подождёт готовность сам.
+  ensureStorageReady()
+    .then(() => log("storage ready"))
+    .catch((err) => console.error("[index] storage init failed:", err));
 })();

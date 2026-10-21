@@ -12,15 +12,14 @@ type AppOptions = {
 
 export async function createApp(options: AppOptions = {}) {
   console.log("[app] createApp started");
-  await ensureStorageReady();
-  console.log("[app] ensureStorageReady completed");
 
   const app = express();
   // Лимит увеличен: тренер загружает фото QR-кода (base64) в настройки оплаты.
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: false, limit: "10mb" }));
-  setupSession(app);
 
+  // Health-роуты зарегистрированы ДО session и до ожидания БД: onreza даёт
+  // 30 секунд на старт и проверяет готовность именно через /healthz.
   app.get("/healthz", (_req, res) => {
     res.status(200).json({
       status: "ok",
@@ -35,6 +34,20 @@ export async function createApp(options: AppOptions = {}) {
       commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
       moscowToday: moscowDateString(),
     });
+  });
+
+  setupSession(app);
+
+  // Инициализация хранилища (проверка соединения, миграции, сид) идёт в фоне
+  // (см. index.ts), чтобы listen() не ждал БД. Первый запрос к API дождётся
+  // её здесь — иначе получил бы MemStorage вместо DbStorage.
+  app.use("/api", async (_req, res, next) => {
+    try {
+      await ensureStorageReady();
+    } catch (err) {
+      console.error("[app] storage not ready:", err);
+    }
+    next();
   });
 
   // Diagnostic route
