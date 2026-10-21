@@ -131,10 +131,16 @@ export function AuthModal({ open, onOpenChange, initialMode = "login" }: AuthMod
         resetForm();
       }
     } catch (error: any) {
+      const desc = error?.message || "";
+      const isNotFound = desc.includes("Пользователь не найден");
       toast({
         variant: "destructive",
-        title: "Не удалось войти",
-        description: error?.message || "Проверьте телефон и пароль",
+        title: isNotFound ? "Пользователь не найден" : "Не удалось войти",
+        description: isNotFound
+          ? "Проверьте номер телефона и пароль. Если вы ещё не зарегистрированы, нажмите «Зарегистрироваться»."
+          : desc.length > 0
+          ? desc
+          : "Проверьте телефон и пароль",
       });
     } finally {
       setLoading(false);

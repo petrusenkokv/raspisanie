@@ -107,6 +107,38 @@ function makeTemporaryPassword(): string {
   return String(100000 + Math.floor(Math.random() * 900000));
 }
 
+/**
+ * Аварийный (recovery) вход тренера: recovery-номер + пароль из env.
+ *
+ * Используется обоими маршрутами — /api/auth/trainer-login и общим
+ * /api/auth/login. После унификации интерфейса входа клиент зовёт только
+ * /api/auth/login, и без этой ветки тренер терял единственный способ
+ * зайти, когда его настоящий номер/пароль не подходят.
+ */
+async function buildRecoveryTrainerLogin(req: any): Promise<Record<string, unknown> | null> {
+  const trainer = await storage.getTrainer();
+  if (!trainer) return null;
+  await establishSession(req, trainer);
+  // Вход по recovery одноразовый: сразу требуем сменить пароль.
+  await storage.updateUser(trainer.id, {
+    mustChangePassword: true,
+    lastLogin: new Date(),
+  });
+  return {
+    id: trainer.id,
+    phone: trainer.phone,
+    firstName: trainer.firstName,
+    lastName: trainer.lastName,
+    role: trainer.role,
+    mustChangePassword: true,
+  };
+}
+
+/** true, если запрос похож на recovery-вход тренера (нужный номер + нужный пароль). */
+function isRecoveryLoginAttempt(normalizedPhone: string, password: unknown): boolean {
+  return isRecoveryPhone(normalizedPhone) && String(password ?? "") === getRecoveryPassword();
+}
+
 async function recordConsents(userId: string, documentIds: string[] | undefined) {
   if (!documentIds || !Array.isArray(documentIds)) return;
   for (const docId of documentIds) {
@@ -666,6 +698,14 @@ export async function registerRoutes(
       const normalized = normalizePhone(phone) || phone;
       const user = await storage.getUserByPhone(normalized);
       if (!user) {
+        // Recovery-вход тренера: под recovery-номером аккаунта в БД нет,
+        // поэтому он проверяется раньше ответа «Пользователь не найден».
+        if (isRecoveryLoginAttempt(normalized, password)) {
+          const recoveryUser = await buildRecoveryTrainerLogin(req);
+          if (recoveryUser) {
+            return res.json({ user: recoveryUser, pendingDocuments: [] });
+          }
+        }
         return res.status(404).json({ message: "Пользователь не найден" });
       }
       if (!password || !(await verifyPassword(password, user.password))) {
@@ -819,28 +859,12 @@ export async function registerRoutes(
       }
 
       // Аварийный вход — recovery-номер + recovery-пароль
-      const recoveryPhone = isRecoveryPhone(normalized);
-      const recoveryPassword = getRecoveryPassword();
-      if (recoveryPhone && password === recoveryPassword) {
-        const trainer = await storage.getTrainer();
-        if (!trainer) {
+      if (isRecoveryLoginAttempt(normalized, password)) {
+        const recoveryUser = await buildRecoveryTrainerLogin(req);
+        if (!recoveryUser) {
           return res.status(404).json({ message: "Тренер не найден" });
         }
-        await establishSession(req, trainer);
-        // Помечаем, что пароль нужно сменить
-        await storage.updateUser(trainer.id, { mustChangePassword: true });
-        await storage.updateUser(trainer.id, { lastLogin: new Date() });
-
-        return res.json({
-          user: {
-            id: trainer.id,
-            phone: trainer.phone,
-            firstName: trainer.firstName,
-            lastName: trainer.lastName,
-            role: trainer.role,
-            mustChangePassword: true,
-          }
-        });
+        return res.json({ user: recoveryUser });
       }
 
       return res.status(401).json({ message: "Неверные данные тренера" });

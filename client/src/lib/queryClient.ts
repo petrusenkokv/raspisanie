@@ -9,6 +9,7 @@ async function readErrorMessage(res: Response): Promise<string> {
   try {
     const json = JSON.parse(trimmed);
     if (json?.message) return String(json.message);
+    if (json?.error) return String(json.error);
   } catch {
     /* not JSON */
   }
