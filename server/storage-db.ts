@@ -1,8 +1,15 @@
 import { eq, and, or, ne, asc, desc, inArray, gte, lte, lt, sql as drizzleSql } from "drizzle-orm";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import * as schema from "@shared/schema";
 import { getDatabaseUrl } from "./db-url";
 
 // Create DB pool and drizzle instance at module load time.
 // Имя переменной — именно `db`: все методы DbStorage обращаются к ней напрямую.
+//
+// Импорт статический, а инициализация синхронная: раньше здесь был
+// `await import("pg")`, и из-за top-level await esbuild не мог собрать
+// ни CJS (формат не поддерживает TLA), ни корректный ESM-бандл для Layero.
 let pool: any = null;
 let db: any = null;
 
@@ -11,8 +18,7 @@ if (!databaseUrl) {
   console.log("[storage-db] DATABASE_URL not set");
 } else {
   try {
-    const pgModule = await import("pg");
-    pool = new pgModule.Pool({
+    pool = new Pool({
       connectionString: databaseUrl,
       ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 15000,
@@ -22,8 +28,6 @@ if (!databaseUrl) {
     });
     console.log("[storage-db] PostgreSQL pool created");
 
-    const { drizzle } = await import("drizzle-orm/node-postgres");
-    const { schema } = await import("@shared/schema");
     db = drizzle(pool, { schema });
     console.log("[storage-db] Drizzle instance created");
   } catch (err: any) {

@@ -1,31 +1,41 @@
 import esbuild from "esbuild";
 import { fileURLToPath } from "url";
 import { dirname, join, resolve } from "path";
-import { copyFileSync, mkdirSync, existsSync, readdirSync } from "fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  existsSync,
+  readdirSync,
+  writeFileSync,
+} from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Build server
+// Единый CJS-бандл: Layero не запускает ESM (его рантайм парсит .js как CJS),
+// а onreza запускает бандл через spawn дочерним процессом — формат ему безразличичен.
+// Раньше был ESM + top-level await в storage-db.ts: CJS не собирался (esbuild не
+// поддерживает TLA в cjs), а ESM не жил на Layero. TLA убран — форматы сошлись на CJS.
 await esbuild.build({
   entryPoints: ["server/index.ts"],
   bundle: true,
   platform: "node",
-  format: "esm",
+  format: "cjs",
   outfile: "dist/index.js",
   external: ["vite", "@replit/vite-plugin-cartographer", "@replit/vite-plugin-runtime-error-modal"],
-  banner: {
-    // ESM-бандл не имеет require(), а CommonJS-зависимости (express, pg, ...)
-    // вызывают его внутри себя. Без этого шейпа Node падает на старте с
-    // «Dynamic require of "path" is not supported».
-    js: 'import{createRequire as __createRequire}from"node:module";const require=__createRequire(import.meta.url);',
-  },
   target: "node20",
   resolveExtensions: [".ts", ".js", ".json"],
   logLevel: "info",
 });
 
-console.log("Server built successfully to dist/index.js");
+// Корневой package.json имеет "type": "module", поэтому CJS-бандлу нужен
+// собственный маркер формата — иначе Node распарсит dist/index.js как ESM.
+writeFileSync(
+  resolve(__dirname, "dist", "package.json"),
+  JSON.stringify({ type: "commonjs" }, null, 2) + "\n",
+);
+
+console.log("Server built successfully to dist/index.js (CJS)");
 
 // Copy dist/public to server/public for the server to find
 function copyDirSync(src, dest) {

@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { moduleDir } from "./module-dir";
 
 /**
  * Load .env.local / .env in development and production.
@@ -26,7 +27,7 @@ export const loadDevEnv = () => {
   if (process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "production") return;
   loaded = true;
 
-  const root = path.resolve(import.meta.dirname, "..");
+  const root = path.resolve(moduleDir, "..");
   for (const file of [".env.local", ".env"]) {
     const filePath = path.join(root, file);
     if (!fs.existsSync(filePath)) continue;

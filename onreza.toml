@@ -10,8 +10,9 @@ framework = "express"
 [build]
 install_command = "npm ci"
 command = "npm run build"
-output_directory = "dist"
+output_directory = "deploy-pkg"
 
 [deploy]
 compute = "process"
 entry = "index.js"
+health_check_path = "/healthz"
