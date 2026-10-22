@@ -13,7 +13,7 @@ function envFlag(name: string): boolean | null {
 function shouldSeedOnStartup(): boolean {
   const explicit = envFlag("SEED_DATABASE_ON_STARTUP");
   if (explicit != null) return explicit;
-  return process.env.NODE_ENV !== "production" && !process.env.VERCEL;
+  return process.env.NODE_ENV !== "production";
 }
 
 async function seedWithRetry(

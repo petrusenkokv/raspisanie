@@ -9,10 +9,7 @@ let wsInstance: WebSocket | undefined;
 
 export const isRealtimeDisabled = (): boolean => {
   if (typeof window === "undefined") return true;
-  return (
-    import.meta.env.VITE_DISABLE_WEBSOCKET === "1" ||
-    window.location.hostname.endsWith(".vercel.app")
-  );
+  return import.meta.env.VITE_DISABLE_WEBSOCKET === "1";
 };
 
 function connectWebSocket(queryClient: ReturnType<typeof useQueryClient>) {
@@ -75,7 +72,7 @@ function stopWebSocket() {
   wsInstance = undefined;
 }
 
-/** Real-time updates via WebSocket (local dev). On Vercel — no background polling. */
+/** Real-time updates via WebSocket. Отключается вручную через VITE_DISABLE_WEBSOCKET=1. */
 export function useWebSocket() {
   const queryClient = useQueryClient();
 

@@ -433,7 +433,7 @@ export class DbStorage implements IStorage {
 
   /**
    * Безопасные миграции колонок тарифов абонементов.
-   * Вызывается на Vercel, где seed() пропускается (NODE_ENV=production).
+   * Вызывается всегда, включая production, где seed() пропускается.
    */
   async ensurePricingSchema(): Promise<void> {
     try {

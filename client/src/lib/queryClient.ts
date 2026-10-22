@@ -4,7 +4,7 @@ async function readErrorMessage(res: Response): Promise<string> {
   const text = (await res.text()) || res.statusText;
   const trimmed = text.trim();
   if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
-    return "Сервер вернул HTML вместо JSON. Перезапустите приложение (npm run dev:win) или обновите сайт на Vercel.";
+    return "Сервер вернул HTML вместо JSON. Перезапустите приложение (npm run dev:win) или обновите сайт.";
   }
   try {
     const json = JSON.parse(trimmed);
@@ -28,7 +28,7 @@ export async function parseJsonResponse<T = unknown>(res: Response): Promise<T> 
   const trimmed = text.trim();
   if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
     throw new Error(
-      "Сервер вернул HTML вместо JSON. Перезапустите приложение (npm run dev:win) или обновите сайт на Vercel.",
+      "Сервер вернул HTML вместо JSON. Перезапустите приложение (npm run dev:win) или обновите сайт.",
     );
   }
   try {

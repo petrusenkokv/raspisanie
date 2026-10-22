@@ -23,7 +23,6 @@ export async function createApp(options: AppOptions = {}) {
   app.get("/healthz", (_req, res) => {
     res.status(200).json({
       status: "ok",
-      commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
       moscowToday: moscowDateString(),
     });
   });
@@ -31,7 +30,6 @@ export async function createApp(options: AppOptions = {}) {
   app.get("/api/healthz", (_req, res) => {
     res.status(200).json({
       status: "ok",
-      commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
       moscowToday: moscowDateString(),
     });
   });
