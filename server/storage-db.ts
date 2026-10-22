@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { eq, and, or, ne, asc, desc, inArray, gte, lte, lt, sql as drizzleSql } from "drizzle-orm";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -13,17 +12,20 @@ import { getDatabaseUrl } from "./db-url";
 // `await import("pg")`, и из-за top-level await esbuild не мог собрать
 // ни CJS (формат не поддерживает TLA), ни корректный ESM-бандл для Layero.
 //
-// db типизирован как any: методы .select().from().where().execute()
-// возвращают сложные типы drizzle-orm, которые TS не может вывести
-// для параметров стрелочных функций в 40+ местах кода. Без any
-// получаем «Parameter 'r' implicitly has 'any' type».
-let pool: any = null;
-let db: any = null;
+// db типизирован как NodePgDatabase<typeof schema>, а не any: тогда цепочки
+// .select().from().where() возвращают реальные типы строк, и параметры
+// колбэков .map/.filter выводятся сами. Иначе TS даёт «implicitly has 'any'
+// type» в 40+ местах и теряет проверку запросов к схеме.
+//
+// drizzle() не открывает соединение, поэтому инстанс создаётся всегда —
+// даже без DATABASE_URL. Запросы тогда падают с ошибкой подключения на
+// месте, где раньше падали с «Cannot read properties of null»: тип без
+// `| null` освобождает 3000 строк от проверок, которых код и так не делал.
+type Db = NodePgDatabase<typeof schema>;
 
+let pool: Pool | null = null;
 const databaseUrl = getDatabaseUrl();
-if (!databaseUrl) {
-  console.log("[storage-db] DATABASE_URL not set");
-} else {
+if (databaseUrl) {
   try {
     pool = new Pool({
       connectionString: databaseUrl,
@@ -34,15 +36,16 @@ if (!databaseUrl) {
       console.error("[storage-db] pg pool idle client error:", err.message);
     });
     console.log("[storage-db] PostgreSQL pool created");
-
-    db = drizzle(pool, { schema });
-    console.log("[storage-db] Drizzle instance created");
   } catch (err: any) {
     console.error("[storage-db] Failed to create PostgreSQL:", err?.message || err);
+    pool = null;
   }
+} else {
+  console.log("[storage-db] DATABASE_URL not set");
 }
 
-console.log("[storage-db] Module loaded, db:", typeof db);
+const db: Db = drizzle(pool ?? new Pool({ connectionString: "" }), { schema });
+console.log("[storage-db] Drizzle instance created, db:", typeof db);
 import { pgTable, varchar, text, timestamp } from "drizzle-orm/pg-core";
 import {
   users, documents, userConsents, trainerServices, parentChildren, timeSlots, trainerSettings,
