@@ -2,6 +2,8 @@
 // This file is kept for backward compatibility
 import { sql } from "drizzle-orm";
 
-export const db = null;
+// Тип any (а не null) осознан: debug-роуты обращаются к db.execute/db.sql,
+// а TS иначе ругается на "possibly null". Реальный инстанс создаётся в storage-db.ts.
+export const db: any = null;
 export { sql as drizzleSql };
 export type DB = typeof db;

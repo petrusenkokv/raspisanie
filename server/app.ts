@@ -68,6 +68,7 @@ export async function createApp(options: AppOptions = {}) {
       let pgTest: any = { error: "not tested" };
       try {
         const { db } = await import("./db");
+        if (!db) throw new Error("DB not initialized");
         const r = await db.execute(db.sql`SELECT 1 as test`);
         pgTest = { ok: true, result: r };
       } catch (e: any) {
