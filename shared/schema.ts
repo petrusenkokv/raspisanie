@@ -358,31 +358,9 @@ export const insertUserConsentSchema = createInsertSchema(userConsents).omit({
   acceptedAt: true,
 });
 
-export const updateStudentProfileSchema = z.object({
-  firstName: z.string().trim().min(1, "Укажите имя"),
-  lastName: z.string().trim().min(1, "Укажите фамилию"),
-  middleName: z.string().trim().nullable().optional(),
-  birthDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Дата должна быть в формате YYYY-MM-DD")
-    .superRefine((val, ctx) => {
-      const err = birthDateValidationError(val, "optional");
-      if (err) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: err });
-      }
-    }),
-  phone: z.string().trim().min(10, "Укажите корректный телефон"),
-  // Legacy single-representative field (used by self-registration)
-  parentFullName: z.string().trim().nullable().optional(),
-  parentPhone: z.string().trim().nullable().optional(),
-  // Detailed representative fields (filled by parent in profile)
-  motherFullName: z.string().trim().nullable().optional(),
-  motherPhone: z.string().trim().nullable().optional(),
-  fatherFullName: z.string().trim().nullable().optional(),
-  fatherPhone: z.string().trim().nullable().optional(),
-  guardianFullName: z.string().trim().nullable().optional(),
-  guardianPhone: z.string().trim().nullable().optional(),
-});
+// updateStudentProfileSchema живёт в student-profile.ts: клиенту нужна только эта
+// zod-схема, а value-импорт отсюда тянул в браузер весь drizzle-orm.
+export { updateStudentProfileSchema } from "./student-profile";
 
 export const insertRecurringBookingSchema = createInsertSchema(recurringBookings).omit({
   id: true,

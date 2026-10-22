@@ -26,6 +26,26 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // vendor — React, DOM, стейт-менеджер, роутер (меняются редко, долго кэшируются)
+          vendor: [
+            "react",
+            "react-dom",
+            "zustand",
+            "wouter",
+          ],
+          // lib — запросы, UI-утилиты, иконки, даты (меняются иногда)
+          lib: [
+            "@tanstack/react-query",
+            "lucide-react",
+            "date-fns",
+            "zod",
+          ],
+        },
+      },
+    },
   },
   server: {
     fs: {
