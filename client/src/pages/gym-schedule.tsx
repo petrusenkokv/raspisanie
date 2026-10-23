@@ -1,21 +1,52 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { CalendarHeader } from "@/components/gym/calendar-header";
 import { CalendarView } from "@/components/gym/calendar-view";
-import { AuthModal } from "@/components/gym/auth-modal";
-import { StudentsPanel } from "@/components/gym/students-panel";
-import { BookStudentDialog } from "@/components/gym/book-student-dialog";
-import { ChangePasswordDialog } from "@/components/gym/change-password-dialog";
-import { TrainerProfileDialog } from "@/components/gym/trainer-profile-dialog";
-import { BlockPeriodDialog } from "@/components/gym/block-period-dialog";
 import { BlockNoteDialog } from "@/components/gym/block-note-dialog";
-import { ScheduleSettingsDialog } from "@/components/gym/schedule-settings-dialog";
-import { BroadcastDialog } from "@/components/gym/broadcast-dialog";
-import { ProfileDialog } from "@/components/gym/profile-dialog";
-import { ParentChildrenDialog } from "@/components/gym/parent-children-dialog";
-import { ParentBookDialog } from "@/components/gym/parent-book-dialog";
-import { RecurringBookingsDialog } from "@/components/gym/recurring-bookings-dialog";
-import { IndividualTrainingWarningDialog } from "@/components/gym/individual-training-warning-dialog";
+
+// Тяжёлые диалоги, которые открываются по действию, а не при первом рендере.
+// Грузятся лениво, чтобы не раздувать стартовый index-чанк.
+const AuthModal = lazy(() =>
+  import("@/components/gym/auth-modal").then((m) => ({ default: m.AuthModal })),
+);
+const StudentsPanel = lazy(() =>
+  import("@/components/gym/students-panel").then((m) => ({ default: m.StudentsPanel })),
+);
+const BookStudentDialog = lazy(() =>
+  import("@/components/gym/book-student-dialog").then((m) => ({ default: m.BookStudentDialog })),
+);
+const ChangePasswordDialog = lazy(() =>
+  import("@/components/gym/change-password-dialog").then((m) => ({ default: m.ChangePasswordDialog })),
+);
+const TrainerProfileDialog = lazy(() =>
+  import("@/components/gym/trainer-profile-dialog").then((m) => ({ default: m.TrainerProfileDialog })),
+);
+const BlockPeriodDialog = lazy(() =>
+  import("@/components/gym/block-period-dialog").then((m) => ({ default: m.BlockPeriodDialog })),
+);
+const ProfileDialog = lazy(() =>
+  import("@/components/gym/profile-dialog").then((m) => ({ default: m.ProfileDialog })),
+);
+const ParentChildrenDialog = lazy(() =>
+  import("@/components/gym/parent-children-dialog").then((m) => ({ default: m.ParentChildrenDialog })),
+);
+const ParentBookDialog = lazy(() =>
+  import("@/components/gym/parent-book-dialog").then((m) => ({ default: m.ParentBookDialog })),
+);
+const IndividualTrainingWarningDialog = lazy(() =>
+  import("@/components/gym/individual-training-warning-dialog").then((m) => ({
+    default: m.IndividualTrainingWarningDialog,
+  })),
+);
+const ScheduleSettingsDialog = lazy(() =>
+  import("@/components/gym/schedule-settings-dialog").then((m) => ({ default: m.ScheduleSettingsDialog })),
+);
+const BroadcastDialog = lazy(() =>
+  import("@/components/gym/broadcast-dialog").then((m) => ({ default: m.BroadcastDialog })),
+);
+const RecurringBookingsDialog = lazy(() =>
+  import("@/components/gym/recurring-bookings-dialog").then((m) => ({ default: m.RecurringBookingsDialog })),
+);
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Loader2, MessageSquare } from "lucide-react";
@@ -26,6 +57,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { PullToRefresh } from "@/components/gym/pull-to-refresh";
+import { useLazyMount } from "@/hooks/use-lazy-mount";
 import { useStuckLoadRecovery } from "@/hooks/use-stuck-load-recovery";
 import { useToast } from "@/hooks/use-toast";
 
@@ -51,6 +83,21 @@ export function GymSchedulePage() {
   const [parentBookedStudentIds, setParentBookedStudentIds] = useState<string[]>([]);
   const [individualWarningOpen, setIndividualWarningOpen] = useState(false);
   const [individualWarningSlotId, setIndividualWarningSlotId] = useState<string | null>(null);
+
+  // Тяжёлые диалоги монтируются только при первом открытии, чтобы их чанки
+  // не скачивались на старте; размонтирование отложено на время анимации закрытия Radix.
+  const settingsMounted = useLazyMount(settingsOpen);
+  const broadcastMounted = useLazyMount(broadcastOpen);
+  const recurringMounted = useLazyMount(recurringOpen);
+  const authModalMounted = useLazyMount(authModalOpen);
+  const studentsPanelMounted = useLazyMount(studentsPanelOpen);
+  const bookDialogMounted = useLazyMount(trainerBookDialogOpen);
+  const individualWarningMounted = useLazyMount(individualWarningOpen);
+  const blockPeriodMounted = useLazyMount(blockPeriodOpen);
+  const profileMounted = useLazyMount(profileOpen);
+  const parentChildrenMounted = useLazyMount(parentChildrenOpen);
+  const parentBookMounted = useLazyMount(parentBookOpen);
+  const trainerProfileMounted = useLazyMount(trainerProfileOpen);
   const {
     currentUser,
     isAuthenticated,
@@ -63,6 +110,9 @@ export function GymSchedulePage() {
     setSelectedDate,
     isTrainer,
   } = useGymStore();
+
+  const mustChangePassword = !!(currentUser as any)?.mustChangePassword;
+  const changePasswordMounted = useLazyMount(changePasswordOpen || mustChangePassword);
 
   const queryClient = useQueryClient();
   useWebSocket();
@@ -441,7 +491,11 @@ export function GymSchedulePage() {
       </div>
       </PullToRefresh>
 
-      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} initialMode={authModalMode} />
+      {authModalMounted && (
+        <Suspense fallback={null}>
+          <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} initialMode={authModalMode} />
+        </Suspense>
+      )}
 
       {/* Welcome dialog shown when trainer approves student while they wait on page */}
       <WelcomeDialog
@@ -455,38 +509,62 @@ export function GymSchedulePage() {
         userId={currentUser?.id}
         firstName={currentUser?.firstName}
       />
-      <StudentsPanel open={studentsPanelOpen} onOpenChange={setStudentsPanelOpen} />
-      <RecurringBookingsDialog open={recurringOpen} onOpenChange={setRecurringOpen} />
-      <BookStudentDialog
-        open={trainerBookDialogOpen}
-        onOpenChange={(open) => {
-          setTrainerBookDialogOpen(open);
-          if (!open) {
-            setSelectedTimeSlotId(null);
-            setTrainerBookSelfMode(false);
-          }
-        }}
-        preselectedTimeSlotId={selectedTimeSlotId}
-        forceSelfMode={trainerBookSelfMode}
-      />
-      <IndividualTrainingWarningDialog
-        open={individualWarningOpen}
-        onOpenChange={setIndividualWarningOpen}
-        onConfirm={() => {
-          setIndividualWarningOpen(false);
-          if (individualWarningSlotId) {
-            setSelectedTimeSlotId(individualWarningSlotId);
-            setTrainerBookSelfMode(false);
-            setTrainerBookDialogOpen(true);
-          }
-        }}
-      />
-      <ChangePasswordDialog
-        open={changePasswordOpen || !!(currentUser as any)?.mustChangePassword}
-        onOpenChange={setChangePasswordOpen}
-        forced={!!(currentUser as any)?.mustChangePassword}
-      />
-      <BlockPeriodDialog open={blockPeriodOpen} onOpenChange={setBlockPeriodOpen} />
+      {studentsPanelMounted && (
+        <Suspense fallback={null}>
+          <StudentsPanel open={studentsPanelOpen} onOpenChange={setStudentsPanelOpen} />
+        </Suspense>
+      )}
+      {recurringMounted && (
+        <Suspense fallback={null}>
+          <RecurringBookingsDialog open={recurringOpen} onOpenChange={setRecurringOpen} />
+        </Suspense>
+      )}
+      {bookDialogMounted && (
+        <Suspense fallback={null}>
+          <BookStudentDialog
+            open={trainerBookDialogOpen}
+            onOpenChange={(open) => {
+              setTrainerBookDialogOpen(open);
+              if (!open) {
+                setSelectedTimeSlotId(null);
+                setTrainerBookSelfMode(false);
+              }
+            }}
+            preselectedTimeSlotId={selectedTimeSlotId}
+            forceSelfMode={trainerBookSelfMode}
+          />
+        </Suspense>
+      )}
+      {individualWarningMounted && (
+        <Suspense fallback={null}>
+          <IndividualTrainingWarningDialog
+            open={individualWarningOpen}
+            onOpenChange={setIndividualWarningOpen}
+            onConfirm={() => {
+              setIndividualWarningOpen(false);
+              if (individualWarningSlotId) {
+                setSelectedTimeSlotId(individualWarningSlotId);
+                setTrainerBookSelfMode(false);
+                setTrainerBookDialogOpen(true);
+              }
+            }}
+          />
+        </Suspense>
+      )}
+      {changePasswordMounted && (
+        <Suspense fallback={null}>
+          <ChangePasswordDialog
+            open={changePasswordOpen || mustChangePassword}
+            onOpenChange={setChangePasswordOpen}
+            forced={mustChangePassword}
+          />
+        </Suspense>
+      )}
+      {blockPeriodMounted && (
+        <Suspense fallback={null}>
+          <BlockPeriodDialog open={blockPeriodOpen} onOpenChange={setBlockPeriodOpen} />
+        </Suspense>
+      )}
       {dayBlockedState && (
         <BlockNoteDialog
           open={blockDayNoteDialogOpen}
@@ -504,50 +582,74 @@ export function GymSchedulePage() {
           }
         />
       )}
-      <ScheduleSettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        dayBlockedState={dayBlockedState}
-        blockDayPending={blockDayMutation.isPending}
-        onToggleBlockDay={() => {
-          if (!dayBlockedState) return;
-          if (dayBlockedState.allBlocked) {
-            blockDayMutation.mutate({
-              date: dayBlockedState.dateStr,
-              blocked: false,
-            });
-            return;
-          }
-          setBlockDayNoteDialogOpen(true);
-        }}
-        onOpenBlockPeriod={() => setBlockPeriodOpen(true)}
-        onOpenBroadcast={() => setBroadcastOpen(true)}
-        onOpenAuthModal={(open, mode) => {
-          setAuthModalOpen(open);
-          if (mode) setAuthModalMode(mode);
-        }}
-      />
-      <BroadcastDialog open={broadcastOpen} onOpenChange={setBroadcastOpen} />
-      <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
-      <ParentChildrenDialog open={parentChildrenOpen} onOpenChange={setParentChildrenOpen} />
-      <ParentBookDialog
-        open={parentBookOpen}
-        onOpenChange={(open) => {
-          setParentBookOpen(open);
-          if (!open) {
-            setParentBookSlotId(null);
-            setParentBookedStudentIds([]);
-          }
-        }}
-        children={parentChildren}
-        currentUser={currentUser}
-        isAlsoStudent={isParentRole ? isAlsoStudent : true}
-        bookedStudentIds={parentBookedStudentIds}
-        slotDate={parentBookSlotDate}
-        loading={bookMutation.isPending}
-        onConfirm={handleParentBookConfirm}
-      />
-      <TrainerProfileDialog open={trainerProfileOpen} onOpenChange={setTrainerProfileOpen} />
+      {settingsMounted && (
+        <Suspense fallback={null}>
+          <ScheduleSettingsDialog
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+            dayBlockedState={dayBlockedState}
+            blockDayPending={blockDayMutation.isPending}
+            onToggleBlockDay={() => {
+              if (!dayBlockedState) return;
+              if (dayBlockedState.allBlocked) {
+                blockDayMutation.mutate({
+                  date: dayBlockedState.dateStr,
+                  blocked: false,
+                });
+                return;
+              }
+              setBlockDayNoteDialogOpen(true);
+            }}
+            onOpenBlockPeriod={() => setBlockPeriodOpen(true)}
+            onOpenBroadcast={() => setBroadcastOpen(true)}
+            onOpenAuthModal={(open, mode) => {
+              setAuthModalOpen(open);
+              if (mode) setAuthModalMode(mode);
+            }}
+          />
+        </Suspense>
+      )}
+      {broadcastMounted && (
+        <Suspense fallback={null}>
+          <BroadcastDialog open={broadcastOpen} onOpenChange={setBroadcastOpen} />
+        </Suspense>
+      )}
+      {profileMounted && (
+        <Suspense fallback={null}>
+          <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+        </Suspense>
+      )}
+      {parentChildrenMounted && (
+        <Suspense fallback={null}>
+          <ParentChildrenDialog open={parentChildrenOpen} onOpenChange={setParentChildrenOpen} />
+        </Suspense>
+      )}
+      {parentBookMounted && (
+        <Suspense fallback={null}>
+          <ParentBookDialog
+            open={parentBookOpen}
+            onOpenChange={(open) => {
+              setParentBookOpen(open);
+              if (!open) {
+                setParentBookSlotId(null);
+                setParentBookedStudentIds([]);
+              }
+            }}
+            children={parentChildren}
+            currentUser={currentUser}
+            isAlsoStudent={isParentRole ? isAlsoStudent : true}
+            bookedStudentIds={parentBookedStudentIds}
+            slotDate={parentBookSlotDate}
+            loading={bookMutation.isPending}
+            onConfirm={handleParentBookConfirm}
+          />
+        </Suspense>
+      )}
+      {trainerProfileMounted && (
+        <Suspense fallback={null}>
+          <TrainerProfileDialog open={trainerProfileOpen} onOpenChange={setTrainerProfileOpen} />
+        </Suspense>
+      )}
     </div>
   );
 }
