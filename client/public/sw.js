@@ -1,7 +1,7 @@
 /* Web Push + precaching for offline access. */
 
 // Precached assets (versioned by build hash)
-const PRECACHE_CACHE = "app-precache-v2";
+const PRECACHE_CACHE = "app-precache-v3";
 const PRECACHE_URLS = [
   "/",
   "/index.html",
