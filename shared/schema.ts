@@ -581,11 +581,8 @@ export type StudentPaymentStatus = {
   cvValidUntil: string | null; // YYYY-MM-DD — последний день действия текущего ЧВ (включительно)
   hasTrainerPayment: boolean; // есть активный абонемент с остатком
   activeTrainerPayment: TrainerPaymentWithUsage | null;
-  /** Можно записаться / отменить / перенести с учётом льготных 3 дней после ЧВ */
+  /** Просроченный ЧВ = сразу блокируются запись, отмена и перенос (льготных дней нет). */
   membershipBookingAllowed: boolean;
-  membershipInGrace: boolean;
-  membershipBlockDate: string | null;
-  membershipGraceDaysLeft: number | null;
   /** Следующий месяц уже оплачен — не показывать предупреждение «скоро нужна оплата» */
   nextMonthAlreadyPaid: boolean;
 };

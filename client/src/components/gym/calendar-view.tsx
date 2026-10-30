@@ -24,7 +24,7 @@ import {
   hasIndividualTrainingBookings,
 } from "@/lib/utils-gym";
 import { BookingPaymentBadges, useStudentPaymentStatus } from "./booking-payment-badges";
-import { getMembershipGraceWarning, isMembershipBookingBlocked } from "@shared/membership-grace";
+import { isMembershipActionBlocked, isMembershipBookingBlocked } from "@shared/membership-grace";
 import { MembershipBlockedButton } from "./membership-blocked-button";
 import {
   MEMBERSHIP_BOOKING_BLOCK_MESSAGE,
@@ -717,7 +717,6 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
   const blockedByMembership =
     showSelfMembershipBadge &&
     isMembershipBookingBlocked(selfPaymentStatus);
-  const membershipGraceWarning = getMembershipGraceWarning(selfPaymentStatus);
   const bookingMembershipCheck = userBooking
     ? shouldShowMembershipBadge(userBooking.student)
     : false;
@@ -1038,11 +1037,6 @@ function WeekCell({ timeSlot, currentUser, isTrainer, onBook, onCancel, onConfir
                 </p>
                 {bookingStudentIds.length > 0 && (
                   <SlotSessionPrice studentIds={bookingStudentIds} />
-                )}
-                {membershipGraceWarning && (
-                  <p className="text-xs text-orange-600 dark:text-orange-400 text-center px-1">
-                    {membershipGraceWarning}
-                  </p>
                 )}
                 <MembershipBlockedButton
                   className="w-full"

@@ -18,7 +18,7 @@ import {
 import { CalendarCellHint, type CalendarCellHintLevel } from "./calendar-cell-hint";
 import { SlotSessionPrice } from "./slot-session-price";
 import { BookingPaymentBadges, useStudentPaymentStatus } from "./booking-payment-badges";
-import { getMembershipGraceWarning, isMembershipBookingBlocked } from "@shared/membership-grace";
+import { isMembershipBookingBlocked } from "@shared/membership-grace";
 import { TimeSlot } from "./time-slot";
 import {
   Sheet,
@@ -106,7 +106,6 @@ export function DaySlotRow({
   const blockedByMembership =
     showSelfMembershipBadge &&
     isMembershipBookingBlocked(selfPaymentStatus);
-  const membershipGraceWarning = getMembershipGraceWarning(selfPaymentStatus);
 
   const fillLevel = getStudentSlotFillLevel(isBlocked, isFull, allActiveBookings.length);
   const hintLevel: CalendarCellHintLevel = useMemo(() => {
@@ -156,7 +155,6 @@ export function DaySlotRow({
     if (isFull) return "Занято";
     if (tooLateToBook) return "Запись закрыта";
     if (blockedByMembership) return "Нет ЧВ · записаться";
-    if (membershipGraceWarning) return "ЧВ · оплатите";
     if (isGuest) return "Войти и записаться";
     return "Записаться";
   })();

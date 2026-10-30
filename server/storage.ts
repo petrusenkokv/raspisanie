@@ -49,10 +49,6 @@ import {
   eachDateStrInRange,
   nextCvAllowedDateStr,
 } from "./moscow-date";
-import {
-  computeMembershipGraceFields,
-  cvPeriodValidUntilInclusive,
-} from "./membership-grace";
 import { studentIdentityKey, studentFullNameKey, studentLastFirstKey } from "./student-identity";
 import {
   findIndividualSlotConflict,
@@ -1782,23 +1778,9 @@ export class MemStorage implements IStorage {
       }
     }
 
-    const sortedCvPayments = [...cvPayments].sort((a, b) =>
-      (b.paidDate ?? "").localeCompare(a.paidDate ?? ""),
-    );
-    let latestCvPeriodEnd: string | null = null;
-    if (sortedCvPayments.length > 0 && sortedCvPayments[0].paidDate) {
-      const latest = sortedCvPayments[0];
-      const baseDate = latest.effectiveStartDate ?? latest.paidDate!;
-      const sickDays = this.collectSickDaysAfter(studentId, baseDate);
-      latestCvPeriodEnd = cvPeriodValidUntilInclusive(baseDate, sickDays.size);
-    }
-
-    const grace = computeMembershipGraceFields(
-      todayStr,
-      exemptMembership,
-      hasMembershipToday,
-      latestCvPeriodEnd,
-    );
+    // Просроченный ЧВ блокирует запись сразу, без льготных дней:
+    // пока оплата действительна (или ещё не наступил срок) — ученик может записаться.
+    const membershipBookingAllowed = hasMembershipToday;
 
     // Проверяем, есть ли оплата на следующий месяц (после cvValidUntil)
     let nextMonthAlreadyPaid = false;
@@ -1821,7 +1803,7 @@ export class MemStorage implements IStorage {
       cvValidUntil,
       hasTrainerPayment: exemptTrainerPayment ? true : sub !== null,
       activeTrainerPayment: sub ? this.withUsage(sub) : null,
-      ...grace,
+      membershipBookingAllowed,
       nextMonthAlreadyPaid,
     };
   }

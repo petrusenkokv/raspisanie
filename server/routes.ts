@@ -213,12 +213,13 @@ function setScheduleCacheHeaders(_req: any, res: any) {
   res.set("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
 }
 
+/** Отмена/перенос требуют оплаченного ЧВ именно на дату тренировки. */
 async function studentHasMembershipForDate(
   studentId: string,
   dateStr: string,
 ): Promise<boolean> {
   const status = await storage.getStudentPaymentStatus(studentId, dateStr);
-  return status.membershipBookingAllowed;
+  return status.hasMembership;
 }
 
 /** Unique login phone for a child card (parent phone + suffix 01, 02, …). */

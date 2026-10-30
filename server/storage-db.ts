@@ -85,10 +85,7 @@ import {
   eachDateStrInRange,
   nextCvAllowedDateStr,
 } from "./moscow-date";
-import {
-  computeMembershipGraceFields,
-  cvPeriodValidUntilInclusive,
-} from "./membership-grace";
+import { cvPeriodValidUntilInclusive } from "./membership-grace";
 import { studentIdentityKey, studentFullNameKey, studentLastFirstKey } from "./student-identity";
 import {
   findIndividualSlotConflict,
@@ -3084,20 +3081,24 @@ export class DbStorage implements IStorage {
       }
     }
 
-    let latestCvPeriodEnd: string | null = null;
-    if (cvPayments.length > 0) {
-      const latest = cvPayments[0];
-      const baseDate = latest.effectiveStartDate ?? latest.paidDate!;
-      const sickDays = await this.getSickDaysAfter(studentId, baseDate);
-      latestCvPeriodEnd = cvPeriodValidUntilInclusive(baseDate, sickDays.size);
-    }
+    // Просроченный ЧВ блокирует запись сразу, без льготных дней:
+    // пока оплата действительна на сегодня — ученик может записаться и на будущие даты.
+    const membershipBookingAllowed = hasMembershipToday;
 
-    const grace = computeMembershipGraceFields(
-      todayStr,
-      exemptMembership,
-      hasMembershipToday,
-      latestCvPeriodEnd,
-    );
+    // Слот в будущем ещё не покрыт оплаченным периодом, но ЧВ на сегодня действует —
+    // показываем текущий период, чтобы бейдж остался зелёным, а не «не оплачен».
+    if (membershipKind === null && hasMembershipToday && dateStr > todayStr) {
+      for (const p of cvPayments) {
+        const baseDate = p.effectiveStartDate ?? p.paidDate!;
+        const sickDays = await this.getSickDaysAfter(studentId, baseDate);
+        if (cvValidUntilForDate(baseDate, todayStr, sickDays.size)) {
+          membershipKind = "monthly_cv";
+          cvPaidDate = p.paidDate!;
+          cvValidUntil = cvPeriodValidUntilInclusive(baseDate, sickDays.size);
+          break;
+        }
+      }
+    }
 
     // Проверяем, есть ли оплата на следующий месяц (после cvValidUntil)
     let nextMonthAlreadyPaid = false;
@@ -3120,7 +3121,7 @@ export class DbStorage implements IStorage {
       cvValidUntil,
       hasTrainerPayment: exemptTrainerPayment ? true : sub !== null,
       activeTrainerPayment: sub ? await this.withUsage(sub) : null,
-      ...grace,
+      membershipBookingAllowed,
       nextMonthAlreadyPaid,
     };
   }
