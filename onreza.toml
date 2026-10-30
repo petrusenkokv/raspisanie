@@ -10,7 +10,7 @@ framework = "express"
 [build]
 install_command = "npm ci"
 command = "npm run build"
-output_directory = "deploy-pkg"
+output_directory = "dist"
 
 [deploy]
 compute = "process"

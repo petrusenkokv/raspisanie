@@ -4,7 +4,6 @@ import { dirname, join, resolve } from "path";
 import {
   copyFileSync,
   mkdirSync,
-  rmSync,
   existsSync,
   readdirSync,
   writeFileSync,
@@ -62,44 +61,3 @@ if (existsSync(srcDir)) {
   copyDirSync(srcDir, destDir);
   console.log("Copied dist/public to server/public");
 }
-
-// --- Deploy-pkg (ONREZA output_directory) ---
-// ONREZA ищет файлы в output_directory после сборки. deploy-pkg не в git,
-// поэтому build-server.js должен создавать его каждый раз.
-
-const deployPkgDir = resolve(__dirname, "deploy-pkg");
-
-// Чистим старый deploy-pkg
-if (existsSync(deployPkgDir)) {
-  rmSync(deployPkgDir, { recursive: true, force: true });
-}
-mkdirSync(deployPkgDir, { recursive: true });
-
-// Копируем dist/ → deploy-pkg/dist/
-const deployDistDir = join(deployPkgDir, "dist");
-mkdirSync(deployDistDir, { recursive: true });
-const distEntries = readdirSync(resolve(__dirname, "dist"), { withFileTypes: true });
-for (const entry of distEntries) {
-  const srcPath = join(__dirname, "dist", entry.name);
-  const destPath = join(deployDistDir, entry.name);
-  if (entry.isDirectory()) {
-    copyDirSync(srcPath, destPath);
-  } else {
-    copyFileSync(srcPath, destPath);
-  }
-}
-console.log("Copied dist/ to deploy-pkg/dist/");
-
-// Копируем корневой index.js → deploy-pkg/index.js
-copyFileSync(
-  resolve(__dirname, "index.js"),
-  join(deployPkgDir, "index.js")
-);
-
-// Создаём deploy-pkg/package.json
-writeFileSync(
-  join(deployPkgDir, "package.json"),
-  JSON.stringify({ name: "raspisanie", private: true, type: "module" }, null, 2) + "\n"
-);
-
-console.log("Created deploy-pkg/ for ONREZA deployment");
