@@ -86,16 +86,6 @@ export function serveStatic(app: Express) {
     );
   }
 
-  // Serve static files with no-cache for sw.js
-  app.use("/sw.js", (_req, res, next) => {
-    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.set("Pragma", "no-cache");
-    res.set("Expires", "0");
-    next();
-  });
-
-  app.use(express.static(distPath));
-
   // Serve index.html with no-cache to prevent stale HTML on mobile/PWA
   app.use("/index.html", (_req, res, next) => {
     res.set("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -104,8 +94,40 @@ export function serveStatic(app: Express) {
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 
+  // Serve root "/" with same no-cache policy (prevents stale cached HTML)
+  app.get("/", (_req, res) => {
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+    res.sendFile(path.resolve(distPath, "index.html"));
+  });
+
+  // Serve static assets with no-cache for sw.js
+  app.use("/sw.js", (_req, res, next) => {
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+    next();
+  });
+
+  app.use(
+    express.static(distPath, {
+      setHeaders: (res, _path) => {
+        // HTML files must never be cached by the browser
+        if (_path.endsWith(".html")) {
+          res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+          res.set("Pragma", "no-cache");
+          res.set("Expires", "0");
+        }
+      },
+    }),
+  );
+
   // fall through to index.html if the file doesn't exist
   app.use("*", (_req, res) => {
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
