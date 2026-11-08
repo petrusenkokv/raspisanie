@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
 import { type Server } from "http";
@@ -86,21 +86,30 @@ export function serveStatic(app: Express) {
     );
   }
 
-  // Serve index.html with no-cache to prevent stale HTML on mobile/PWA
-  app.use("/index.html", (_req, res, next) => {
+  const indexPath = path.resolve(distPath, "index.html");
+
+  /**
+   * index.html обязан приходить целиком при каждой навигации: в нём зашиты
+   * хэши JS-чанков текущего билда. sendFile по умолчанию выдаёт ETag/
+   * Last-Modified и отвечает 304 на условный запрос, поэтому браузер,
+   * у которого остался HTML прошлых билдов, получал 304 и использовал
+   * устаревшие ссылки на удалённые чанки (белая страница). Отключаем
+   * валидаторы и гасим входные условные заголовки.
+   */
+  const sendIndexHtml = (req: Request, res: Response) => {
+    delete req.headers["if-none-match"];
+    delete req.headers["if-modified-since"];
     res.set("Cache-Control", "no-cache, no-store, must-revalidate");
     res.set("Pragma", "no-cache");
     res.set("Expires", "0");
-    res.sendFile(path.resolve(distPath, "index.html"));
-  });
+    res.sendFile(indexPath, { etag: false, lastModified: false });
+  };
+
+  // Serve index.html with no-cache to prevent stale HTML on mobile/PWA
+  app.use("/index.html", (req, res) => sendIndexHtml(req, res));
 
   // Serve root "/" with same no-cache policy (prevents stale cached HTML)
-  app.get("/", (_req, res) => {
-    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.set("Pragma", "no-cache");
-    res.set("Expires", "0");
-    res.sendFile(path.resolve(distPath, "index.html"));
-  });
+  app.get("/", (req, res) => sendIndexHtml(req, res));
 
   // Serve static assets with no-cache for sw.js
   app.use("/sw.js", (_req, res, next) => {
@@ -124,10 +133,5 @@ export function serveStatic(app: Express) {
   );
 
   // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
-    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.set("Pragma", "no-cache");
-    res.set("Expires", "0");
-    res.sendFile(path.resolve(distPath, "index.html"));
-  });
+  app.use("*", (req, res) => sendIndexHtml(req, res));
 }
